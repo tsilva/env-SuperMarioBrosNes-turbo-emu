@@ -21,7 +21,7 @@ natively in Rust. That delivers environment stepping up to 17× faster than
 ## Why it is fast
 
 <div align="center">
-  <img src="media/mario-promo/mario-throughput-comparison.gif" alt="Speed Comparison" width="320" />
+  <img src="media/mario-promo/mario-throughput-comparison.gif" alt="Speed Comparison" width="640" />
 </div>
 
 Throughput comes from the complete normal step path, not from disabling
