@@ -17,12 +17,11 @@ ROM-specific quirks while performing vectorization and all preprocessing
 natively in Rust. That delivers environment stepping up to 17× faster than
 [Stable Retro](https://github.com/Farama-Foundation/stable-retro).
 
-
-## Why it is fast
-
 <div align="center">
   <img src="media/mario-promo/mario-throughput-comparison.gif" alt="Speed Comparison" width="640" />
 </div>
+
+## Why it is fast
 
 Throughput comes from the complete normal step path, not from disabling
 preprocessing, infos, or resets:
