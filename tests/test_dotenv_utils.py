@@ -15,7 +15,7 @@ from scripts.benchmark_sps import DEFAULT_BENCHMARK_ACTIONS
 from scripts.benchmark_sps import load_preflight as native_load_preflight
 from scripts.benchmark_sps import package_metadata as native_package_metadata
 from scripts.benchmark_sps import resolve_verified_rom_path as resolve_native_verified_rom_path
-from scripts.dotenv_utils import dotenv_value, env_or_dotenv_path, require_env_or_dotenv_path
+from scripts.dotenv_utils import dotenv_value, env_or_dotenv_path
 from scripts.run_pypi_supermariobrosnes_turbo_benchmark import (
     aggregate as smb_pypi_aggregate,
 )
@@ -52,66 +52,33 @@ def test_dotenv_value_supports_export_and_quotes(tmp_path: Path) -> None:
     dotenv = tmp_path / ".env"
     dotenv.write_text(
         "# local secrets\n"
-        "export ROM_PATH='~/roms/SuperMarioBros.nes'\n"
+        "export EXAMPLE_PATH='~/example/data'\n"
     )
 
-    assert dotenv_value("ROM_PATH", dotenv) == "~/roms/SuperMarioBros.nes"
+    assert dotenv_value("EXAMPLE_PATH", dotenv) == "~/example/data"
 
 
 def test_env_or_dotenv_path_prefers_environment(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     dotenv = tmp_path / ".env"
-    dotenv.write_text("ROM_PATH=/from/dotenv.nes\n")
-    monkeypatch.setenv("ROM_PATH", "/from/env.nes")
+    dotenv.write_text("EXAMPLE_PATH=/from/dotenv\n")
+    monkeypatch.setenv("EXAMPLE_PATH", "/from/env")
 
-    assert env_or_dotenv_path("ROM_PATH", dotenv) == Path("/from/env.nes")
+    assert env_or_dotenv_path("EXAMPLE_PATH", dotenv) == Path("/from/env")
 
 
-def test_require_env_or_dotenv_path_rejects_missing_file(
+def test_package_default_rom_path_ignores_dotenv_rom_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
-    (tmp_path / ".env").write_text("ROM_PATH=/missing/SuperMarioBros.nes\n")
-
-    with pytest.raises(SystemExit, match="ROM path does not exist: /missing/SuperMarioBros.nes"):
-        require_env_or_dotenv_path("ROM_PATH", "ROM path")
-
-
-def test_require_env_or_dotenv_path_rejects_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
-    rom_dir = tmp_path / "rom-dir"
-    rom_dir.mkdir()
-    (tmp_path / ".env").write_text(f"ROM_PATH={rom_dir}\n")
-
-    with pytest.raises(SystemExit, match=f"ROM path is not a file: {rom_dir}"):
-        require_env_or_dotenv_path("ROM_PATH", "ROM path")
-
-
-def test_require_env_or_dotenv_path_returns_absolute_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
-    rom_path = tmp_path / "relative-rom.nes"
-    rom_path.write_bytes(b"placeholder")
-    (tmp_path / ".env").write_text("ROM_PATH=relative-rom.nes\n")
-
-    assert require_env_or_dotenv_path("ROM_PATH", "ROM path") == str(rom_path)
-
-
-def test_package_default_rom_path_reads_dotenv(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RETRO_DATA_PATH", raising=False)
     monkeypatch.delenv("ROM_PATH", raising=False)
     (tmp_path / ".env").write_text("ROM_PATH=/tmp/from-dotenv.nes\n")
+    monkeypatch.setattr("supermariobrosnes_turbo.roms._stable_retro_rom_path", lambda _game: None)
+    monkeypatch.setattr("supermariobrosnes_turbo.roms.package_data_path", lambda: tmp_path / "data")
 
-    assert default_rom_path() == Path("/tmp/from-dotenv.nes")
+    assert default_rom_path() is None
 
 
 def test_direct_benchmark_entrypoints_reject_wrong_rom_sha(tmp_path: Path) -> None:
@@ -201,17 +168,18 @@ def test_native_benchmark_rejects_missing_rom_before_hashing(tmp_path: Path) -> 
         resolve_native_verified_rom_path(missing_rom)
 
 
-def test_pypi_benchmark_wrappers_read_rom_path_from_dotenv(
+def test_pypi_benchmark_wrappers_read_retro_data_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
-    rom_path = tmp_path / "from-dotenv.nes"
+    data_root = tmp_path / "retro-data"
+    rom_path = data_root / "stable" / "SuperMarioBros-Nes-v0" / "rom.nes"
+    rom_path.parent.mkdir(parents=True)
     rom_path.write_bytes(b"placeholder")
+    monkeypatch.setenv("RETRO_DATA_PATH", str(data_root))
     autoresearch_root = tmp_path / "autoresearch"
     autoresearch_root.mkdir()
     (tmp_path / ".env").write_text(
-        f'ROM_PATH="{rom_path}"\n'
         f'AUTORESEARCH_ROOT_PATH="{autoresearch_root}"\n'
     )
 

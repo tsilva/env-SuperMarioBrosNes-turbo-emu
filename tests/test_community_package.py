@@ -37,6 +37,14 @@ def test_project_policy_files_exist():
     assert all((ROOT / relative).is_file() for relative in expected)
 
 
+def test_imported_rom_is_ignored_and_excluded_from_distributions():
+    gitignore = (ROOT / ".gitignore").read_text()
+    pyproject = (ROOT / "pyproject.toml").read_text()
+
+    assert "python/supermariobrosnes_turbo/data/**/rom.nes" in gitignore
+    assert 'exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]' in pyproject
+
+
 def test_release_promotes_unreleased_changelog(tmp_path, monkeypatch):
     release = _release_module()
     changes = tmp_path / "CHANGES.md"

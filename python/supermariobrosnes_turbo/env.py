@@ -16,6 +16,7 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
 from ._supermariobrosnes_turbo import _RetroVecEnv as _CoreRetroVecEnv
+from .roms import default_rom_path, game_data_path, resolve_required_rom_path
 
 
 VISIBLE_WIDTH = 240
@@ -41,7 +42,6 @@ ACTION_BUTTONS = {
 }
 MASK_BIT_WEIGHTS = (1 << np.arange(len(NES_BUTTONS), dtype=np.uint16)).astype(np.uint16)
 DEFAULT_STABLE_RETRO_GAME = "SuperMarioBros-Nes-v0"
-ROM_PATH_ENV_VAR = "ROM_PATH"
 GZIP_MAGIC = b"\x1f\x8b"
 INFO_KEYS = (
     "x_pos",
@@ -100,43 +100,6 @@ class Integrations(Flag):
     ALL = STABLE | EXPERIMENTAL_ONLY | CONTRIB_ONLY | CUSTOM_ONLY
 
 
-def default_rom_path() -> Path | None:
-    value = os.environ.get(ROM_PATH_ENV_VAR) or _dotenv_value(ROM_PATH_ENV_VAR)
-    return Path(value).expanduser() if value else None
-
-
-def _dotenv_value(name: str, dotenv_path: Path = Path(".env")) -> str | None:
-    try:
-        lines = dotenv_path.read_text().splitlines()
-    except FileNotFoundError:
-        return None
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("export "):
-            stripped = stripped[len("export ") :].lstrip()
-        key, separator, raw_value = stripped.partition("=")
-        if separator != "=" or key.strip() != name:
-            continue
-        value = raw_value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        return value or None
-    return None
-
-
-def resolve_required_rom_path(path: str | Path | None = None) -> Path:
-    if path is None:
-        path = default_rom_path()
-    if path is None:
-        raise ValueError(
-            f"ROM path required; pass rom_path or set {ROM_PATH_ENV_VAR} in the environment or .env"
-        )
-    return Path(path).expanduser()
-
-
 def _expand_rom_path(path: str | Path | None) -> str:
     return str(resolve_required_rom_path(path))
 
@@ -174,6 +137,7 @@ def _candidate_state_dirs(state_dir: str | Path | None = None) -> list[Path]:
     env_dir = os.environ.get("SUPERMARIOBROSNES_FASTENV_STATE_DIR")
     if env_dir:
         candidates.append(Path(env_dir).expanduser())
+    candidates.append(game_data_path())
     candidates.append(_packaged_state_dir())
     candidates.append(_stable_retro_state_dir())
     dirs: list[Path] = []
@@ -1110,40 +1074,4 @@ def _normalize_retro_state(state: Any) -> Any:
 
 
 def _resolve_rom_path(game: str, rom_path: str | Path | None) -> str | Path:
-    if rom_path is not None:
-        return rom_path
-    env_rom_path = default_rom_path()
-    if env_rom_path is not None:
-        return env_rom_path
-    candidates: list[Path] = []
-    try:
-        import stable_retro.data  # type: ignore[import-not-found]
-
-        for integration in (
-            stable_retro.data.Integrations.STABLE,
-            stable_retro.data.Integrations.ALL,
-        ):
-            try:
-                path = stable_retro.data.get_romfile_path(game, integration)
-            except Exception:
-                path = None
-            if path:
-                candidates.append(Path(path))
-            try:
-                path = stable_retro.data.get_file_path(game, "rom.nes", integration)
-            except Exception:
-                path = None
-            if path:
-                candidates.append(Path(path))
-    except ImportError:
-        pass
-    sibling = _sibling_stable_retro_state_dir()
-    if sibling is not None:
-        candidates.append(sibling / "rom.nes")
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    raise ValueError(
-        f"ROM path required for {game}; pass rom_path, set {ROM_PATH_ENV_VAR}, "
-        "or import the ROM into stable-retro data"
-    )
+    return resolve_required_rom_path(rom_path, game)

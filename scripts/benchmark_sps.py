@@ -35,7 +35,6 @@ try:
         CANONICAL_RESIZE_WIDTH,
         CANONICAL_STATE_NAMES,
     )
-    from dotenv_utils import env_or_dotenv_path
 except ModuleNotFoundError:
     from scripts.benchmark_rom import validate_rom_hash
     from scripts.benchmark_workload import (
@@ -51,11 +50,10 @@ except ModuleNotFoundError:
         CANONICAL_RESIZE_WIDTH,
         CANONICAL_STATE_NAMES,
     )
-    from scripts.dotenv_utils import env_or_dotenv_path
 
 
 GAME = "SuperMarioBros-Nes-v0"
-DEFAULT_ROM = env_or_dotenv_path("ROM_PATH")
+DEFAULT_ROM = None
 DEFAULT_STATES = CANONICAL_STATE_NAMES
 DEFAULT_BENCHMARK_ACTIONS = CANONICAL_ACTION_NAMES
 DEFAULT_ACTION_SEED = CANONICAL_ACTION_SEED
@@ -237,7 +235,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--rom-path",
         type=Path,
         default=DEFAULT_ROM,
-        help="Path to the SMB NES ROM. Defaults to ROM_PATH from the environment or .env.",
+        help="Path to the SMB NES ROM. Defaults to Stable Retro-compatible discovery.",
     )
     parser.add_argument("--num-envs", type=int, default=CANONICAL_NUM_ENVS)
     parser.add_argument("--steps", type=int, default=500)
@@ -467,11 +465,12 @@ def package_metadata(backend: str = "turbo") -> dict[str, str | None]:
 
 
 def resolve_verified_rom_path(path: str | Path | None = None) -> Path:
-    if path is None:
-        path = env_or_dotenv_path("ROM_PATH")
-    if path is None:
-        raise SystemExit("ROM path required; pass --rom-path or set ROM_PATH in the environment or .env")
-    resolved = Path(path).expanduser()
+    from supermariobrosnes_turbo import resolve_required_rom_path
+
+    try:
+        resolved = resolve_required_rom_path(path)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if not resolved.exists():
         raise SystemExit(f"ROM path does not exist: {resolved}")
     if not resolved.is_file():

@@ -10,7 +10,7 @@ Produce one Git-eligible MP4 from an isolated GymRec recording, exact two-backen
 ## Run
 
 1. Read the root `SPECS.md` with `$specs-author` and read `.codex/skills/autoresearch-speed/SKILL.md` plus its `SPECS.md` before benchmarking.
-2. Confirm that `../gymrec` is the intended GymRec checkout and that `ROM_PATH` resolves to the canonical ROM. Do not use or replace the user's normal `~/.gymrec` dataset.
+2. Confirm that `../gymrec` is the intended GymRec checkout and that the explicit `--rom-path` or Stable Retro-compatible `RETRO_DATA_PATH` tree resolves to the canonical ROM. Do not use or replace the user's normal `~/.gymrec` dataset.
 3. Run from the repository root:
 
 ```bash

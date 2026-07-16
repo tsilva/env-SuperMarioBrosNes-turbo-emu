@@ -36,10 +36,7 @@ try:
         canonical_env_args,
         shell_args,
     )
-    from dotenv_utils import (
-        require_arg_or_env_or_dotenv_path,
-        require_env_or_dotenv_path,
-    )
+    from dotenv_utils import require_arg_or_env_or_dotenv_path
 except ModuleNotFoundError:
     from scripts.benchmark_rom import EXPECTED_SMB_ROM_SHA256, validate_rom_hash
     from scripts.benchmark_workload import (
@@ -58,10 +55,9 @@ except ModuleNotFoundError:
         canonical_env_args,
         shell_args,
     )
-    from scripts.dotenv_utils import (
-        require_arg_or_env_or_dotenv_path,
-        require_env_or_dotenv_path,
-    )
+    from scripts.dotenv_utils import require_arg_or_env_or_dotenv_path
+
+from supermariobrosnes_turbo import resolve_required_rom_path
 
 
 AUTORESEARCH_ROOT_ENV = "AUTORESEARCH_ROOT_PATH"
@@ -692,7 +688,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--rom-path",
         default=None,
-        help="ROM path on the benchmark machine. Defaults to ROM_PATH from the environment or .env.",
+        help="ROM path on the benchmark machine. Defaults to Stable Retro-compatible discovery.",
     )
     parser.add_argument(
         "--state-dir",
@@ -730,7 +726,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--force-busy", action="store_true")
     parser.add_argument("--keep-run-dir", action="store_true")
     args = parser.parse_args(argv)
-    args.rom_path = require_env_or_dotenv_path("ROM_PATH", "ROM path", args.rom_path)
+    try:
+        rom_path = resolve_required_rom_path(args.rom_path)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    if not rom_path.exists():
+        raise SystemExit(f"ROM path does not exist: {rom_path}")
+    if not rom_path.is_file():
+        raise SystemExit(f"ROM path is not a file: {rom_path}")
+    args.rom_path = str(rom_path.resolve())
     autoresearch_root = require_arg_or_env_or_dotenv_path(
         AUTORESEARCH_ROOT_ENV,
         "autoresearch root",

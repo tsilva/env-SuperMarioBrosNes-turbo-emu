@@ -48,11 +48,7 @@ try:
         canonical_env_args,
         shell_args,
     )
-    from dotenv_utils import (
-        env_or_dotenv_path,
-        require_arg_or_env_or_dotenv_path,
-        require_env_or_dotenv_path,
-    )
+    from dotenv_utils import require_arg_or_env_or_dotenv_path
 except ModuleNotFoundError:
     from scripts.benchmark_stats import (
         DEFAULT_COMPARISON_CHECKPOINTS,
@@ -81,11 +77,9 @@ except ModuleNotFoundError:
         canonical_env_args,
         shell_args,
     )
-    from scripts.dotenv_utils import (
-        env_or_dotenv_path,
-        require_arg_or_env_or_dotenv_path,
-        require_env_or_dotenv_path,
-    )
+    from scripts.dotenv_utils import require_arg_or_env_or_dotenv_path
+
+from supermariobrosnes_turbo import resolve_required_rom_path
 
 
 AUTORESEARCH_ROOT_ENV = "AUTORESEARCH_ROOT_PATH"
@@ -1516,11 +1510,15 @@ def plan_to_json(plan: BenchmarkPlan) -> dict[str, Any]:
 
 
 def resolve_rom_path_for_args(args: argparse.Namespace) -> str:
+    try:
+        path = resolve_required_rom_path(args.rom_path)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if not args.dry_run:
-        return require_env_or_dotenv_path("ROM_PATH", "ROM path", args.rom_path)
-    path = Path(args.rom_path).expanduser() if args.rom_path else env_or_dotenv_path("ROM_PATH")
-    if path is None:
-        raise SystemExit("ROM path required; pass --rom-path or set ROM_PATH in the environment or .env")
+        if not path.exists():
+            raise SystemExit(f"ROM path does not exist: {path}")
+        if not path.is_file():
+            raise SystemExit(f"ROM path is not a file: {path}")
     return str(path.resolve(strict=False))
 
 
@@ -1531,7 +1529,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--rom-path",
         default=None,
-        help="ROM path on the benchmark machine. Defaults to ROM_PATH from the environment or .env.",
+        help="ROM path on the benchmark machine. Defaults to Stable Retro-compatible discovery.",
     )
     parser.add_argument(
         "--state-dir",

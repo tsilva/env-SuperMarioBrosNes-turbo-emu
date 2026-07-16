@@ -14,6 +14,8 @@ import subprocess
 import sys
 from typing import Any, Sequence
 
+from supermariobrosnes_turbo import resolve_required_rom_path
+
 
 ENV_ID = "SuperMarioBros-Nes-v0"
 HF_POLICY = "hf://tsilva/SuperMarioBros-Nes-v0_Level1-1"
@@ -35,19 +37,6 @@ COMMON_INFO_KEYS = (
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
-
-
-def read_dotenv_value(path: Path, key: str) -> str | None:
-    if not path.is_file():
-        return None
-    for raw in path.read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        candidate, value = line.split("=", 1)
-        if candidate.strip() == key:
-            return value.strip().strip("\"'")
-    return None
 
 
 def sha256_file(path: Path) -> str:
@@ -565,10 +554,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def orchestrate(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     root = repo_root()
-    rom_value = args.rom_path or os.environ.get("ROM_PATH") or read_dotenv_value(root / ".env", "ROM_PATH")
-    if not rom_value:
-        raise SystemExit("ROM path required via --rom-path, ROM_PATH, or repository .env")
-    rom_path = Path(rom_value).expanduser().resolve()
+    try:
+        rom_path = resolve_required_rom_path(args.rom_path).resolve()
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if not rom_path.is_file():
         raise SystemExit(f"ROM does not exist: {rom_path}")
     actual_rom_hash = sha256_file(rom_path)

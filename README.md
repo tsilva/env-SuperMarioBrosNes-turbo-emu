@@ -75,7 +75,20 @@ extra:
 uv sync --frozen --extra playback
 ```
 
-ROM files are not included. Pass `--rom-path` to scripts, set `ROM_PATH` in the environment or a repo-root `.env`, or provide `rom_path=` to the constructor. The supported ROM has SHA-256:
+ROM files are not included. Import the supported ROM from a file, directory, or
+ZIP archive using the same data-root convention as Stable Retro:
+
+```bash
+python -m supermariobrosnes_turbo.import /path/to/roms
+```
+
+Set `RETRO_DATA_PATH` to share an existing Stable Retro data tree or choose the
+import destination. The importer writes
+`$RETRO_DATA_PATH/stable/SuperMarioBros-Nes-v0/rom.nes`; when the variable is
+unset it uses the equivalent data tree inside this installed package. Explicit
+`rom_path=` and `--rom-path` arguments remain available as overrides. The old
+`ROM_PATH` and repo-root `.env` lookup are not supported. The canonical ROM has
+SHA-256:
 
 ```text
 f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de
@@ -92,7 +105,6 @@ from supermariobrosnes_turbo import (
 
 env = SuperMarioBrosNesTurboVecEnv(
     "SuperMarioBros-Nes-v0",
-    rom_path="/path/to/SuperMarioBros.nes",
     state="Level1-1",
     num_envs=16,
     use_restricted_actions=Actions.ALL,
@@ -121,16 +133,16 @@ env.close()
 
 ## Train and play
 
-Train the included observation-free JERK action-sequence policy for a named level:
+Train an observation-free JERK action-run policy for a named level:
 
 ```bash
-uv run python train.py Level1-1 --rom /path/to/SuperMarioBros.nes
+uv run python train.py Level1-1
 ```
 
-The discovery phase matches rlab's vectorized JERK search: 16 lanes uniformly explore the simple action set, retain the best-return prefixes, and increasingly replay shortened archive prefixes. Failed attempts end on life loss, 300 steps without progress, or the 4,500-step limit. A level change accepts the first successful sequence without resetting the environment. JERK then generically removes action chunks, retaining a mutation only when it still completes in fewer steps; across retrains, a longer policy cannot replace a shorter verified incumbent. The level name deterministically selects both the run directory and policy file, so `Level1-1` writes `runs/Level1-1-jerk/Level1-1.zip`. `play.py <Level>` always starts from that level and automatically replays its matching policy when available; as gameplay advances, it switches to each new level's matching policy. Without a starting policy, it opens the requested level for manual play:
+The vectorized JERK search evolves canonical `(action, duration)` runs rather than one action per environment step. Its 16 lanes uniformly sample actions and geometrically distributed hold durations, retain the best prefixes, and mix local tail changes with occasional deeper mutations. Reward adds new horizontal progress and 1% of positive score gains, charges `0.1` per environment step, and subtracts 25 on life loss; `--step-cost` can tune the time pressure. Failed attempts end on life loss, 300 steps without progress, or the 4,500-step limit. A level change locks the successful program in the archive, resets that lane to the requested level, and continues discovery until the transition budget is exhausted. Completed programs can never be evicted; the retention limit applies only to incomplete programs, and the shortest completed program wins. There is no separate post-training minimization phase. Policy schema v2 stores only action runs and intentionally does not load the old flat-sequence schema. The level name deterministically selects both the run directory and policy file, so `Level1-1` writes `runs/Level1-1-jerk/Level1-1.zip`. `play.py <Level>` uses the matching user-trained policy from `runs/` when available; as gameplay advances, it switches to each new level's matching user-trained policy:
 
 ```bash
-uv run python play.py Level1-1 --rom-path /path/to/SuperMarioBros.nes
+uv run python play.py Level1-1
 ```
 
 ## Commands
@@ -141,10 +153,10 @@ uv run maturin develop --release             # build the optimized Rust extensio
 make test                                    # run Rust and Python regression tests
 make test-retro-oracle                       # run ROM-backed parity and policy tests
 
-uv run python scripts/smoke_smb.py --rom-path /path/to/SuperMarioBros.nes
-uv run python scripts/play.py --rom-path /path/to/SuperMarioBros.nes --mode external
-uv run python scripts/benchmark_sps.py --rom-path /path/to/SuperMarioBros.nes --num-envs 16 --steps 500 --repeats 3
-uv run python scripts/benchmark_sps.py --stable-retro-baseline --rom-path /path/to/SuperMarioBros.nes --num-envs 16 --steps 500 --repeats 3
+uv run python scripts/smoke_smb.py
+uv run python scripts/play.py --mode external
+uv run python scripts/benchmark_sps.py --num-envs 16 --steps 500 --repeats 3
+uv run python scripts/benchmark_sps.py --stable-retro-baseline --num-envs 16 --steps 500 --repeats 3
 make benchmark-report                         # paired Turbo vs upstream Stable Retro report
 ```
 
@@ -166,7 +178,7 @@ reproduce with `make benchmark-report`.
 - The emulator supports only `SuperMarioBros-Nes-v0` on mapper 0/NROM. It is not a general NES or Stable Retro replacement.
 - Named saved states are packaged from `Level1-1` through `Level8-4`, with additional variants. `state=` also accepts a path, bytes, one state per lane, or a weighted mapping.
 - `Actions.ALL` and `Actions.FILTERED` accept per-button masks. `Actions.DISCRETE` accepts Stable Retro-compatible 36-way discrete actions.
-- `train.py` implements JERK (Just Enough Retained Knowledge): it uniformly explores action sequences, retains the best reward-reaching prefixes, replays shortened archive prefixes, and minimizes completed sequences by deletion. It does not use observations, PyTorch, or Stable Baselines3.
+- `train.py` implements JERK (Just Enough Retained Knowledge): it uniformly explores action runs, retains the best reward-reaching prefixes, locks every completed program, and trains through the full transition budget. It does not use observations, PyTorch, or Stable Baselines3.
 - `scripts/benchmark_sps.py` benchmarks this package by default or upstream `stable-retro==1.0.1` with `--stable-retro-baseline`. Both use frame skip 4, four grayscale frames, a zeroed 32-row HUD, integer area resize to `84x84`, CHW output, deterministic sampled actions, and manual terminal-lane resets. Stable Retro mode requires Python `>=3.10`.
 - The play scripts require a discoverable native SDL2 library and open local gameplay windows.
 - This is an unofficial research project and is not affiliated with or endorsed by Nintendo. See [NOTICE.md](https://github.com/tsilva/SuperMarioBros-Nes-turbo/blob/main/NOTICE.md).

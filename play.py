@@ -9,7 +9,11 @@ from pathlib import Path
 from supermariobrosnes_turbo.jerk import normalize_level_name, policy_path_for_level
 
 
-def resolve_level_policy(level: str, *, runs_root: str | Path = "runs") -> Path | None:
+def resolve_level_policy(
+    level: str,
+    *,
+    runs_root: str | Path = "runs",
+) -> Path | None:
     path = policy_path_for_level(level, runs_root=runs_root)
     return path if path.is_file() else None
 

@@ -17,7 +17,6 @@ from supermariobrosnes_turbo import (
     Actions,
     CORE_ACTION_MEANINGS as ACTION_MEANINGS,
 )
-from supermariobrosnes_turbo import ROM_PATH_ENV_VAR
 from supermariobrosnes_turbo import (
     SuperMarioBrosNesTurboVecEnv,
     default_rom_path,
@@ -25,40 +24,7 @@ from supermariobrosnes_turbo import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def dotenv_value(name: str, dotenv_path: Path) -> str | None:
-    try:
-        lines = dotenv_path.read_text().splitlines()
-    except FileNotFoundError:
-        return None
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("export "):
-            stripped = stripped[len("export ") :].lstrip()
-        key, separator, raw_value = stripped.partition("=")
-        if separator != "=" or key.strip() != name:
-            continue
-        value = raw_value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-            value = value[1:-1]
-        return value or None
-    return None
-
-
-def play_default_rom_path() -> Path | None:
-    path = default_rom_path()
-    if path is not None:
-        return path
-    value = dotenv_value(ROM_PATH_ENV_VAR, REPO_ROOT / ".env")
-    return Path(value).expanduser() if value else None
-
-
-DEFAULT_ROM = play_default_rom_path()
+DEFAULT_ROM = default_rom_path()
 NES_WIDTH = 256
 NES_HEIGHT = 240
 
@@ -627,7 +593,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--rom-path",
         type=Path,
         default=DEFAULT_ROM,
-        help="Path to the SMB NES ROM. Defaults to ROM_PATH from the environment or .env.",
+        help="Path to the SMB NES ROM. Defaults to Stable Retro-compatible discovery.",
     )
     parser.add_argument("--fps", type=int, default=60)
     parser.add_argument(

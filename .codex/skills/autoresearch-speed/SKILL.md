@@ -10,7 +10,7 @@ description: Lightweight Super Mario Bros NES throughput optimization loop for t
 - Read this skill's `SPECS.md` and repo-root `SPECS.md` first.
 - Work on the live current branch. Do not create/switch branches, fork workers, use SSH/tailnet/cloud/Modal, merge, push, or delete branches without explicit current-turn approval.
 - Count only valid `env_steps_per_sec` gains. Each candidate needs a concrete speed mechanism, cheap falsification path, and no risk to API shape, deterministic lanes, observation bytes, rewards, resets, terminations, infos, state loading, or benchmark workload.
-- Get `ROM_PATH` and `AUTORESEARCH_ROOT_PATH` from flags, env, or `.env`. Keep mutable artifacts out of the repo; the controller owns root files such as `results.tsv`, `current.json`, `ideas.md`, and `scratchpad.md`.
+- Get the ROM from an explicit flag or the Stable Retro-compatible `RETRO_DATA_PATH` tree. Continue resolving `AUTORESEARCH_ROOT_PATH` from flags, env, or `.env`. Keep mutable artifacts out of the repo; the controller owns root files such as `results.tsv`, `current.json`, `ideas.md`, and `scratchpad.md`.
 
 ## Round Contract
 

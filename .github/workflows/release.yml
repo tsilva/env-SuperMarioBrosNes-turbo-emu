@@ -52,27 +52,28 @@ jobs:
         run: |
           set -euo pipefail
           uv run python - <<'PY' >> "$GITHUB_ENV"
-          import hashlib
           from pathlib import Path
 
-          expected_sha256 = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
+          from supermariobrosnes_turbo.roms import EXPECTED_SMB_ROM_SHA256, sha256_path
+
           try:
               import stable_retro
           except ModuleNotFoundError:
               rom_path = None
+              data_path = None
           else:
+              data_path = Path(stable_retro.__file__).resolve().parent / "data"
               rom_path = (
-                  Path(stable_retro.__file__).resolve().parent
-                  / "data"
+                  data_path
                   / "stable"
                   / "SuperMarioBros-Nes-v0"
                   / "rom.nes"
               )
           if rom_path is not None and rom_path.exists():
-              digest = hashlib.sha256(rom_path.read_bytes()).hexdigest()
-              if digest != expected_sha256:
+              digest = sha256_path(rom_path)
+              if digest != EXPECTED_SMB_ROM_SHA256:
                   raise SystemExit(f"unexpected release ROM SHA-256: {digest}")
-              print(f"ROM_PATH={rom_path}")
+              print(f"RETRO_DATA_PATH={data_path}")
           else:
               print("ALLOW_MISSING_ROM_TESTS=1")
           PY

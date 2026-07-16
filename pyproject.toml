@@ -74,6 +74,7 @@ include = [
   "python/supermariobrosnes_turbo/data/**/*.state",
   "python/supermariobrosnes_turbo/py.typed",
 ]
+exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]
 
 [tool.uv]
 exclude-newer = "7 days"

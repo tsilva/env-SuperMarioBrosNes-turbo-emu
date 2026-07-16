@@ -112,11 +112,10 @@ def valid_package_metadata() -> dict[str, object]:
     }
 
 
-def write_benchmark_dotenv(tmp_path: Path, rom_path: Path) -> None:
+def write_benchmark_dotenv(tmp_path: Path) -> None:
     autoresearch_root = tmp_path / "autoresearch"
     autoresearch_root.mkdir()
     (tmp_path / ".env").write_text(
-        f"ROM_PATH={rom_path}\n"
         f"AUTORESEARCH_ROOT_PATH={autoresearch_root}\n"
     )
 
@@ -130,14 +129,16 @@ def test_decide_mode_rejects_multi_ref_single() -> None:
         raise AssertionError("expected SystemExit")
 
 
-def test_parse_args_reads_rom_path_from_dotenv(
+def test_parse_args_reads_retro_data_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
-    rom_path = tmp_path / "SuperMarioBros.nes"
+    data_root = tmp_path / "retro-data"
+    rom_path = data_root / "stable" / "SuperMarioBros-Nes-v0" / "rom.nes"
+    rom_path.parent.mkdir(parents=True)
     rom_path.write_bytes(b"placeholder")
-    write_benchmark_dotenv(tmp_path, rom_path)
+    monkeypatch.setenv("RETRO_DATA_PATH", str(data_root))
+    write_benchmark_dotenv(tmp_path)
 
     args = parse_args(["--single", "HEAD", "--dry-run"])
 
@@ -148,11 +149,10 @@ def test_parse_args_dry_run_allows_planned_missing_rom_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
     rom_path = tmp_path / "planned" / "SuperMarioBros.nes"
-    write_benchmark_dotenv(tmp_path, rom_path)
+    write_benchmark_dotenv(tmp_path)
 
-    args = parse_args(["--single", "HEAD", "--dry-run"])
+    args = parse_args(["--single", "HEAD", "--dry-run", "--rom-path", str(rom_path)])
 
     assert args.rom_path == str(rom_path)
 
@@ -161,12 +161,11 @@ def test_parse_args_real_run_rejects_missing_rom_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
     rom_path = tmp_path / "planned" / "SuperMarioBros.nes"
-    write_benchmark_dotenv(tmp_path, rom_path)
+    write_benchmark_dotenv(tmp_path)
 
     with pytest.raises(SystemExit, match="ROM path does not exist"):
-        parse_args(["--single", "HEAD"])
+        parse_args(["--single", "HEAD", "--rom-path", str(rom_path)])
 
 
 @pytest.mark.parametrize(
@@ -187,13 +186,12 @@ def test_parse_args_rejects_invalid_benchmark_limits(
     message: str,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("ROM_PATH", raising=False)
     rom_path = tmp_path / "SuperMarioBros.nes"
     rom_path.write_bytes(b"placeholder")
-    write_benchmark_dotenv(tmp_path, rom_path)
+    write_benchmark_dotenv(tmp_path)
 
     with pytest.raises(SystemExit, match=message):
-        parse_args(["--single", "HEAD", "--dry-run", flag, value])
+        parse_args(["--single", "HEAD", "--dry-run", "--rom-path", str(rom_path), flag, value])
 
 
 def test_parse_load1_extracts_unix_load_average() -> None:

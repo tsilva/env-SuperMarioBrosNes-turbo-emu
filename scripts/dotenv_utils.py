@@ -61,14 +61,3 @@ def require_arg_or_env_or_dotenv_path(
     if must_be_dir and not path.is_dir():
         raise SystemExit(f"{label} is not a directory: {path}")
     return path.resolve() if path.exists() else path.resolve(strict=False)
-
-
-def require_env_or_dotenv_path(name: str, label: str, value: str | Path | None = None) -> str:
-    path = Path(value).expanduser() if value else env_or_dotenv_path(name)
-    if path is None:
-        raise SystemExit(f"{label} required; pass --rom-path or set {name} in the environment or .env")
-    if not path.exists():
-        raise SystemExit(f"{label} does not exist: {path}")
-    if not path.is_file():
-        raise SystemExit(f"{label} is not a file: {path}")
-    return str(path.resolve())

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from supermariobrosnes_turbo import ACTION_SETS
-from supermariobrosnes_turbo.jerk import JerkPolicy, policy_path_for_level
+from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy, policy_path_for_level
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
@@ -58,7 +58,7 @@ def test_player_activates_policy_for_new_level(tmp_path: Path) -> None:
     target_path.parent.mkdir(parents=True)
     JerkPolicy(
         action_names=ACTION_SETS["simple"],
-        action_sequence=(2, 3),
+        action_runs=(ActionRun(2, 1), ActionRun(3, 1)),
         fallback_action=0,
     ).save(target_path)
 
@@ -88,5 +88,5 @@ def test_player_keeps_current_policy_when_next_level_is_untrained(
     player.action_names = ACTION_SETS["simple"]
     player.model = current
 
-    assert not player.activate_level_policy((0, 1))
+    assert not player.activate_level_policy((8, 8))
     assert player.model is current

@@ -75,13 +75,13 @@ def test_play_command_uses_manual_play_for_a_level_without_a_policy(
 
     assert (
         player.policy_playback_argv(
-            "Level1-1", ["--rom-path", "mario.nes"], runs_root=tmp_path
+            "Level9-9", ["--rom-path", "mario.nes"], runs_root=tmp_path
         )
         is None
     )
-    assert player.manual_playback_argv("Level1-1", ["--rom-path", "mario.nes"]) == [
+    assert player.manual_playback_argv("Level9-9", ["--rom-path", "mario.nes"]) == [
         "--state",
-        "Level1-1",
+        "Level9-9",
         "--rom-path",
         "mario.nes",
     ]

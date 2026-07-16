@@ -11,7 +11,6 @@ from .env import (
     Actions,
     Integrations,
     Observations,
-    ROM_PATH_ENV_VAR,
     State,
     SuperMarioBrosNesTurboVecEnv,
     action_batch,
@@ -20,6 +19,7 @@ from .env import (
     list_available_states,
     resolve_required_rom_path,
 )
+from .roms import RETRO_DATA_PATH_ENV_VAR
 
 try:
     __version__ = version("supermariobrosnes-turbo")
@@ -38,7 +38,7 @@ __all__ = [
     "Actions",
     "Integrations",
     "Observations",
-    "ROM_PATH_ENV_VAR",
+    "RETRO_DATA_PATH_ENV_VAR",
     "State",
     "SuperMarioBrosNesTurboVecEnv",
     "action_batch",

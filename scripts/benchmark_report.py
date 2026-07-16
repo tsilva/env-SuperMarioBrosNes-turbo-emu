@@ -17,6 +17,8 @@ import sys
 import time
 from typing import Any, Sequence
 
+from supermariobrosnes_turbo import default_rom_path
+
 try:
     from benchmark_stats import bootstrap_ci_median, env_steps_per_sec_samples, median, summary
     from benchmark_workload import canonical_env_args
@@ -110,7 +112,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-start-load", type=float, default=4.0)
     parser.add_argument("--load-poll-seconds", type=float, default=5.0)
     parser.add_argument("--max-load-wait-seconds", type=float, default=900.0)
-    parser.add_argument("--rom-path", type=Path, default=env_or_dotenv_path("ROM_PATH"))
+    parser.add_argument("--rom-path", type=Path, default=default_rom_path())
     parser.add_argument("--state-dir", type=Path, default=None)
     parser.add_argument("--output-dir", type=Path, default=None)
     parser.add_argument("--python", type=Path, default=Path(sys.executable))
@@ -148,7 +150,10 @@ def validate_args(args: argparse.Namespace) -> None:
         if not math.isfinite(value) or value <= 0.0:
             raise SystemExit(f"--{field.replace('_', '-')} must be a positive finite number")
     if args.rom_path is None:
-        raise SystemExit("ROM path required; pass --rom-path or set ROM_PATH in .env")
+        raise SystemExit(
+            "ROM path required; pass --rom-path or import it with "
+            "`python -m supermariobrosnes_turbo.import /path/to/roms`"
+        )
     if not args.benchmark_script.is_file():
         raise SystemExit(f"benchmark script does not exist: {args.benchmark_script}")
 

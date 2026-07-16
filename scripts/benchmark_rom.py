@@ -7,9 +7,9 @@ from pathlib import Path
 EXPECTED_SMB_ROM_SHA256 = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
 
 
-def sha256_path(path: Path) -> str:
+def sha256_path(path: str | Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
+    with Path(path).expanduser().open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
