@@ -41,6 +41,7 @@ ACTION_BUTTONS = {
     "start": ("START",),
 }
 MASK_BIT_WEIGHTS = (1 << np.arange(len(NES_BUTTONS), dtype=np.uint16)).astype(np.uint16)
+STABLE_RETRO_BUTTON_COMBOS = ((0, 16, 32), (0, 64, 128), (0, 1, 256, 257))
 DEFAULT_STABLE_RETRO_GAME = "SuperMarioBros-Nes-v0"
 GZIP_MAGIC = b"\x1f\x8b"
 INFO_KEYS = (
@@ -261,11 +262,54 @@ def _resolve_action_set(action_set: str | Sequence[str]) -> tuple[str, ...]:
     return actions
 
 
-def _core_action_ids(action_meanings: tuple[str, ...]) -> np.ndarray:
-    return np.asarray(
-        [CORE_ACTION_MEANINGS.index(action) for action in action_meanings],
-        dtype=np.uint8,
-    )
+def _public_action_bits_to_controller_byte(action_bits: int) -> int:
+    """Translate Stable Retro's nine public NES slots to the hardware byte."""
+    return ((action_bits & 1) << 1) | ((action_bits >> 8) & 1) | (action_bits & 0xFC)
+
+
+def _filter_public_action_bits(action_bits: int) -> int:
+    """Apply Stable Retro's exact per-group restricted-action filtering."""
+    filtered = 0
+    for combo in STABLE_RETRO_BUTTON_COMBOS:
+        group_mask = 0
+        for valid_action in combo:
+            group_mask |= valid_action
+        group_action = action_bits & group_mask
+        if group_action in combo:
+            filtered |= group_action
+    return filtered
+
+
+def _discrete_action_to_public_bits(action: int) -> int:
+    """Decode one Stable Retro discrete action in its mixed-radix order."""
+    value = int(action)
+    if value < 0 or value >= 36:
+        raise ValueError("DISCRETE actions must be in [0, 35]")
+    action_bits = 0
+    for combo in STABLE_RETRO_BUTTON_COMBOS:
+        current = value % len(combo)
+        value //= len(combo)
+        action_bits |= combo[current]
+    return action_bits
+
+
+def _named_action_controller_bytes(action_meanings: tuple[str, ...]) -> np.ndarray:
+    controller_bytes = np.empty((len(action_meanings),), dtype=np.uint8)
+    for action_index, action_name in enumerate(action_meanings):
+        public_bits = 0
+        for button in ACTION_BUTTONS[action_name]:
+            public_bits |= 1 << BUTTON_TO_INDEX[button]
+        controller_bytes[action_index] = _public_action_bits_to_controller_byte(public_bits)
+    return controller_bytes
+
+
+DISCRETE_CONTROLLER_BYTES = np.asarray(
+    [
+        _public_action_bits_to_controller_byte(_discrete_action_to_public_bits(action))
+        for action in range(36)
+    ],
+    dtype=np.uint8,
+)
 
 
 def _action_masks(action_meanings: tuple[str, ...]) -> np.ndarray:
@@ -436,7 +480,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     """Gymnasium VectorEnv for the native Super Mario Bros NES fast path."""
 
     metadata = {"render_modes": ["rgb_array"], "autoreset_mode": AutoresetMode.DISABLED}
-    _BUTTON_COMBOS = [[0, 16, 32], [0, 64, 128], [0, 1, 256, 257]]
+    _BUTTON_COMBOS = STABLE_RETRO_BUTTON_COMBOS
 
     def __init__(
         self,
@@ -511,7 +555,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.game = str(game)
         self.action_meanings = action_meanings
         self.action_set = action_set_name
-        self._core_action_ids = _core_action_ids(self.action_meanings)
+        self._named_action_controller_bytes = _named_action_controller_bytes(self.action_meanings)
         self._action_masks = _action_masks(self.action_meanings)
         state = _normalize_retro_state(state)
         self._state_collection = isinstance(state, Mapping) or (
@@ -565,10 +609,10 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.num_envs = self._core.num_envs
         self.num_threads = self.num_envs if num_threads is None else int(num_threads)
         self.num_buttons = len(NES_BUTTONS)
-        self._mask_to_core_action_ids = self._build_mask_to_core_action_ids()
+        self._action_mode = action_mode
+        self._mask_to_controller_bytes = self._build_mask_to_controller_bytes()
         self.button_combos = [list(combo) for combo in self._BUTTON_COMBOS]
         self.use_restricted_actions = use_restricted_actions
-        self._action_mode = action_mode
         self.frame_skip = self._core.frame_skip
         self.obs_grayscale = self._core.grayscale
         self.frame_stack = self._core.frame_stack
@@ -618,7 +662,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
 
         self._actions = np.zeros((self.num_envs,), dtype=np.uint8)
         self._last_action_masks: np.ndarray | None = None
-        self._last_action_ids = np.empty((self.num_envs,), dtype=np.uint8)
+        self._last_controller_bytes = np.empty((self.num_envs,), dtype=np.uint8)
         self._obs = np.empty(self._core.obs_shape(), dtype=np.uint8)
         self._unsafe_public_obs: np.ndarray | None = None
         self._safe_public_obs = [
@@ -760,9 +804,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         return json.loads(self._core.profiler_snapshot(int(top_n)))
 
     def step_async(self, actions: np.ndarray) -> None:
-        np.copyto(self._actions, self._actions_to_core_ids(actions))
+        np.copyto(self._actions, self._actions_to_controller_bytes(actions))
 
-    def _actions_to_core_ids(self, actions: Any) -> np.ndarray:
+    def _actions_to_controller_bytes(self, actions: Any) -> np.ndarray:
         if self._action_mode == "ACTION_SET":
             values = np.asarray(actions, dtype=np.int64).reshape(-1)
             if values.shape != (self.num_envs,):
@@ -776,71 +820,41 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
                     f"actions must be in [0, {len(self.action_meanings) - 1}] "
                     f"for action_set={self.action_set!r}"
                 )
-            return self._core_action_ids[values]
+            return self._named_action_controller_bytes[values]
         if self._action_mode == "DISCRETE":
-            masks = self._discrete_actions_to_masks(actions)
-        else:
-            masks = np.asarray(actions, dtype=np.uint8)
-            if masks.shape == (self.num_buttons,):
-                masks = masks.reshape(1, self.num_buttons)
-            if masks.shape != (self.num_envs, self.num_buttons):
-                raise ValueError(
-                    f"actions must have shape {(self.num_envs, self.num_buttons)}, got {masks.shape}",
-                )
+            values = np.asarray(actions, dtype=np.int64).reshape(-1)
+            if values.shape != (self.num_envs,):
+                raise ValueError(f"actions must have shape {(self.num_envs,)}, got {values.shape}")
+            if values.size and (int(values.min()) < 0 or int(values.max()) >= 36):
+                raise ValueError("DISCRETE actions must be in [0, 35]")
+            return DISCRETE_CONTROLLER_BYTES[values]
+        masks = np.asarray(actions, dtype=np.uint8)
+        if masks.shape == (self.num_buttons,):
+            masks = masks.reshape(1, self.num_buttons)
+        if masks.shape != (self.num_envs, self.num_buttons):
+            raise ValueError(
+                f"actions must have shape {(self.num_envs, self.num_buttons)}, got {masks.shape}",
+            )
         if self._last_action_masks is not None and np.array_equal(masks, self._last_action_masks):
-            return self._last_action_ids
-        self._last_action_ids[:] = self._mask_to_core_action_ids[
+            return self._last_controller_bytes
+        self._last_controller_bytes[:] = self._mask_to_controller_bytes[
             self._button_mask_indices(masks)
         ]
         self._last_action_masks = masks.copy()
-        return self._last_action_ids
+        return self._last_controller_bytes
 
     @staticmethod
     def _button_mask_indices(masks: np.ndarray) -> np.ndarray:
         return (masks.astype(np.uint16, copy=False) @ MASK_BIT_WEIGHTS).astype(np.uint16, copy=False)
 
-    def _build_mask_to_core_action_ids(self) -> np.ndarray:
+    def _build_mask_to_controller_bytes(self) -> np.ndarray:
         lookup = np.empty(1 << self.num_buttons, dtype=np.uint8)
         for mask_index in range(lookup.size):
-            mask = ((mask_index & MASK_BIT_WEIGHTS) != 0).astype(np.uint8)
-            lookup[mask_index] = self._mask_to_core_action(mask)
+            action_bits = mask_index
+            if self._action_mode == "FILTERED":
+                action_bits = _filter_public_action_bits(action_bits)
+            lookup[mask_index] = _public_action_bits_to_controller_byte(action_bits)
         return lookup
-
-    def _discrete_actions_to_masks(self, actions: Any) -> np.ndarray:
-        values = np.asarray(actions, dtype=np.int64).reshape(-1)
-        if values.shape != (self.num_envs,):
-            raise ValueError(f"actions must have shape {(self.num_envs,)}, got {values.shape}")
-        masks = np.zeros((self.num_envs, self.num_buttons), dtype=np.uint8)
-        for env_idx, raw_value in enumerate(values):
-            value = int(raw_value)
-            if value < 0 or value >= 36:
-                raise ValueError("DISCRETE actions must be in [0, 35]")
-            action_bits = 0
-            for combo in self._BUTTON_COMBOS:
-                current = value % len(combo)
-                value //= len(combo)
-                action_bits |= combo[current]
-            for button_idx in range(self.num_buttons):
-                masks[env_idx, button_idx] = (action_bits >> button_idx) & 1
-        return masks
-
-    def _mask_to_core_action(self, mask: np.ndarray) -> int:
-        pressed = {button for button, index in BUTTON_TO_INDEX.items() if int(mask[index])}
-        if "START" in pressed and not (pressed & {"LEFT", "RIGHT", "A", "B"}):
-            return CORE_ACTION_MEANINGS.index("start")
-        if "RIGHT" in pressed:
-            if "A" in pressed and "B" in pressed:
-                return CORE_ACTION_MEANINGS.index("right_a_b")
-            if "A" in pressed:
-                return CORE_ACTION_MEANINGS.index("right_a")
-            if "B" in pressed:
-                return CORE_ACTION_MEANINGS.index("right_b")
-            return CORE_ACTION_MEANINGS.index("right")
-        if "LEFT" in pressed:
-            return CORE_ACTION_MEANINGS.index("left")
-        if "A" in pressed:
-            return CORE_ACTION_MEANINGS.index("a")
-        return CORE_ACTION_MEANINGS.index("noop")
 
     def step(
         self,

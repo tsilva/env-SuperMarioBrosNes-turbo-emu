@@ -5,10 +5,12 @@ SuperMarioBros-Nes-turbo. The summary chart in the [README](README.md#benchmark)
 links here for exact values, confidence intervals, protocol details, and machine
 specifications.
 
+![SuperMarioBros-Nes-turbo versus Stable Retro median environment throughput](media/benchmark-throughput.svg)
+
 ## Results
 
-Turbo `0.3.0` was compared with upstream `stable-retro==1.0.1` using seven
-alternating paired runs per environment count.
+SuperMarioBros-Nes-turbo `0.3.0` was compared with upstream
+`stable-retro==1.0.1` using seven alternating paired runs per environment count.
 
 | Machine ID | Commit | Envs | Median SPS | Baseline median SPS | Median speedup | 95% bootstrap CI | Measured pairs |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |

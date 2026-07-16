@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 import zipfile
 
@@ -127,6 +128,190 @@ def test_step_reward_charges_time_on_every_transition() -> None:
     )
 
     np.testing.assert_allclose(rewards, [-0.1, 10.9, -25.1])
+
+
+def test_training_flags_stop_and_protect_policies_by_default() -> None:
+    parser = train_module.build_parser()
+
+    defaults = parser.parse_args(["Level1-1"])
+    continuous = parser.parse_args(
+        ["Level1-1", "--no-stop-on-completion", "--force"]
+    )
+
+    assert defaults.n_envs == 64
+    assert defaults.stop_on_completion is True
+    assert defaults.force is False
+    assert continuous.stop_on_completion is False
+    assert continuous.force is True
+
+
+def test_training_log_helpers_are_readable_and_emit_exact_play_commands() -> None:
+    box = train_module._format_box(
+        "Training complete",
+        [("Result", "level completed"), ("Transitions", "500,000")],
+    )
+    progress = train_module._format_progress(
+        {
+            "timesteps": 250_000,
+            "loop_fps": 32_500.0,
+            "episodes": 123,
+            "best_mean_reward": 3_049.95,
+            "best_progress": 3_129.0,
+            "best_program_steps": 943,
+            "best_program_runs": 242,
+            "retained_count": 256,
+            "locked_count": 1,
+        },
+        1_000_000,
+    )
+
+    assert box.startswith("╭─ Training complete")
+    assert "Result       level completed" in box
+    wrapped_box = train_module._format_box(
+        "Training complete",
+        [("Saved", "/" + "very-long-policy-path/" * 10)],
+    )
+    assert max(map(len, wrapped_box.splitlines())) <= 92
+    assert "25.00%" in progress
+    assert "32,500 steps/s" in progress
+    assert "policy 943 steps / 242 runs" in progress
+    assert (
+        train_module._play_command(
+            "Level1-1",
+            Path("runs/Level1-1-jerk/Level1-1.zip"),
+            default_output=True,
+            rom_path=None,
+        )
+        == "uv run python play.py Level1-1"
+    )
+    assert (
+        train_module._play_command(
+            "Level1-1",
+            Path("custom run/Level1-1.zip"),
+            default_output=False,
+            rom_path=Path("roms/Mario Bros.nes"),
+        )
+        == "uv run python scripts/play_policy.py 'custom run/Level1-1.zip' "
+        "--state Level1-1 --rom-path 'roms/Mario Bros.nes'"
+    )
+
+
+def test_training_refuses_existing_policy_without_force(
+    tmp_path, monkeypatch
+) -> None:
+    output = tmp_path / "run"
+    output.mkdir()
+    policy_path = output / "Level1-1.zip"
+    policy_path.write_bytes(b"existing policy")
+    monkeypatch.setattr(train_module, "list_available_states", lambda: ["Level1-1"])
+
+    with pytest.raises(SystemExit, match="pass --force"):
+        train_module.main(["Level1-1", "--output", str(output)])
+
+    assert policy_path.read_bytes() == b"existing policy"
+
+
+def test_policy_save_requires_force_to_replace_existing_file(tmp_path) -> None:
+    policy_path = tmp_path / "Level1-1.zip"
+    policy_path.write_bytes(b"existing policy")
+    policy = JerkPolicy(
+        action_names=ACTIONS,
+        action_runs=_runs((1, 2)),
+        fallback_action=0,
+    )
+
+    with pytest.raises(FileExistsError, match="pass --force"):
+        train_module._save_policy(policy, policy_path)
+    assert policy_path.read_bytes() == b"existing policy"
+
+    train_module._save_policy(policy, policy_path, force=True)
+    assert JerkPolicy.load(policy_path).action_runs == _runs((1, 2))
+
+
+def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> None:
+    class FakeTask:
+        instances: list["FakeTask"] = []
+
+        def __init__(self, **_kwargs) -> None:
+            self.steps = 0
+            self.instances.append(self)
+
+        def reset(self) -> np.ndarray:
+            return np.zeros((1, 1), dtype=np.uint8)
+
+        def step(self, actions):
+            self.steps += 1
+            count = len(actions)
+            successes = np.ones(count, dtype=np.bool_)
+            records = {
+                lane: SimpleNamespace(completed=True, progress=3161.0)
+                for lane in range(count)
+            }
+            return (
+                np.zeros((count, 1), dtype=np.uint8),
+                np.ones(count, dtype=np.float64),
+                np.zeros(count, dtype=np.bool_),
+                records,
+                successes,
+            )
+
+        def reset_lanes(self, _mask) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(train_module, "MarioJerkTask", FakeTask)
+    monkeypatch.setattr(train_module, "list_available_states", lambda: ["Level1-1"])
+
+    stopped_output = tmp_path / "stopped"
+    assert (
+        train_module.main(
+            [
+                "Level1-1",
+                "--output",
+                str(stopped_output),
+                "--timesteps",
+                "4",
+                "--n-envs",
+                "1",
+                "--log-interval-steps",
+                "10",
+            ]
+        )
+        == 0
+    )
+    assert FakeTask.instances[-1].steps == 1
+    stopped_metrics = json.loads(
+        stopped_output.joinpath("episodes.jsonl").read_text().splitlines()[-1]
+    )
+    assert stopped_metrics["stopped_on_completion"] is True
+    assert stopped_metrics["budget_exhausted"] is False
+
+    continuous_output = tmp_path / "continuous"
+    assert (
+        train_module.main(
+            [
+                "Level1-1",
+                "--output",
+                str(continuous_output),
+                "--timesteps",
+                "4",
+                "--n-envs",
+                "1",
+                "--log-interval-steps",
+                "10",
+                "--no-stop-on-completion",
+            ]
+        )
+        == 0
+    )
+    assert FakeTask.instances[-1].steps == 4
+    continuous_metrics = json.loads(
+        continuous_output.joinpath("episodes.jsonl").read_text().splitlines()[-1]
+    )
+    assert continuous_metrics["stopped_on_completion"] is False
+    assert continuous_metrics["budget_exhausted"] is True
 
 
 def test_level_change_does_not_end_episode() -> None:

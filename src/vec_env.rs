@@ -1,7 +1,6 @@
 use crate::cartridge::Cartridge;
 use crate::emulator::{
-    MarioAction, NesEmulator, StateLoadError, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT,
-    VISIBLE_FRAME_WIDTH,
+    NesEmulator, StateLoadError, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT, VISIBLE_FRAME_WIDTH,
 };
 use crate::profiler::Profiler;
 use rayon::prelude::*;
@@ -165,7 +164,7 @@ impl MarioVecEnv {
             weighted_initial_states,
             active_state_indices: vec![-1; config.num_envs],
             initial_state_names: Vec::new(),
-            last_actions: vec![MarioAction::Noop as u8; config.num_envs],
+            last_actions: vec![0; config.num_envs],
             rngs: (0..config.num_envs)
                 .map(|env_idx| XorShift64::new(seed.wrapping_add(env_idx as u64)))
                 .collect(),
@@ -199,7 +198,7 @@ impl MarioVecEnv {
         if self.initial_states.is_empty() {
             for env_idx in 0..self.config.num_envs {
                 self.envs[env_idx].reset();
-                self.last_actions[env_idx] = MarioAction::Noop as u8;
+                self.last_actions[env_idx] = 0;
                 self.apply_noop_reset(env_idx);
             }
             self.active_state_indices.fill(-1);
@@ -210,7 +209,7 @@ impl MarioVecEnv {
             let state_index = self.initial_state_index_for_env(env_idx);
             self.active_state_indices[env_idx] = self.initial_states[state_index].name_index;
             self.envs[env_idx].load_fceu_state(&self.initial_states[state_index].data)?;
-            self.last_actions[env_idx] = MarioAction::Noop as u8;
+            self.last_actions[env_idx] = 0;
             self.apply_noop_reset(env_idx);
         }
         Ok(())
@@ -238,7 +237,7 @@ impl MarioVecEnv {
         }
         let noop_count = self.rngs[env_idx].next_bounded_usize(self.config.noop_reset_max + 1);
         for _ in 0..noop_count {
-            self.envs[env_idx].step_frame(MarioAction::Noop);
+            self.envs[env_idx].step_frame(0);
             if self.envs[env_idx].is_done() {
                 break;
             }
@@ -720,7 +719,7 @@ impl MarioVecEnv {
         if self.initial_states.is_empty() {
             self.envs[env_idx].reset();
             self.active_state_indices[env_idx] = -1;
-            self.last_actions[env_idx] = MarioAction::Noop as u8;
+            self.last_actions[env_idx] = 0;
             self.apply_noop_reset(env_idx);
             return Ok(());
         }
@@ -729,7 +728,7 @@ impl MarioVecEnv {
             explicit_state_index.unwrap_or_else(|| self.initial_state_index_for_env(env_idx));
         self.active_state_indices[env_idx] = self.initial_states[state_index].name_index;
         self.envs[env_idx].load_fceu_state(&self.initial_states[state_index].data)?;
-        self.last_actions[env_idx] = MarioAction::Noop as u8;
+        self.last_actions[env_idx] = 0;
         self.apply_noop_reset(env_idx);
         Ok(())
     }
@@ -866,7 +865,7 @@ fn step_one(
     resize_plan: &AreaResizePlan,
     env: &mut NesEmulator,
     scratch: &mut [u8],
-    action_id: u8,
+    controller_state: u8,
     obs_chunk: &mut [u8],
     reward_out: &mut f32,
     terminated_out: &mut bool,
@@ -882,7 +881,6 @@ fn step_one(
     xscroll_hi_out: &mut u8,
     xscroll_lo_out: &mut u8,
 ) {
-    let action = MarioAction::from_u8(action_id);
     let mut reward = 0.0;
     let mut done = false;
     if config.frame_maxpool {
@@ -891,7 +889,7 @@ fn step_one(
         let frame_b = &mut frame_b_rest[..source_len];
         let mut recent_count = 0usize;
         for _ in 0..config.frame_skip {
-            reward += env.step_frame(action);
+            reward += env.step_frame(controller_state);
             let target = if recent_count % 2 == 0 {
                 &mut *frame_a
             } else {
@@ -915,7 +913,7 @@ fn step_one(
         );
     } else {
         for _ in 0..config.frame_skip {
-            reward += env.step_frame(action);
+            reward += env.step_frame(controller_state);
             done = env.is_done();
             if done {
                 break;
@@ -949,7 +947,7 @@ fn step_one_profiled(
     resize_plan: &AreaResizePlan,
     env: &mut NesEmulator,
     scratch: &mut [u8],
-    action_id: u8,
+    controller_state: u8,
     obs_chunk: &mut [u8],
     reward_out: &mut f32,
     terminated_out: &mut bool,
@@ -966,7 +964,6 @@ fn step_one_profiled(
     xscroll_lo_out: &mut u8,
     profiler: &mut Profiler,
 ) {
-    let action = MarioAction::from_u8(action_id);
     let mut reward = 0.0;
     let mut done = false;
     if config.frame_maxpool {
@@ -975,7 +972,7 @@ fn step_one_profiled(
         let frame_b = &mut frame_b_rest[..source_len];
         let mut recent_count = 0usize;
         for _ in 0..config.frame_skip {
-            reward += env.step_frame_profiled(action, profiler);
+            reward += env.step_frame_profiled(controller_state, profiler);
             let target = if recent_count % 2 == 0 {
                 &mut *frame_a
             } else {
@@ -1005,7 +1002,7 @@ fn step_one_profiled(
         profiler.record_resize(resize_start.elapsed());
     } else {
         for _ in 0..config.frame_skip {
-            reward += env.step_frame_profiled(action, profiler);
+            reward += env.step_frame_profiled(controller_state, profiler);
             done = env.is_done();
             if done {
                 break;
@@ -1890,6 +1887,42 @@ mod tests {
             },
             true,
         )
+    }
+
+    #[test]
+    fn sticky_actions_replay_the_exact_raw_controller_state() {
+        let config = VecEnvConfig {
+            num_envs: 1,
+            frame_skip: 1,
+            grayscale: true,
+            frame_stack: 1,
+            frame_maxpool: false,
+            noop_reset_max: 0,
+            sticky_action_prob: 1.0,
+            terminate_on_flag: true,
+            crop_top: 0,
+            crop_bottom: 0,
+            crop_left: 0,
+            crop_right: 0,
+            crop_mode: CropMode::Remove,
+            crop_fill: 0,
+            resize_width: VISIBLE_FRAME_WIDTH,
+            resize_height: VISIBLE_FRAME_HEIGHT,
+            resize_algorithm: ResizeAlgorithm::Nearest,
+        };
+        let cart = Cartridge {
+            prg_rom: vec![0; 32768],
+            chr_rom: vec![0; 8192],
+            vertical_mirroring: true,
+        };
+        let mut env = MarioVecEnv::new(cart, config, Vec::new(), false, 1).unwrap();
+        let previous_controller_state = 0b1011_0111;
+        env.last_actions[0] = previous_controller_state;
+
+        let effective = env.effective_actions(&[0b0100_1000]);
+
+        assert_eq!(effective, vec![previous_controller_state]);
+        assert_eq!(env.last_actions, vec![previous_controller_state]);
     }
 
     fn reference_resize_plane_area(

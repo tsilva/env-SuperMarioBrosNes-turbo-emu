@@ -48,6 +48,7 @@ SDL_INIT_VIDEO = 0x00000020
 SDL_WINDOWPOS_CENTERED = 0x2FFF0000
 SDL_WINDOW_SHOWN = 0x00000004
 SDL_RENDERER_ACCELERATED = 0x00000002
+SDL_RENDERER_PRESENTVSYNC = 0x00000004
 SDL_TEXTUREACCESS_STREAMING = 1
 SDL_PIXELFORMAT_RGB24 = 0x17101803
 SDL_QUIT = 0x100
@@ -99,7 +100,9 @@ class SdlTextureWindow:
         if not self.window:
             raise SdlUnavailableError(owner.sdl_error())
         self.renderer = self.sdl.SDL_CreateRenderer(
-            self.window, -1, SDL_RENDERER_ACCELERATED
+            self.window,
+            -1,
+            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC,
         )
         if not self.renderer:
             error = owner.sdl_error()
@@ -597,12 +600,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--fps", type=int, default=60)
     parser.add_argument(
-        "--scale", type=int, default=3, help="Scale for the main RGB gameplay window."
+        "--scale", type=int, default=2, help="Scale for the main RGB gameplay window."
     )
     parser.add_argument(
         "--stack-scale",
         type=int,
-        default=3,
+        default=2,
         help="Scale for the side frame-stack window.",
     )
     parser.add_argument("--frame-skip", type=int, default=1)

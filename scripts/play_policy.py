@@ -20,6 +20,7 @@ try:
         SDL_PIXELFORMAT_RGB24,
         SDL_QUIT,
         SDL_RENDERER_ACCELERATED,
+        SDL_RENDERER_PRESENTVSYNC,
         SDL_TEXTUREACCESS_STREAMING,
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOW_SHOWN,
@@ -37,6 +38,7 @@ except ModuleNotFoundError:
         SDL_PIXELFORMAT_RGB24,
         SDL_QUIT,
         SDL_RENDERER_ACCELERATED,
+        SDL_RENDERER_PRESENTVSYNC,
         SDL_TEXTUREACCESS_STREAMING,
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOW_SHOWN,
@@ -374,7 +376,9 @@ class SdlPolicyPlayer:
             self.sdl.SDL_Quit()
             raise SdlUnavailableError(error)
         self.renderer = self.sdl.SDL_CreateRenderer(
-            self.window, -1, SDL_RENDERER_ACCELERATED
+            self.window,
+            -1,
+            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC,
         )
         if not self.renderer:
             error = self.sdl_error()
@@ -804,7 +808,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--view", choices=("raw", "preprocessed"), default="raw")
     parser.add_argument("--fps", type=int, default=30)
-    parser.add_argument("--scale", type=int, default=4)
+    parser.add_argument("--scale", type=int, default=2)
     parser.add_argument("--episodes", type=int, default=0, help="0 means play forever")
     parser.add_argument("--seed", type=int, default=10007)
     parser.add_argument("--frame-skip", type=int, default=4)

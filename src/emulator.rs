@@ -63,57 +63,10 @@ const FLAG_U: u8 = 0x20;
 const FLAG_V: u8 = 0x40;
 const FLAG_N: u8 = 0x80;
 
-const BUTTON_A: u8 = 1 << 0;
-const BUTTON_B: u8 = 1 << 1;
-const BUTTON_START: u8 = 1 << 3;
-const BUTTON_LEFT: u8 = 1 << 6;
-const BUTTON_RIGHT: u8 = 1 << 7;
-
 #[derive(Debug, Error)]
 pub enum StateLoadError {
     #[error("state field {name} with size {size} was not found")]
     MissingField { name: &'static str, size: usize },
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum MarioAction {
-    Noop = 0,
-    Right = 1,
-    RightB = 2,
-    RightA = 3,
-    RightAB = 4,
-    A = 5,
-    Left = 6,
-    Start = 7,
-}
-
-impl MarioAction {
-    pub fn from_u8(value: u8) -> Self {
-        match value {
-            1 => Self::Right,
-            2 => Self::RightB,
-            3 => Self::RightA,
-            4 => Self::RightAB,
-            5 => Self::A,
-            6 => Self::Left,
-            7 => Self::Start,
-            _ => Self::Noop,
-        }
-    }
-
-    #[inline]
-    fn buttons(self) -> u8 {
-        match self {
-            Self::Noop => 0,
-            Self::Right => BUTTON_RIGHT,
-            Self::RightB => BUTTON_RIGHT | BUTTON_B,
-            Self::RightA => BUTTON_RIGHT | BUTTON_A,
-            Self::RightAB => BUTTON_RIGHT | BUTTON_A | BUTTON_B,
-            Self::A => BUTTON_A,
-            Self::Left => BUTTON_LEFT,
-            Self::Start => BUTTON_START,
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -2092,13 +2045,13 @@ impl NesEmulator {
     }
 
     #[inline]
-    pub fn step_frame(&mut self, action: MarioAction) -> f32 {
+    pub fn step_frame(&mut self, controller_state: u8) -> f32 {
         if self.done {
             return 0.0;
         }
 
         let before = self.xscroll_lo;
-        self.run_frame(action.buttons());
+        self.run_frame(controller_state);
         self.refresh_smb_state();
         if self.native_scenario_done() {
             self.done = true;
@@ -2110,14 +2063,14 @@ impl NesEmulator {
     }
 
     #[inline]
-    pub fn step_frame_profiled(&mut self, action: MarioAction, profiler: &mut Profiler) -> f32 {
+    pub fn step_frame_profiled(&mut self, controller_state: u8, profiler: &mut Profiler) -> f32 {
         if self.done {
             return 0.0;
         }
 
         let before = self.xscroll_lo;
         let start = Instant::now();
-        self.run_frame_profiled(action.buttons(), profiler);
+        self.run_frame_profiled(controller_state, profiler);
         profiler.record_frame_step(start.elapsed());
         self.refresh_smb_state();
         if self.native_scenario_done() {
@@ -4997,6 +4950,17 @@ mod tests {
             chr_rom: vec![0; 8192],
             vertical_mirroring: true,
         }
+    }
+
+    #[test]
+    fn step_frame_preserves_the_raw_controller_byte() {
+        let mut emu =
+            NesEmulator::new_with_options(make_test_cart_with_prg(vec![0xea; 32768]), true);
+        let controller_state = 0b1011_0111;
+
+        emu.step_frame(controller_state);
+
+        assert_eq!(emu.controller_state, controller_state);
     }
 
     #[test]

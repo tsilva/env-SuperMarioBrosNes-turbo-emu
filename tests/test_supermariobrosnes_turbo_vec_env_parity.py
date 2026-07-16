@@ -17,7 +17,6 @@ from supermariobrosnes_turbo import (
     Actions,
     NES_BUTTONS,
     SuperMarioBrosNesTurboVecEnv,
-    action_batch,
 )
 from supermariobrosnes_turbo import _supermariobrosnes_turbo as native
 
@@ -92,11 +91,24 @@ def test_upstream_oracle_exact_short_sequence_parity(num_envs: int) -> None:
         assert retro_obs.shape == fast_obs.shape == (num_envs, 4, 84, 84)
         assert retro_obs.dtype == fast_obs.dtype == np.uint8
         np.testing.assert_array_equal(retro_obs, fast_obs)
-        for action_name in action_names:
-            retro_action = np.repeat(
-                named_action_mask(action_name, retro_env.buttons)[None, :], num_envs, axis=0
-            )
-            fast_action = action_batch(action_name, num_envs)
+        public_masks = [named_action_mask(name, retro_env.buttons) for name in action_names]
+        button_indices = {
+            button: index for index, button in enumerate(retro_env.buttons) if button is not None
+        }
+        for buttons in (
+            ("UP", "A"),
+            ("DOWN", "B"),
+            ("LEFT", "A", "B"),
+            ("SELECT", "START"),
+            ("UP", "DOWN", "LEFT", "RIGHT", "A", "B"),
+        ):
+            mask = np.zeros((len(retro_env.buttons),), dtype=np.uint8)
+            for button in buttons:
+                mask[button_indices[button]] = 1
+            public_masks.append(mask)
+        for public_mask in public_masks:
+            retro_action = np.repeat(public_mask[None, :], num_envs, axis=0)
+            fast_action = retro_action.copy()
             retro_obs, retro_rewards, retro_terminated, retro_truncated, _ = retro_env.step(
                 retro_action
             )

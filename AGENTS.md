@@ -11,5 +11,5 @@ Before any task in this repository, use the `$specs-author` skill to read the ro
   PyPI wheel set plus source distribution. Skill:
   `.codex/skills/build-release/SKILL.md`.
 - Use `/regenerate-mario-promo` to rebuild the verified Stable Retro versus
-  Turbo Level 1-1 promotional comparison. Skill:
+  SuperMarioBros-Nes-turbo Level 1-1 promotional comparison. Skill:
   `.codex/skills/regenerate-mario-promo/SKILL.md`.

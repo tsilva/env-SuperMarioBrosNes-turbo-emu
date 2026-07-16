@@ -7,7 +7,10 @@ import argparse
 from dataclasses import dataclass
 import json
 import logging
+import os
 from pathlib import Path
+import shlex
+import textwrap
 import time
 from typing import Any
 import uuid
@@ -31,7 +34,7 @@ from supermariobrosnes_turbo.jerk import (
 LOGGER = logging.getLogger("jerk_train")
 ACTION_SET = "simple"
 TOTAL_TIMESTEPS = 10_000_000
-N_ENVS = 16
+N_ENVS = 64
 MAX_EPISODE_STEPS = 4_500
 STALL_STEPS = 300
 CHECKPOINT_FREQ = 0
@@ -278,12 +281,33 @@ def exploit_probability(total_steps: int, total_timesteps: int) -> float:
     )
 
 
-def _save_policy(policy: JerkPolicy, path: Path) -> Path:
+def _save_policy(policy: JerkPolicy, path: Path, *, force: bool = False) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.stem}.{uuid.uuid4().hex}.zip"
     policy.save(temporary)
-    temporary.replace(path)
+    try:
+        if force:
+            temporary.replace(path)
+        else:
+            os.link(temporary, path)
+    except FileExistsError as exc:
+        raise FileExistsError(
+            f"refusing to overwrite existing policy {path}; pass --force to replace it"
+        ) from exc
+    finally:
+        temporary.unlink(missing_ok=True)
     return path
+
+
+def _protect_existing_policies(run_dir: Path, *, force: bool) -> None:
+    if force or not run_dir.exists():
+        return
+    existing = next(iter(sorted(run_dir.rglob("*.zip"))), None)
+    if existing is not None:
+        raise SystemExit(
+            f"refusing to overwrite existing policy {existing}; "
+            "pass --force to replace policies in this run directory"
+        )
 
 
 def _metric_row(
@@ -309,6 +333,78 @@ def _metric_row(
         "accepted": accepted,
         "loop_fps": search.global_step / max(elapsed, 1e-9),
     }
+
+
+def _format_box(title: str, rows: list[tuple[str, str]]) -> str:
+    label_width = max((len(label) for label, _value in rows), default=0)
+    value_width = max(88 - label_width - 2, 20)
+    body: list[str] = []
+    for label, value in rows:
+        wrapped = textwrap.wrap(
+            value,
+            width=value_width,
+            break_long_words=True,
+            break_on_hyphens=False,
+        ) or [""]
+        body.append(f"{label:<{label_width}}  {wrapped[0]}")
+        body.extend(f"{'':<{label_width}}  {line}" for line in wrapped[1:])
+    inner_width = max([len(title) + 2, *(len(line) for line in body)])
+    top = f"╭─ {title} {'─' * (inner_width - len(title) - 1)}╮"
+    middle = [f"│ {line:<{inner_width}} │" for line in body]
+    bottom = f"╰{'─' * (inner_width + 2)}╯"
+    return "\n".join([top, *middle, bottom])
+
+
+def _format_elapsed(seconds: float) -> str:
+    whole_seconds = max(int(seconds), 0)
+    hours, remainder = divmod(whole_seconds, 3_600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def _format_progress(row: dict[str, Any], total_timesteps: int) -> str:
+    current = int(row["timesteps"])
+    total = max(int(total_timesteps), 1)
+    percent = min(100.0 * current / total, 100.0)
+    return (
+        f"  {percent:6.2f}%  {current:,} / {total:,} transitions  "
+        f"·  {float(row['loop_fps']):,.0f} steps/s\n"
+        f"           {int(row['episodes']):,} episodes  "
+        f"·  best reward {float(row['best_mean_reward']):,.1f}  "
+        f"·  progress {float(row['best_progress']):,.0f}\n"
+        f"           policy {int(row['best_program_steps']):,} steps / "
+        f"{int(row['best_program_runs']):,} runs  "
+        f"·  archive {int(row['retained_count']):,} "
+        f"({int(row['locked_count']):,} locked)"
+    )
+
+
+def _play_command(
+    level: str,
+    policy_path: Path,
+    *,
+    default_output: bool,
+    rom_path: Path | None,
+) -> str:
+    if default_output:
+        argv = ["uv", "run", "python", "play.py", level]
+    else:
+        argv = [
+            "uv",
+            "run",
+            "python",
+            "scripts/play_policy.py",
+            str(policy_path),
+            "--state",
+            level,
+        ]
+    if rom_path is not None:
+        argv.extend(["--rom-path", str(rom_path)])
+    return shlex.join(argv)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -356,13 +452,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retained-limit", type=int, default=RETAINED_LIMIT)
     parser.add_argument("--fallback-action", default=FALLBACK_ACTION)
     parser.add_argument("--step-cost", type=float, default=STEP_COST)
+    parser.add_argument(
+        "--stop-on-completion",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="stop after the first level completion (default: enabled)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="allow existing policies in the run directory to be replaced",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     args = build_parser().parse_args(argv)
     try:
         args.level = normalize_level_name(args.level)
@@ -407,6 +512,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.output is None
         else run_dir / f"{args.level}.zip"
     )
+    _protect_existing_policies(run_dir, force=args.force)
     run_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = run_dir / "episodes.jsonl"
     metrics_path.write_text("", encoding="utf-8")
@@ -415,6 +521,25 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     action_names = tuple(ACTION_SETS[ACTION_SET])
+    LOGGER.info(
+        "\n%s",
+        _format_box(
+            "JERK training",
+            [
+                ("Level", args.level),
+                ("Action set", f"{ACTION_SET} ({len(action_names)} actions)"),
+                ("Parallel lanes", f"{args.n_envs:,}"),
+                ("Budget", f"{args.timesteps:,} transitions"),
+                (
+                    "Stop rule",
+                    "first completion"
+                    if args.stop_on_completion
+                    else "transition budget",
+                ),
+                ("Policy", str(target_policy_path)),
+            ],
+        ),
+    )
     search = JerkSearch(
         n_envs=args.n_envs,
         seed=args.seed,
@@ -446,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     accepted = False
     accepted_lane: int | None = None
     first_success_step: int | None = None
+    stopped_on_completion = False
     try:
         while search.global_step < args.timesteps:
             actions = search.next_actions()
@@ -464,14 +590,22 @@ def main(argv: list[str] | None = None) -> int:
                     accepted_path = (
                         run_dir / "checkpoints" / f"{args.level}-{step}.zip"
                     )
-                    _save_policy(search.policy(), accepted_path)
+                    _save_policy(search.policy(), accepted_path, force=args.force)
                     LOGGER.info(
-                        "locked first %s success step=%d lane=%d path=%s",
-                        args.level,
-                        step,
-                        accepted_lane,
-                        accepted_path,
+                        "\n%s",
+                        _format_box(
+                            "Level completed",
+                            [
+                                ("Level", args.level),
+                                ("Transition", f"{step:,}"),
+                                ("Lane", f"{accepted_lane:,}"),
+                                ("Checkpoint", str(accepted_path)),
+                            ],
+                        ),
                     )
+                if args.stop_on_completion:
+                    stopped_on_completion = True
+                    break
 
             task.reset_lanes(search_dones)
 
@@ -481,20 +615,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 with metrics_path.open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps(row, sort_keys=True) + "\n")
-                LOGGER.info(
-                    "timesteps=%d episodes=%d retained=%d locked=%d replay=%.3f "
-                    "best=%.1f progress=%.0f program=%d/%d steps/runs fps=%.0f",
-                    step,
-                    search.completed_episodes,
-                    search.retained_count,
-                    search.locked_count,
-                    search.archive_replay_probability,
-                    row["best_mean_reward"],
-                    row["best_progress"],
-                    row["best_program_steps"],
-                    row["best_program_runs"],
-                    row["loop_fps"],
-                )
+                LOGGER.info("%s", _format_progress(row, args.timesteps))
                 while next_log <= step:
                     next_log += args.log_interval_steps
 
@@ -502,6 +623,7 @@ def main(argv: list[str] | None = None) -> int:
                 _save_policy(
                     search.policy(),
                     run_dir / "checkpoints" / f"{args.level}-{step}.zip",
+                    force=args.force,
                 )
                 next_checkpoint += args.checkpoint_freq
 
@@ -514,6 +636,7 @@ def main(argv: list[str] | None = None) -> int:
         final_path = _save_policy(
             final_policy,
             target_policy_path,
+            force=args.force,
         )
         final_row = _metric_row(
             search, elapsed=time.perf_counter() - started_at, accepted=accepted
@@ -521,6 +644,7 @@ def main(argv: list[str] | None = None) -> int:
         final_row["accepted_lane"] = accepted_lane
         final_row["first_success_step"] = first_success_step
         final_row["budget_exhausted"] = search.global_step >= args.timesteps
+        final_row["stopped_on_completion"] = stopped_on_completion
         final_row["phase"] = "final"
         final_row["best_program_steps"] = final_policy.step_count
         final_row["best_program_runs"] = final_policy.run_count
@@ -529,14 +653,35 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         task.close()
 
+    elapsed = time.perf_counter() - started_at
     LOGGER.info(
-        "saved=%s timesteps=%d episodes=%d retained=%d locked=%d accepted=%s",
-        final_path,
-        search.global_step,
-        search.completed_episodes,
-        search.retained_count,
-        search.locked_count,
-        accepted,
+        "\n%s",
+        _format_box(
+            "Training complete",
+            [
+                ("Result", "level completed" if accepted else "budget exhausted"),
+                ("Elapsed", _format_elapsed(elapsed)),
+                ("Transitions", f"{search.global_step:,}"),
+                ("Episodes", f"{search.completed_episodes:,}"),
+                ("Best reward", f"{final_row['best_mean_reward']:,.1f}"),
+                ("Progress", f"{final_row['best_progress']:,.0f}"),
+                (
+                    "Policy size",
+                    f"{final_policy.step_count:,} steps / "
+                    f"{final_policy.run_count:,} runs",
+                ),
+                ("Saved", str(final_path)),
+            ],
+        ),
+    )
+    LOGGER.info(
+        "\nPlay the policy:\n\n  %s\n",
+        _play_command(
+            args.level,
+            final_path,
+            default_output=args.output is None,
+            rom_path=args.rom,
+        ),
     )
     if not accepted and search.global_step >= args.timesteps:
         raise RuntimeError(

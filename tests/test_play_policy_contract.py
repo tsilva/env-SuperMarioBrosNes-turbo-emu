@@ -22,6 +22,7 @@ def test_jerk_checkpoint_uses_native_lightweight_contract() -> None:
     play_policy.apply_checkpoint_defaults(args, Path("final_model.zip"))
 
     assert args.backend == "native"
+    assert args.scale == 2
     assert args.max_pool_frames is False
     assert args.crop_mode == "remove"
 
