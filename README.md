@@ -162,15 +162,36 @@ make benchmark-report                         # paired Turbo vs upstream Stable 
 
 ## Benchmark
 
-`apple-m1-pro-8c`, Python 3.14.4, clean `ae1171e`: Turbo `0.3.0` vs upstream
-`stable-retro==1.0.1`, seven alternating paired runs per shape. Host-specific;
-reproduce with `make benchmark-report`.
+Turbo `0.3.0` vs upstream `stable-retro==1.0.1`, using seven alternating
+paired runs per shape. Results are host-specific; reproduce with
+`make benchmark-report`.
 
 | Machine ID | Commit | Envs | Median SPS | Baseline median SPS | Median speedup | 95% bootstrap CI | Measured pairs |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `amd-ryzen-5-3600-6c` | `545131bf` | 1 | 5,458.4 | 411.4 | 13.27x | 12.85x–13.33x | 7 |
+| `amd-ryzen-5-3600-6c` | `545131bf` | 16 | 28,591.6 | 1,847.7 | 15.49x | 15.30x–15.83x | 7 |
+| `amd-ryzen-5-3600-6c` | `545131bf` | 32 | 35,778.4 | 1,958.0 | 18.27x | 18.20x–18.30x | 7 |
 | `apple-m1-pro-8c` | `ae1171e` | 1 | 8,574.5 | 584.3 | 14.68x | 14.61x–14.78x | 7 |
 | `apple-m1-pro-8c` | `ae1171e` | 16 | 36,675.3 | 2,608.5 | 13.79x | 13.45x–14.55x | 7 |
 | `apple-m1-pro-8c` | `ae1171e` | 32 | 43,443.0 | 2,555.0 | 17.23x | 16.38x–17.86x | 7 |
+
+### `amd-ryzen-5-3600-6c` machine specifications
+
+| Component | Specification |
+| --- | --- |
+| System | ASUS desktop; ROG STRIX B550-F GAMING (WI-FI) motherboard, BIOS 2803 |
+| CPU | AMD Ryzen 5 3600 (Zen 2), 6 physical cores / 12 threads, boost enabled, 4.208 GHz reported maximum |
+| CPU cache | 384 KiB L1 (192 KiB data + 192 KiB instruction), 3 MiB L2, 32 MiB L3 |
+| Memory | 32 GiB system RAM |
+| Storage | 1 TB nominal WDC WDS100T2B0C-00PXH0 NVMe SSD (931.5 GiB reported) |
+| OS | Ubuntu 26.04, Linux 7.0.0-27-generic, glibc 2.43, x86_64 |
+| CPU frequency policy | `amd_pstate` active, `powersave` scaling governor |
+| Runtime | CPython 3.13.14; `supermariobrosnes-turbo==0.3.0`, `stable-retro==1.0.1`, `numpy==2.5.0`, `gymnasium==1.3.0` |
+
+The Ryzen results were measured from clean commit `545131bf` after the
+ROM-backed parity checks passed. The session-start one-minute load was 0.23,
+below the protocol limit of 4.0. The Apple results used Python 3.14.4 from clean
+commit `ae1171e`.
 
 ## Notes
 
