@@ -356,15 +356,13 @@ class SdlPolicyPlayer:
         self.fps_window_start = time.perf_counter()
         self.fps_window_frames = 0
         self.display_fps = 0.0
-        self.next_status_update = 0.0
-
         self.sdl = load_sdl2()
         configure_sdl(self.sdl)
         if self.sdl.SDL_Init(SDL_INIT_VIDEO) != 0:
             raise SdlUnavailableError(self.sdl_error())
         self.sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", b"nearest")
         self.window = self.sdl.SDL_CreateWindow(
-            b"SuperMarioBros-Nes-turbo policy player",
+            b"SuperMarioBros-Nes-turbo player",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             self.display_width * self.scale,
@@ -725,20 +723,6 @@ class SdlPolicyPlayer:
         self.sdl.SDL_RenderClear(self.renderer)
         self.sdl.SDL_RenderCopy(self.renderer, self.texture, None, None)
         self.sdl.SDL_RenderPresent(self.renderer)
-
-        now = time.perf_counter()
-        if now >= self.next_status_update:
-            self.next_status_update = now + 0.1
-            title = (
-                "SuperMarioBros-Nes-turbo JERK player  "
-                f"episode={self.episode} step={self.step} "
-                f"policy={self.current_policy_level} "
-                f"action={self.action_names[self.action]} "
-                f"x={self.info.get('x_pos', 0)} max_x={self.max_x} "
-                f"lives={self.info.get('lives', 0)} reward={self.reward:.1f} "
-                f"fps={self.display_fps:.0f}"
-            )
-            self.sdl.SDL_SetWindowTitle(self.window, title.encode("utf-8"))
 
     def current_display_frame(self) -> np.ndarray:
         obs = self.display_obs if self.args.view == "raw" else self.obs
