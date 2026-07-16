@@ -49,7 +49,7 @@ def _stable_retro_rom_path(game: str) -> Path | None:
             game,
             stable_retro.data.Integrations.ALL,
         )
-    except (AttributeError, FileNotFoundError, OSError, RuntimeError):
+    except Exception:
         return None
     return Path(path) if path else None
 
@@ -57,9 +57,10 @@ def _stable_retro_rom_path(game: str) -> Path | None:
 def rom_candidates(game: str = DEFAULT_GAME) -> tuple[Path, ...]:
     """Return automatic ROM candidates in Stable Retro-compatible precedence."""
     candidates = [imported_rom_path(game=game)]
-    stable_retro_path = _stable_retro_rom_path(game)
-    if stable_retro_path is not None:
-        candidates.append(stable_retro_path)
+    if not candidates[0].is_file():
+        stable_retro_path = _stable_retro_rom_path(game)
+        if stable_retro_path is not None:
+            candidates.append(stable_retro_path)
 
     unique: list[Path] = []
     seen: set[Path] = set()

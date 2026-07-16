@@ -38,7 +38,11 @@ def test_retro_data_path_uses_stable_retro_layout(
     rom_path.parent.mkdir(parents=True)
     rom_path.write_bytes(b"rom")
     monkeypatch.setenv(roms.RETRO_DATA_PATH_ENV_VAR, str(root))
-    monkeypatch.setattr(roms, "_stable_retro_rom_path", lambda _game: None)
+    monkeypatch.setattr(
+        roms,
+        "_stable_retro_rom_path",
+        lambda _game: pytest.fail("Stable Retro should not be imported for a complete data tree"),
+    )
 
     assert default_rom_path() == rom_path
     assert resolve_required_rom_path() == rom_path
