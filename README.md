@@ -4,15 +4,15 @@
   **🚀 Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning 🍄**
 </div>
 
+<div align="center">
+  <img src="media/mario-promo/mario-throughput-comparison.gif" alt="Stable Retro and SuperMarioBros-Nes-turbo throughput comparison" width="640" />
+</div>
+
 **SuperMarioBros-Nes-turbo** is a Rust-backed Gymnasium vector environment for
 reinforcement-learning researchers working with Super Mario Bros NES. On the
 canonical mapper 0/NROM benchmark, it delivers **up to roughly 17×** the
 end-to-end step and preprocessing throughput of
 [Stable Retro](https://github.com/Farama-Foundation/stable-retro).
-
-<div align="center">
-  <img src="media/mario-promo/mario-throughput-comparison.gif" alt="Stable Retro and SuperMarioBros-Nes-turbo throughput comparison" width="640" />
-</div>
 
 ## ⚡ Why it is fast
 
