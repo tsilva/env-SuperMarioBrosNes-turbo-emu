@@ -17,20 +17,9 @@ ROM-specific quirks while performing vectorization and all preprocessing
 natively in Rust. That delivers environment stepping up to 17× faster than
 [Stable Retro](https://github.com/Farama-Foundation/stable-retro).
 
-## Stable Retro comparison
-
-[![SuperMarioBros-Nes-turbo versus Stable Retro: same Mario, same actions, 14.56× more throughput](media/mario-promo/mario-throughput-comparison.gif)](https://youtu.be/ndWSv5eEoos)
-
-The [side-by-side video](https://youtu.be/ndWSv5eEoos) replays one deterministic
-Level 1-1 controller trajectory through both backends. Both enter Level 1-2 on
-action 1,986, all 1,987 raw gameplay frames are pixel-identical, and there are
-no reward, termination, or semantic-state mismatches.
-
-Gameplay time is scaled by the median speedup from a local matched one-environment
-run on an Apple M1 Pro: 8,455 SPS for Turbo versus 580 SPS for Stable Retro, or
-14.56× across five alternating measured pairs (95% bootstrap CI 14.46×–14.84×).
-Video encoding is excluded from the benchmark timing. See [Benchmark](#benchmark)
-for the clean seven-pair benchmark and reproduction details.
+<div align="center">
+  <img src="media/mario-promo/mario-throughput-comparison.gif" alt="Speed Comparison" width="640" />
+</div>
 
 ## Why it is fast
 
