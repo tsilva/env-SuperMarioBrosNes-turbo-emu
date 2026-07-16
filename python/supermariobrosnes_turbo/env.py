@@ -477,7 +477,12 @@ def _normalize_retro_resize(
 
 
 class SuperMarioBrosNesTurboVecEnv(VectorEnv):
-    """Gymnasium VectorEnv for the native Super Mario Bros NES fast path."""
+    """Gymnasium VectorEnv for the native Super Mario Bros NES fast path.
+
+    ``num_threads=None`` uses Rayon's process-global automatic thread pool.
+    A positive value creates a private pool for this environment, capped by the
+    lane count and the machine's available parallelism.
+    """
 
     metadata = {"render_modes": ["rgb_array"], "autoreset_mode": AutoresetMode.DISABLED}
     _BUTTON_COMBOS = STABLE_RETRO_BUTTON_COMBOS
@@ -528,6 +533,11 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             raise ValueError("SuperMarioBrosNesTurboVecEnv only supports the SMB data info file")
         if scenario not in (None, "scenario") and not str(scenario).endswith(".json"):
             raise ValueError("SuperMarioBrosNesTurboVecEnv only supports the SMB scenario file")
+
+        if num_threads is not None:
+            num_threads = int(num_threads)
+            if num_threads <= 0:
+                raise ValueError("num_threads must be > 0")
 
         noop_reset_max = int(noop_reset_max)
         sticky_action_prob = float(sticky_action_prob)
@@ -603,11 +613,12 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             normalized_crop_mode,
             normalized_crop_fill,
             self.obs_resize_algorithm,
+            num_threads,
         )
         self._state_policy_names = tuple(self._core.initial_state_policy_names())
         self.initial_state_names = self._state_policy_names
         self.num_envs = self._core.num_envs
-        self.num_threads = self.num_envs if num_threads is None else int(num_threads)
+        self.num_threads = self._core.num_threads
         self.num_buttons = len(NES_BUTTONS)
         self._action_mode = action_mode
         self._mask_to_controller_bytes = self._build_mask_to_controller_bytes()

@@ -2,6 +2,8 @@ use numpy::{PyReadonlyArray1, PyReadwriteArray1, PyReadwriteArray4, PyUntypedArr
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
+use rayon::{ThreadPool, ThreadPoolBuilder};
+use std::thread;
 
 use crate::cartridge::Cartridge;
 use crate::emulator::{
@@ -12,12 +14,14 @@ use crate::vec_env::{CropMode, InitialState, MarioVecEnv, ResizeAlgorithm, VecEn
 #[pyclass(name = "_RetroVecEnv")]
 pub struct RetroVecEnv {
     inner: MarioVecEnv,
+    thread_pool: Option<ThreadPool>,
+    num_threads: usize,
 }
 
 #[pymethods]
 impl RetroVecEnv {
     #[new]
-    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, initial_states=None, initial_state_names=None, initial_state_weights=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area"))]
+    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, initial_states=None, initial_state_names=None, initial_state_weights=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None))]
     pub fn new(
         rom_path: String,
         num_envs: usize,
@@ -41,6 +45,7 @@ impl RetroVecEnv {
         crop_mode: &str,
         crop_fill: u8,
         resize_algorithm: &str,
+        num_threads: Option<isize>,
     ) -> PyResult<Self> {
         if num_envs == 0 {
             return Err(PyValueError::new_err("num_envs must be > 0"));
@@ -76,8 +81,40 @@ impl RetroVecEnv {
                 "sticky_action_prob must be between 0.0 and 1.0",
             ));
         }
+        if matches!(num_threads, Some(value) if value <= 0) {
+            return Err(PyValueError::new_err("num_threads must be > 0"));
+        }
         let crop_mode = build_crop_mode(&crop_mode)?;
         let resize_algorithm = build_resize_algorithm(&resize_algorithm)?;
+        let available_threads = thread::available_parallelism()
+            .map(|count| count.get())
+            .unwrap_or(1);
+        let (effective_num_threads, parallel_env_threshold, thread_pool) =
+            if let Some(requested) = num_threads {
+                let effective =
+                    effective_private_num_threads(requested as usize, num_envs, available_threads);
+                let pool = if effective > 1 {
+                    Some(
+                        ThreadPoolBuilder::new()
+                            .num_threads(effective)
+                            .build()
+                            .map_err(|err| {
+                                PyRuntimeError::new_err(format!(
+                                    "failed to create Rayon thread pool: {err}"
+                                ))
+                            })?,
+                    )
+                } else {
+                    None
+                };
+                (effective, 2, pool)
+            } else {
+                (
+                    rayon::current_num_threads().min(num_envs).max(1),
+                    crate::vec_env::PARALLEL_ENV_THRESHOLD,
+                    None,
+                )
+            };
 
         let cart = Cartridge::load_ines(rom_path)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
@@ -89,6 +126,8 @@ impl RetroVecEnv {
         )?;
         let config = VecEnvConfig {
             num_envs,
+            num_threads: effective_num_threads,
+            parallel_env_threshold,
             frame_skip,
             grayscale,
             frame_stack,
@@ -109,12 +148,19 @@ impl RetroVecEnv {
         Ok(Self {
             inner: MarioVecEnv::new(cart, config, initial_states, weighted_initial_states, seed)
                 .map_err(|err| PyValueError::new_err(err.to_string()))?,
+            thread_pool,
+            num_threads: effective_num_threads,
         })
     }
 
     #[getter]
     pub fn num_envs(&self) -> usize {
         self.inner.config().num_envs
+    }
+
+    #[getter]
+    pub fn num_threads(&self) -> usize {
+        self.num_threads
     }
 
     #[getter]
@@ -271,7 +317,9 @@ impl RetroVecEnv {
         let obs_slice = obs_rw
             .as_slice_mut()
             .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
-        py.allow_threads(|| self.inner.reset_into(obs_slice))
+        let pool = self.thread_pool.as_ref();
+        let inner = &mut self.inner;
+        py.allow_threads(|| install_in_pool(pool, || inner.reset_into(obs_slice)))
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
         Ok(())
     }
@@ -320,9 +368,12 @@ impl RetroVecEnv {
         let obs_slice = obs_rw
             .as_slice_mut()
             .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
+        let pool = self.thread_pool.as_ref();
+        let inner = &mut self.inner;
         py.allow_threads(|| {
-            self.inner
-                .reset_masked_into(obs_slice, reset_mask_slice, start_indices_slice, &seeds)
+            install_in_pool(pool, || {
+                inner.reset_masked_into(obs_slice, reset_mask_slice, start_indices_slice, &seeds)
+            })
         })
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
         Ok(())
@@ -511,26 +562,68 @@ impl RetroVecEnv {
             .as_slice_mut()
             .ok_or_else(|| PyValueError::new_err("xscroll_lo must be C-contiguous"))?;
 
+        let pool = self.thread_pool.as_ref();
+        let inner = &mut self.inner;
         py.allow_threads(|| {
-            self.inner.step_into(
-                actions_slice,
-                obs_slice,
-                rewards_slice,
-                terminated_slice,
-                truncated_slice,
-                x_pos_slice,
-                coins_slice,
-                level_hi_slice,
-                level_lo_slice,
-                lives_slice,
-                score_slice,
-                scrolling_slice,
-                time_slice,
-                xscroll_hi_slice,
-                xscroll_lo_slice,
-            );
+            install_in_pool(pool, || {
+                inner.step_into(
+                    actions_slice,
+                    obs_slice,
+                    rewards_slice,
+                    terminated_slice,
+                    truncated_slice,
+                    x_pos_slice,
+                    coins_slice,
+                    level_hi_slice,
+                    level_lo_slice,
+                    lives_slice,
+                    score_slice,
+                    scrolling_slice,
+                    time_slice,
+                    xscroll_hi_slice,
+                    xscroll_lo_slice,
+                )
+            });
         });
         Ok(())
+    }
+}
+
+fn effective_private_num_threads(
+    requested: usize,
+    num_envs: usize,
+    available_threads: usize,
+) -> usize {
+    requested.min(num_envs).min(available_threads).max(1)
+}
+
+fn install_in_pool<OP, R>(pool: Option<&ThreadPool>, op: OP) -> R
+where
+    OP: FnOnce() -> R + Send,
+    R: Send,
+{
+    match pool {
+        Some(pool) => pool.install(op),
+        None => op(),
+    }
+}
+
+#[cfg(test)]
+mod thread_pool_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_pool_runs_work_with_its_configured_size() {
+        let pool = ThreadPoolBuilder::new().num_threads(2).build().unwrap();
+        let observed = install_in_pool(Some(&pool), rayon::current_num_threads);
+        assert_eq!(observed, 2);
+    }
+
+    #[test]
+    fn explicit_thread_count_is_capped_by_lanes_and_available_parallelism() {
+        assert_eq!(effective_private_num_threads(16, 8, 4), 4);
+        assert_eq!(effective_private_num_threads(16, 2, 8), 2);
+        assert_eq!(effective_private_num_threads(1, 8, 8), 1);
     }
 }
 

@@ -6,7 +6,7 @@ use crate::profiler::Profiler;
 use rayon::prelude::*;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-const PARALLEL_ENV_THRESHOLD: usize = 4;
+pub(crate) const PARALLEL_ENV_THRESHOLD: usize = 4;
 const DEFAULT_MASK_CROP_TOP: usize = 32;
 const DEFAULT_AREA_SRC_WIDTH: usize = VISIBLE_FRAME_WIDTH;
 const DEFAULT_AREA_SRC_HEIGHT: usize = VISIBLE_FRAME_HEIGHT - DEFAULT_MASK_CROP_TOP;
@@ -29,6 +29,8 @@ const FULL_AREA_Y_COUNT: [u16; DEFAULT_AREA_DST_HEIGHT] =
 #[derive(Clone, Copy, Debug)]
 pub struct VecEnvConfig {
     pub num_envs: usize,
+    pub num_threads: usize,
+    pub parallel_env_threshold: usize,
     pub frame_skip: usize,
     pub grayscale: bool,
     pub frame_stack: usize,
@@ -300,7 +302,10 @@ impl MarioVecEnv {
             self.pending_reset[env_idx] = false;
         }
 
-        if reset_mask.iter().filter(|&&selected| selected).count() >= PARALLEL_ENV_THRESHOLD {
+        if config.num_threads > 1
+            && reset_mask.iter().filter(|&&selected| selected).count()
+                >= config.parallel_env_threshold
+        {
             let resize_plan = &self.resize_plan;
             self.envs
                 .par_iter()
@@ -483,7 +488,7 @@ impl MarioVecEnv {
             self.last_actions.copy_from_slice(actions);
             actions
         };
-        if config.num_envs >= PARALLEL_ENV_THRESHOLD {
+        if config.num_threads > 1 && config.num_envs >= config.parallel_env_threshold {
             let resize_plan = &self.resize_plan;
             self.envs
                 .par_iter_mut()
@@ -613,7 +618,7 @@ impl MarioVecEnv {
             self.last_actions.copy_from_slice(actions);
             actions
         };
-        if config.num_envs >= PARALLEL_ENV_THRESHOLD {
+        if config.num_threads > 1 && config.num_envs >= config.parallel_env_threshold {
             let resize_plan = &self.resize_plan;
             self.envs
                 .par_iter_mut()
@@ -1893,6 +1898,8 @@ mod tests {
     fn sticky_actions_replay_the_exact_raw_controller_state() {
         let config = VecEnvConfig {
             num_envs: 1,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 1,
             grayscale: true,
             frame_stack: 1,
@@ -1952,6 +1959,8 @@ mod tests {
     fn precomputed_area_resize_matches_reference_default_grayscale() {
         let config = VecEnvConfig {
             num_envs: 16,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 4,
             grayscale: true,
             frame_stack: 4,
@@ -1996,6 +2005,8 @@ mod tests {
     fn precomputed_area_resize_matches_reference_full_mask_grayscale() {
         let config = VecEnvConfig {
             num_envs: 16,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 4,
             grayscale: true,
             frame_stack: 4,
@@ -2041,6 +2052,8 @@ mod tests {
     fn default_gray_mask_top_area_frame_matches_legacy_path() {
         let config = VecEnvConfig {
             num_envs: 16,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 4,
             grayscale: true,
             frame_stack: 4,
@@ -2092,6 +2105,8 @@ mod tests {
         let dst_height = 84;
         let config = VecEnvConfig {
             num_envs: 1,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 4,
             grayscale: false,
             frame_stack: 1,
@@ -2139,6 +2154,8 @@ mod tests {
     fn mask_native_frame_fills_crop_margins_without_changing_visible_center() {
         let config = VecEnvConfig {
             num_envs: 1,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 4,
             grayscale: true,
             frame_stack: 1,
@@ -2187,6 +2204,8 @@ mod tests {
     fn remove_crop_source_geometry_accounts_for_all_sides() {
         let config = VecEnvConfig {
             num_envs: 1,
+            num_threads: 1,
+            parallel_env_threshold: PARALLEL_ENV_THRESHOLD,
             frame_skip: 4,
             grayscale: true,
             frame_stack: 1,

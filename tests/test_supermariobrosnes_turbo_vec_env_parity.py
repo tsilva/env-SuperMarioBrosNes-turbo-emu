@@ -39,6 +39,7 @@ def test_public_signature_preserves_vector_features() -> None:
     params = inspect.signature(SuperMarioBrosNesTurboVecEnv).parameters
     for name in (
         "state",
+        "num_threads",
         "obs_copy",
         "obs_resize",
         "obs_crop",

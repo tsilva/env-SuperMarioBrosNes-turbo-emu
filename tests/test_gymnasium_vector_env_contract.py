@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import inspect
+import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -56,6 +59,107 @@ def test_public_surface_is_manual_reset_only() -> None:
         SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", done_on=[])
     with pytest.raises(TypeError, match="autoreset_mode"):
         SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", autoreset_mode="Disabled")
+
+
+@pytest.mark.parametrize("num_threads", [0, -1])
+def test_num_threads_must_be_positive_before_rom_loading(num_threads: int) -> None:
+    with pytest.raises(ValueError, match="num_threads must be > 0"):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
+            num_threads=num_threads,
+        )
+
+
+def test_num_threads_reports_effective_native_limit() -> None:
+    automatic = make_env(num_envs=4)
+    sequential = make_env(num_envs=4, num_threads=1)
+    capped = make_env(num_envs=2, num_threads=10_000)
+    single_lane = make_env(num_envs=1, num_threads=10_000)
+    try:
+        assert 1 <= automatic.num_threads <= automatic.num_envs
+        assert sequential.num_threads == 1
+        assert 1 <= capped.num_threads <= capped.num_envs
+        assert single_lane.num_threads == 1
+        assert automatic._core.num_threads == automatic.num_threads
+        assert sequential._core.num_threads == sequential.num_threads
+        assert capped._core.num_threads == capped.num_threads
+    finally:
+        automatic.close()
+        sequential.close()
+        capped.close()
+        single_lane.close()
+
+
+def test_automatic_num_threads_honors_rayon_environment_in_fresh_process() -> None:
+    child_env = os.environ.copy()
+    child_env["RAYON_NUM_THREADS"] = "2"
+    child_env["SMB_TEST_ROM"] = str(require_rom())
+    script = """
+import os
+from supermariobrosnes_turbo import SuperMarioBrosNesTurboVecEnv
+
+env = SuperMarioBrosNesTurboVecEnv(
+    "SuperMarioBros-Nes-v0",
+    state="Level1-1",
+    rom_path=os.environ["SMB_TEST_ROM"],
+    num_envs=4,
+    frame_skip=1,
+    frame_stack=1,
+    obs_grayscale=True,
+    obs_resize=(1, 1),
+)
+try:
+    print(env.num_threads)
+finally:
+    env.close()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env=child_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert result.stdout.strip() == "2"
+
+
+def test_explicit_thread_counts_preserve_deterministic_lane_contract() -> None:
+    states = ["Level1-1", "Level1-2", "Level1-3", "Level1-4"]
+    sequential = make_env(state=states, num_envs=4, num_threads=1, frame_skip=1)
+    parallel = make_env(state=states, num_envs=4, num_threads=4, frame_skip=1)
+
+    def assert_result_equal(actual: tuple[object, ...], expected: tuple[object, ...]) -> None:
+        assert len(actual) == len(expected)
+        for actual_value, expected_value in zip(actual, expected, strict=True):
+            if isinstance(actual_value, dict):
+                assert isinstance(expected_value, dict)
+                assert actual_value.keys() == expected_value.keys()
+                for key in actual_value:
+                    np.testing.assert_array_equal(actual_value[key], expected_value[key])
+            else:
+                np.testing.assert_array_equal(actual_value, expected_value)
+
+    try:
+        assert_result_equal(sequential.reset(seed=73), parallel.reset(seed=73))
+        actions = noop(4)
+        right = NES_BUTTONS.index("RIGHT")
+        button_a = NES_BUTTONS.index("A")
+        for lane in range(4):
+            actions[lane, right] = lane % 2
+            actions[lane, button_a] = lane // 2
+        for _ in range(8):
+            assert_result_equal(sequential.step(actions), parallel.step(actions))
+
+        mask = np.array([True, False, True, False], dtype=np.bool_)
+        starts = np.array([1, -1, 0, -1], dtype=np.int32)
+        options = {"reset_mask": mask, "start_indices": starts}
+        assert_result_equal(sequential.reset(options=options), parallel.reset(options=options))
+        assert sequential.active_states() == parallel.active_states()
+        assert_result_equal(sequential.step(actions), parallel.step(actions))
+    finally:
+        sequential.close()
+        parallel.close()
 
 
 def test_named_simple_action_set_is_discrete_and_maps_indices() -> None:
