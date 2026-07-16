@@ -15,11 +15,10 @@ from .env import (
     SuperMarioBrosNesTurboVecEnv,
     action_batch,
     action_mask,
-    default_rom_path,
     list_available_states,
     resolve_required_rom_path,
 )
-from .roms import RETRO_DATA_PATH_ENV_VAR
+from .roms import RETRO_DATA_PATH_ENV_VAR, default_rom_path
 
 try:
     __version__ = version("supermariobrosnes-turbo")

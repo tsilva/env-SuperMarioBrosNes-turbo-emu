@@ -16,7 +16,7 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
 from ._supermariobrosnes_turbo import _RetroVecEnv as _CoreRetroVecEnv
-from .roms import default_rom_path, game_data_path, resolve_required_rom_path
+from .roms import game_data_path, resolve_required_rom_path
 
 
 VISIBLE_WIDTH = 240
@@ -766,7 +766,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         if self._action_mode == "ACTION_SET":
             values = np.asarray(actions, dtype=np.int64).reshape(-1)
             if values.shape != (self.num_envs,):
-                raise ValueError(f"actions must have shape {(self.num_envs,)}, got {values.shape}")
+                raise ValueError(
+                    f"actions must have shape {(self.num_envs,)}, got {values.shape}"
+                )
             if values.size and (
                 int(values.min()) < 0 or int(values.max()) >= len(self.action_meanings)
             ):

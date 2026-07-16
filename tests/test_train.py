@@ -6,7 +6,10 @@ import zipfile
 
 import numpy as np
 import pytest
+from gymnasium import spaces
 
+import train as train_module
+from supermariobrosnes_turbo import ACTION_SETS
 from supermariobrosnes_turbo.jerk import (
     ActionRun,
     JERK_POLICY_MEMBER,
@@ -19,6 +22,7 @@ from supermariobrosnes_turbo.jerk import (
     truncate_runs,
 )
 from train import (
+    MarioJerkTask,
     episode_boundary,
     exploit_probability,
     sanitize_progress_x,
@@ -27,6 +31,31 @@ from train import (
 
 
 ACTIONS = ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left")
+
+
+def test_jerk_task_uses_native_simple_discrete_action_set(monkeypatch) -> None:
+    class FakeNative:
+        def __init__(self, *args, **kwargs) -> None:
+            del args
+            self.action_set = kwargs["action_set"]
+            self.action_meanings = ACTION_SETS[self.action_set]
+            self.single_action_space = spaces.Discrete(len(self.action_meanings))
+
+    monkeypatch.setattr(train_module, "SuperMarioBrosNesTurboVecEnv", FakeNative)
+
+    task = MarioJerkTask(
+        level="Level1-1",
+        rom_path=None,
+        seed=0,
+        n_envs=2,
+        max_episode_steps=100,
+        stall_steps=10,
+        step_cost=0.1,
+    )
+
+    assert task.native.action_set == "simple"
+    assert task.native.single_action_space.n == 7
+    assert task.action_names == ACTION_SETS["simple"]
 
 
 def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:
