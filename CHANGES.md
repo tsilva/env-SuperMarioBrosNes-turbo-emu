@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.3.1 - 2026-07-16
+
 - Add Stable Retro-compatible ROM importing and `RETRO_DATA_PATH` discovery,
   replacing the project-specific `ROM_PATH` and `.env` lookup.
 - Add an explicit MIT license, legal notices, governance, support and security
