@@ -255,21 +255,31 @@ def test_jerk_duplicate_updates_stats_and_unique_insert_evicts_worst() -> None:
     assert search._retained[second].completed is True
 
 
-def test_completed_candidates_rank_expanded_steps_then_run_count() -> None:
-    short = _candidate(_runs((1, 2)), 1.0, completed=True, progress=10.0)
-    same_steps_more_runs = _candidate(
-        _runs((1, 1), (2, 1)), 1000.0, completed=True, progress=9999.0
+def test_completed_candidates_rank_by_return_only() -> None:
+    short = _candidate(_runs((1, 2)), 1.0, completed=True, progress=9999.0)
+    long = _candidate(_runs((1, 3)), 2.0, completed=True, progress=10.0)
+    same_return_more_runs = _candidate(
+        _runs((1, 1), (2, 2)), 1.0, completed=True, progress=20.0
     )
-    long = _candidate(_runs((1, 3)), 1000.0, completed=True, progress=9999.0)
 
-    assert short.rank > same_steps_more_runs.rank > long.rank
+    assert long.rank > short.rank
+    assert short.rank == same_return_more_runs.rank
 
 
-def test_incomplete_candidates_still_rank_progress_first() -> None:
+def test_incomplete_candidates_rank_by_return_only() -> None:
     farther = _candidate(_runs((1, 3)), 1.0, progress=100.0)
     richer = _candidate(_runs((1, 1)), 1000.0, progress=99.0)
+    same_return_less_progress = _candidate(_runs((2, 4)), 1.0, progress=1.0)
 
-    assert farther.rank > richer.rank
+    assert richer.rank > farther.rank
+    assert farther.rank == same_return_less_progress.rank
+
+
+def test_completed_candidates_rank_above_incomplete_candidates() -> None:
+    completed = _candidate(_runs((1, 3)), 1.0, completed=True)
+    incomplete = _candidate(_runs((1, 1)), 1000.0)
+
+    assert completed.rank > incomplete.rank
 
 
 def test_jerk_policy_zip_round_trip_and_lane_resets(tmp_path) -> None:

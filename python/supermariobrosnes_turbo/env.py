@@ -454,6 +454,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         num_envs: int = 1,
         num_threads: int | None = None,
         rom_path: str | Path | None = None,
+        action_set: str | Sequence[str] | None = None,
         obs_copy: str = "copy",
         obs_resize: Sequence[int] | None = None,
         obs_crop: Sequence[int] | None = None,
@@ -498,11 +499,18 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         source_width = VISIBLE_WIDTH if mask_crop else VISIBLE_WIDTH - crop_left - crop_right
         source_height = VISIBLE_HEIGHT if mask_crop else VISIBLE_HEIGHT - crop_top - crop_bottom
         resize_width, resize_height = _normalize_retro_resize(obs_resize, source_width, source_height)
-        action_mode = _normalize_action_mode(use_restricted_actions)
+        if action_set is None:
+            action_mode = _normalize_action_mode(use_restricted_actions)
+            action_meanings = ACTION_SETS["full"]
+            action_set_name = "full"
+        else:
+            action_mode = "ACTION_SET"
+            action_meanings = _resolve_action_set(action_set)
+            action_set_name = action_set if isinstance(action_set, str) else "custom"
         self.autoreset_mode = AutoresetMode.DISABLED
         self.game = str(game)
-        self.action_meanings = ACTION_SETS["full"]
-        self.action_set = "full"
+        self.action_meanings = action_meanings
+        self.action_set = action_set_name
         self._core_action_ids = _core_action_ids(self.action_meanings)
         self._action_masks = _action_masks(self.action_meanings)
         state = _normalize_retro_state(state)
@@ -571,16 +579,17 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.crop_bottom = crop_bottom
         self.resize_width = self._output_resize_width
         self.resize_height = self._output_resize_height
-        self.single_action_space = (
-            spaces.Discrete(36)
-            if action_mode == "DISCRETE"
-            else spaces.MultiBinary(self.num_buttons)
-        )
-        self.action_space = (
-            spaces.MultiDiscrete([36] * self.num_envs)
-            if action_mode == "DISCRETE"
-            else spaces.MultiBinary((self.num_envs, self.num_buttons))
-        )
+        if action_mode == "ACTION_SET":
+            self.single_action_space = spaces.Discrete(len(self.action_meanings))
+            self.action_space = spaces.MultiDiscrete(
+                [len(self.action_meanings)] * self.num_envs
+            )
+        elif action_mode == "DISCRETE":
+            self.single_action_space = spaces.Discrete(36)
+            self.action_space = spaces.MultiDiscrete([36] * self.num_envs)
+        else:
+            self.single_action_space = spaces.MultiBinary(self.num_buttons)
+            self.action_space = spaces.MultiBinary((self.num_envs, self.num_buttons))
         self._public_channels = self._core.obs_shape()[1]
         if self.obs_layout == "chw":
             self._single_obs_shape = (
@@ -754,6 +763,18 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         np.copyto(self._actions, self._actions_to_core_ids(actions))
 
     def _actions_to_core_ids(self, actions: Any) -> np.ndarray:
+        if self._action_mode == "ACTION_SET":
+            values = np.asarray(actions, dtype=np.int64).reshape(-1)
+            if values.shape != (self.num_envs,):
+                raise ValueError(f"actions must have shape {(self.num_envs,)}, got {values.shape}")
+            if values.size and (
+                int(values.min()) < 0 or int(values.max()) >= len(self.action_meanings)
+            ):
+                raise ValueError(
+                    f"actions must be in [0, {len(self.action_meanings) - 1}] "
+                    f"for action_set={self.action_set!r}"
+                )
+            return self._core_action_ids[values]
         if self._action_mode == "DISCRETE":
             masks = self._discrete_actions_to_masks(actions)
         else:

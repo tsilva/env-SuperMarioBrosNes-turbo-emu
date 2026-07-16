@@ -16,9 +16,7 @@ import numpy as np
 
 from supermariobrosnes_turbo import (
     ACTION_SETS,
-    Actions,
     SuperMarioBrosNesTurboVecEnv,
-    action_mask,
     list_available_states,
 )
 from supermariobrosnes_turbo.jerk import (
@@ -144,7 +142,7 @@ class MarioJerkTask:
             num_threads=self.n_envs,
             rom_path=rom_path,
             render_mode="rgb_array",
-            use_restricted_actions=Actions.ALL,
+            action_set=ACTION_SET,
             obs_copy="unsafe_view",
             obs_resize=(1, 1),
             obs_grayscale=True,
@@ -156,10 +154,7 @@ class MarioJerkTask:
             reward_clip=False,
             info_filter="all",
         )
-        self.action_names = tuple(ACTION_SETS[ACTION_SET])
-        self.action_masks = np.stack(
-            [action_mask(name) for name in self.action_names]
-        ).astype(np.uint8)
+        self.action_names = tuple(self.native.action_meanings)
         self.episode_steps = np.zeros(self.n_envs, dtype=np.int64)
         self.last_progress_step = np.zeros(self.n_envs, dtype=np.int64)
         self.episode_returns = np.zeros(self.n_envs, dtype=np.float64)
@@ -206,7 +201,7 @@ class MarioJerkTask:
     ]:
         action_indices = np.asarray(actions, dtype=np.int64)
         observations, _native_rewards, native_terminated, native_truncated, _infos = (
-            self.native.step(self.action_masks[action_indices])
+            self.native.step(action_indices)
         )
         current_lives = self.native.lives.astype(np.int64, copy=False)
         current_level_hi = self.native.level_hi.astype(np.int64, copy=False)

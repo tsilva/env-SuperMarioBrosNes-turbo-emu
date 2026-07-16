@@ -28,16 +28,20 @@ Generate the tracked GIF after the final MP4 is verified. Keep temporary palette
 
 ```bash
 ffmpeg -y -loglevel error -i media/mario-promo/mario-throughput-comparison.mp4 \
-  -vf 'fps=12,scale=640:-2:flags=lanczos,palettegen=max_colors=96:stats_mode=diff' \
+  -vf 'crop=1280:548:0:80,fps=12,scale=640:-2:flags=lanczos,palettegen=max_colors=96:stats_mode=diff' \
   -frames:v 1 media/mario-promo/work/mario-throughput-comparison-palette.png
 
 ffmpeg -y -loglevel error -i media/mario-promo/mario-throughput-comparison.mp4 \
   -i media/mario-promo/work/mario-throughput-comparison-palette.png \
-  -filter_complex '[0:v]fps=12,scale=640:-2:flags=lanczos[video];[video][1:v]paletteuse=dither=none' \
+  -filter_complex '[0:v]crop=1280:548:0:80,fps=12,scale=640:-2:flags=lanczos[video];[video][1:v]paletteuse=dither=none' \
   media/mario-promo/mario-throughput-comparison.gif
 ```
 
-Confirm the GIF is 640×360 at 12 FPS and inspect an early, mid-run, and final frame. Keep the GIF Git-eligible because `README.md` embeds it; keep all other generated assets ignored.
+The crop intentionally removes the MP4's headline and verification footnotes so
+the README preview shows only the two labeled gameplay panels. Confirm the GIF
+is 640×274 at 12 FPS and inspect an early, mid-run, and final frame. Keep the
+GIF Git-eligible because `README.md` embeds it; keep all other generated assets
+ignored.
 
 ## Guarantees
 

@@ -139,7 +139,7 @@ Train an observation-free JERK action-run policy for a named level:
 uv run python train.py Level1-1
 ```
 
-The vectorized JERK search evolves canonical `(action, duration)` runs rather than one action per environment step. Its 16 lanes uniformly sample actions and geometrically distributed hold durations, retain the best prefixes, and mix local tail changes with occasional deeper mutations. Reward adds new horizontal progress and 1% of positive score gains, charges `0.1` per environment step, and subtracts 25 on life loss; `--step-cost` can tune the time pressure. Failed attempts end on life loss, 300 steps without progress, or the 4,500-step limit. A level change locks the successful program in the archive, resets that lane to the requested level, and continues discovery until the transition budget is exhausted. Completed programs can never be evicted; the retention limit applies only to incomplete programs, and the shortest completed program wins. There is no separate post-training minimization phase. Policy schema v2 stores only action runs and intentionally does not load the old flat-sequence schema. The level name deterministically selects both the run directory and policy file, so `Level1-1` writes `runs/Level1-1-jerk/Level1-1.zip`. `play.py <Level>` uses the matching user-trained policy from `runs/` when available; as gameplay advances, it switches to each new level's matching user-trained policy:
+The vectorized JERK search evolves canonical `(action, duration)` runs rather than one action per environment step. Its 16 lanes uniformly sample actions and geometrically distributed hold durations, retain the best prefixes, and mix local tail changes with occasional deeper mutations. Reward adds new horizontal progress and 1% of positive score gains, charges `0.1` per environment step, and subtracts 25 on life loss; `--step-cost` can tune the time pressure. Failed attempts end on life loss, 300 steps without progress, or the 4,500-step limit. A level change locks the successful program in the archive, resets that lane to the requested level, and continues discovery until the transition budget is exhausted. Completed programs can never be evicted; the retention limit applies only to incomplete programs, and completed programs are compared only by shaped episode return. There is no separate post-training minimization phase. Policy schema v2 stores only action runs and intentionally does not load the old flat-sequence schema. The level name deterministically selects both the run directory and policy file, so `Level1-1` writes `runs/Level1-1-jerk/Level1-1.zip`. `play.py <Level>` uses the matching user-trained policy from `runs/` when available; as gameplay advances, it switches to each new level's matching user-trained policy:
 
 ```bash
 uv run python play.py Level1-1
@@ -162,36 +162,9 @@ make benchmark-report                         # paired Turbo vs upstream Stable 
 
 ## Benchmark
 
-Turbo `0.3.0` vs upstream `stable-retro==1.0.1`, using seven alternating
-paired runs per shape. Results are host-specific; reproduce with
-`make benchmark-report`.
+[![Turbo versus Stable Retro median environment throughput](media/benchmark-throughput.svg)](BENCHMARKS.md)
 
-| Machine ID | Commit | Envs | Median SPS | Baseline median SPS | Median speedup | 95% bootstrap CI | Measured pairs |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `amd-ryzen-5-3600-6c` | `545131bf` | 1 | 5,458.4 | 411.4 | 13.27x | 12.85x–13.33x | 7 |
-| `amd-ryzen-5-3600-6c` | `545131bf` | 16 | 28,591.6 | 1,847.7 | 15.49x | 15.30x–15.83x | 7 |
-| `amd-ryzen-5-3600-6c` | `545131bf` | 32 | 35,778.4 | 1,958.0 | 18.27x | 18.20x–18.30x | 7 |
-| `apple-m1-pro-8c` | `ae1171e` | 1 | 8,574.5 | 584.3 | 14.68x | 14.61x–14.78x | 7 |
-| `apple-m1-pro-8c` | `ae1171e` | 16 | 36,675.3 | 2,608.5 | 13.79x | 13.45x–14.55x | 7 |
-| `apple-m1-pro-8c` | `ae1171e` | 32 | 43,443.0 | 2,555.0 | 17.23x | 16.38x–17.86x | 7 |
-
-### `amd-ryzen-5-3600-6c` machine specifications
-
-| Component | Specification |
-| --- | --- |
-| System | ASUS desktop; ROG STRIX B550-F GAMING (WI-FI) motherboard, BIOS 2803 |
-| CPU | AMD Ryzen 5 3600 (Zen 2), 6 physical cores / 12 threads, boost enabled, 4.208 GHz reported maximum |
-| CPU cache | 384 KiB L1 (192 KiB data + 192 KiB instruction), 3 MiB L2, 32 MiB L3 |
-| Memory | 32 GiB system RAM |
-| Storage | 1 TB nominal WDC WDS100T2B0C-00PXH0 NVMe SSD (931.5 GiB reported) |
-| OS | Ubuntu 26.04, Linux 7.0.0-27-generic, glibc 2.43, x86_64 |
-| CPU frequency policy | `amd_pstate` active, `powersave` scaling governor |
-| Runtime | CPython 3.13.14; `supermariobrosnes-turbo==0.3.0`, `stable-retro==1.0.1`, `numpy==2.5.0`, `gymnasium==1.3.0` |
-
-The Ryzen results were measured from clean commit `545131bf` after the
-ROM-backed parity checks passed. The session-start one-minute load was 0.23,
-below the protocol limit of 4.0. The Apple results used Python 3.14.4 from clean
-commit `ae1171e`.
+[Full benchmark results, protocol, and machine specifications](BENCHMARKS.md)
 
 ## Notes
 

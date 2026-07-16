@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" role="img" aria-labelledby="title desc">
+  <title id="title">SuperMarioBros-Nes-turbo benchmark throughput</title>
+  <desc id="desc">Grouped bar chart comparing median environment steps per second for Turbo and Stable Retro on an AMD Ryzen 5 3600 and Apple M1 Pro at 1, 16, and 32 environments. Turbo ranges from 13.27 to 18.27 times faster.</desc>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .title { fill: #f0f6fc; font-size: 30px; font-weight: 600; }
+    .subtitle, .axis, .machine { fill: #8b949e; }
+    .subtitle { font-size: 16px; }
+    .axis { font-size: 13px; }
+    .machine { font-size: 16px; font-weight: 600; }
+    .label { fill: #f0f6fc; font-size: 14px; }
+    .value { fill: #c9d1d9; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .speedup { fill: #7ee787; font-size: 15px; font-weight: 600; }
+    .grid { stroke: #30363d; stroke-width: 1; }
+    .divider { stroke: #484f58; stroke-width: 1; }
+    .turbo { fill: #2f81f7; }
+    .baseline { fill: #f0883e; }
+  </style>
+
+  <rect width="1200" height="700" rx="16" fill="#0d1117" />
+  <text class="title" x="72" y="54">Median environment throughput</text>
+  <text class="subtitle" x="72" y="82">Turbo 0.3.0 vs Stable Retro 1.0.1 · higher is better</text>
+
+  <rect class="turbo" x="850" y="43" width="18" height="18" rx="3" />
+  <text class="label" x="878" y="58">Turbo</text>
+  <rect class="baseline" x="962" y="43" width="18" height="18" rx="3" />
+  <text class="label" x="990" y="58">Stable Retro</text>
+
+  <line class="grid" x1="92" y1="530" x2="1144" y2="530" />
+  <line class="grid" x1="92" y1="448" x2="1144" y2="448" />
+  <line class="grid" x1="92" y1="366" x2="1144" y2="366" />
+  <line class="grid" x1="92" y1="284" x2="1144" y2="284" />
+  <line class="grid" x1="92" y1="202" x2="1144" y2="202" />
+  <line class="grid" x1="92" y1="120" x2="1144" y2="120" />
+
+  <text class="axis" x="78" y="535" text-anchor="end">0</text>
+  <text class="axis" x="78" y="453" text-anchor="end">10k</text>
+  <text class="axis" x="78" y="371" text-anchor="end">20k</text>
+  <text class="axis" x="78" y="289" text-anchor="end">30k</text>
+  <text class="axis" x="78" y="207" text-anchor="end">40k</text>
+  <text class="axis" x="78" y="125" text-anchor="end">50k SPS</text>
+
+  <rect class="turbo" x="128" y="485.2" width="38" height="44.8" rx="4" />
+  <rect class="baseline" x="174" y="526.6" width="38" height="3.4" rx="2" />
+  <rect class="turbo" x="288" y="295.5" width="38" height="234.5" rx="4" />
+  <rect class="baseline" x="334" y="514.8" width="38" height="15.2" rx="3" />
+  <rect class="turbo" x="448" y="236.6" width="38" height="293.4" rx="4" />
+  <rect class="baseline" x="494" y="513.9" width="38" height="16.1" rx="3" />
+
+  <rect class="turbo" x="668" y="459.7" width="38" height="70.3" rx="4" />
+  <rect class="baseline" x="714" y="525.2" width="38" height="4.8" rx="2" />
+  <rect class="turbo" x="828" y="229.3" width="38" height="300.7" rx="4" />
+  <rect class="baseline" x="874" y="508.6" width="38" height="21.4" rx="3" />
+  <rect class="turbo" x="988" y="173.8" width="38" height="356.2" rx="4" />
+  <rect class="baseline" x="1034" y="509.0" width="38" height="21.0" rx="3" />
+
+  <line class="divider" x1="610" y1="108" x2="610" y2="668" />
+
+  <text class="label" x="170" y="559" text-anchor="middle">1 env</text>
+  <text class="value" x="170" y="582" text-anchor="middle">5,458 / 411 SPS</text>
+  <text class="speedup" x="170" y="605" text-anchor="middle">13.27×</text>
+
+  <text class="label" x="330" y="559" text-anchor="middle">16 envs</text>
+  <text class="value" x="330" y="582" text-anchor="middle">28,592 / 1,848 SPS</text>
+  <text class="speedup" x="330" y="605" text-anchor="middle">15.49×</text>
+
+  <text class="label" x="490" y="559" text-anchor="middle">32 envs</text>
+  <text class="value" x="490" y="582" text-anchor="middle">35,778 / 1,958 SPS</text>
+  <text class="speedup" x="490" y="605" text-anchor="middle">18.27×</text>
+
+  <text class="label" x="710" y="559" text-anchor="middle">1 env</text>
+  <text class="value" x="710" y="582" text-anchor="middle">8,575 / 584 SPS</text>
+  <text class="speedup" x="710" y="605" text-anchor="middle">14.68×</text>
+
+  <text class="label" x="870" y="559" text-anchor="middle">16 envs</text>
+  <text class="value" x="870" y="582" text-anchor="middle">36,675 / 2,609 SPS</text>
+  <text class="speedup" x="870" y="605" text-anchor="middle">13.79×</text>
+
+  <text class="label" x="1030" y="559" text-anchor="middle">32 envs</text>
+  <text class="value" x="1030" y="582" text-anchor="middle">43,443 / 2,555 SPS</text>
+  <text class="speedup" x="1030" y="605" text-anchor="middle">17.23×</text>
+
+  <text class="machine" x="330" y="657" text-anchor="middle">AMD Ryzen 5 3600</text>
+  <text class="machine" x="870" y="657" text-anchor="middle">Apple M1 Pro</text>
+</svg>

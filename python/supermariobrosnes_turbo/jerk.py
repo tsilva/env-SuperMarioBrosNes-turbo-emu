@@ -112,22 +112,8 @@ class RetainedProgram:
         self.progress = max(self.progress, float(progress))
 
     @property
-    def rank(self) -> tuple[float, ...]:
-        if self.completed:
-            return (
-                1.0,
-                -float(self.step_count),
-                -float(len(self.runs)),
-                self.mean_return,
-                float(self.progress),
-            )
-        return (
-            0.0,
-            float(self.progress),
-            self.mean_return,
-            -float(self.step_count),
-            -float(len(self.runs)),
-        )
+    def rank(self) -> tuple[float, float]:
+        return (float(self.completed), self.mean_return)
 
 
 @dataclass
