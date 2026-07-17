@@ -113,8 +113,21 @@ def run_checks(skip_checks: bool) -> None:
     env = os.environ.copy()
     env.setdefault("UV_CACHE_DIR", ".uv-cache")
     env.setdefault("ALLOW_MISSING_ROM_TESTS", "1")
-    run(["cargo", "fmt", "--check"])
-    run(["cargo", "check", "--release"])
+    run(["cargo", "fmt", "--check", "--all"])
+    run(
+        [
+            "cargo",
+            "clippy",
+            "--workspace",
+            "--all-targets",
+            "--all-features",
+            "--",
+            "-D",
+            "warnings",
+        ]
+    )
+    run(["cargo", "check", "--workspace", "--release"])
+    run([str(PYTHON), "scripts/check_smb_dependency_closure.py"], env=env)
     run([str(PYTHON), "-m", "maturin", "develop", "--release"], env=env)
     run(["make", "test", "PYTHON=.venv/bin/python"], env=env)
 
