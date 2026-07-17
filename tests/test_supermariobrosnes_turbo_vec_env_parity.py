@@ -21,6 +21,7 @@ from supermariobrosnes_turbo import (
 from supermariobrosnes_turbo import _supermariobrosnes_turbo as native
 
 
+@pytest.mark.retro_oracle
 def test_oracle_is_upstream_stable_retro() -> None:
     assert importlib.metadata.version("stable-retro") == "1.0.1"
 

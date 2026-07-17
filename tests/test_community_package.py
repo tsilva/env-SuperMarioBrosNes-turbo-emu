@@ -28,6 +28,8 @@ def test_project_policy_files_exist():
         "SECURITY.md",
         "SUPPORT.md",
         "GOVERNANCE.md",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
         ".github/CODEOWNERS",
         ".github/pull_request_template.md",
         ".github/ISSUE_TEMPLATE/bug_report.yml",
@@ -35,6 +37,16 @@ def test_project_policy_files_exist():
         ".github/workflows/ci.yml",
     )
     assert all((ROOT / relative).is_file() for relative in expected)
+
+
+def test_installed_commands_cover_import_train_and_play():
+    pyproject = (ROOT / "pyproject.toml").read_text()
+
+    assert "[project.scripts]" in pyproject
+    assert 'smb-turbo-import = "supermariobrosnes_turbo.import_cli:main"' in pyproject
+    assert 'smb-turbo-play = "play:main"' in pyproject
+    assert 'smb-turbo-play-policy = "scripts.play_policy:main"' in pyproject
+    assert 'smb-turbo-train = "train:main"' in pyproject
 
 
 def test_imported_rom_is_ignored_and_excluded_from_distributions():

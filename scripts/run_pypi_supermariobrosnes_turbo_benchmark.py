@@ -294,7 +294,7 @@ def float_matches(value: object, expected: float) -> bool:
 def samples_match(value: object, expected: list[float]) -> bool:
     if not isinstance(value, list) or len(value) != len(expected):
         return False
-    return all(float_matches(actual, sample) for actual, sample in zip(value, expected, strict=True))
+    return all(float_matches(actual, sample) for actual, sample in zip(value, expected))
 
 
 def median(values: list[float]) -> float:

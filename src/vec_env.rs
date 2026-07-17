@@ -895,7 +895,7 @@ fn step_one(
         let mut recent_count = 0usize;
         for _ in 0..config.frame_skip {
             reward += env.step_frame(controller_state);
-            let target = if recent_count % 2 == 0 {
+            let target = if recent_count & 1 == 0 {
                 &mut *frame_a
             } else {
                 &mut *frame_b
@@ -978,7 +978,7 @@ fn step_one_profiled(
         let mut recent_count = 0usize;
         for _ in 0..config.frame_skip {
             reward += env.step_frame_profiled(controller_state, profiler);
-            let target = if recent_count % 2 == 0 {
+            let target = if recent_count & 1 == 0 {
                 &mut *frame_a
             } else {
                 &mut *frame_b
@@ -1932,6 +1932,7 @@ mod tests {
         assert_eq!(env.last_actions, vec![previous_controller_state]);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn reference_resize_plane_area(
         src: &[u8],
         dst: &mut [u8],

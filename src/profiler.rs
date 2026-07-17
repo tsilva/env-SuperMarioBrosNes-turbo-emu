@@ -245,7 +245,8 @@ fn top_opcode_counts(counts: &[u64; CPU_OPCODE_COUNT], top_n: usize) -> Vec<(Str
     let mut entries = counts
         .iter()
         .enumerate()
-        .filter_map(|(opcode, &count)| (count > 0).then(|| (format!("0x{opcode:02X}"), count)))
+        .filter(|&(_opcode, &count)| count > 0)
+        .map(|(opcode, &count)| (format!("0x{opcode:02X}"), count))
         .collect::<Vec<_>>();
     sort_and_truncate(&mut entries, top_n);
     entries
@@ -255,7 +256,8 @@ fn top_pc_counts(counts: &[u64], top_n: usize) -> Vec<(String, u64)> {
     let mut entries = counts
         .iter()
         .enumerate()
-        .filter_map(|(pc, &count)| (count > 0).then(|| (format!("0x{pc:04X}"), count)))
+        .filter(|&(_pc, &count)| count > 0)
+        .map(|(pc, &count)| (format!("0x{pc:04X}"), count))
         .collect::<Vec<_>>();
     sort_and_truncate(&mut entries, top_n);
     entries

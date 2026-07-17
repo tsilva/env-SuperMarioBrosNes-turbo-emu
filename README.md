@@ -31,24 +31,21 @@ end-to-end step and preprocessing throughput of
 
 ## 📦 Install
 
-From a local checkout:
+Install the prebuilt package from PyPI:
 
 ```bash
-git clone https://github.com/tsilva/SuperMarioBros-Nes-turbo.git
-cd SuperMarioBros-Nes-turbo
-uv sync --frozen
-uv run maturin develop --release
+python -m pip install supermariobrosnes-turbo
 ```
 
-**Requirements:** Python `>=3.9`, [uv](https://docs.astral.sh/uv/), and a Rust
-toolchain. Add `--extra playback` to `uv sync` for authenticated Hugging Face
-policy downloads.
+Prebuilt wheels support Python `>=3.9` on macOS, Linux, and Windows without a
+Rust toolchain. See [CONTRIBUTING.md](CONTRIBUTING.md) for the source checkout
+and development setup.
 
 **ROM setup:** ROM files are not included. Import the supported ROM from a file,
 directory, or ZIP archive:
 
 ```bash
-uv run python -m supermariobrosnes_turbo.import /path/to/roms
+smb-turbo-import /path/to/roms
 ```
 
 The importer uses the Stable Retro-compatible `RETRO_DATA_PATH` layout, or the
@@ -102,8 +99,8 @@ stepping again.
 ## 🏁 Train and play
 
 ```bash
-uv run python train.py Level1-1
-uv run python play.py Level1-1
+smb-turbo-train Level1-1
+smb-turbo-play Level1-1
 ```
 
 **Training** searches observation-free `(action, duration)` programs and retains
@@ -114,9 +111,27 @@ policies are protected unless `--force` is passed. `Level1-1` writes
 available and switches policies as levels change. Run either command with
 `--help` for configuration options.
 
+The checkout-compatible `uv run python train.py Level1-1` and
+`uv run python play.py Level1-1` entry points remain available.
+
+To compare the retained-knowledge search with a fixed-width beam while keeping
+the same action-run representation, reward, episode boundary, and playback
+format, run:
+
+```bash
+uv run python train_beam.py Level1-1
+uv run python scripts/play_policy.py runs/Level1-1-beam/Level1-1.zip --state Level1-1
+```
+
+Beam runs use a separate `runs/<Level>-beam/` directory and do not replace the
+default JERK policy selected by `play.py`.
+
 ## 🧰 Commands
 
 ```bash
+smb-turbo-import /path/to/roms       # import the supported ROM
+smb-turbo-train Level1-1             # train a level-keyed JERK policy
+smb-turbo-play Level1-1              # play manually or use its trained policy
 uv sync --frozen --extra dev          # install development dependencies
 uv run maturin develop --release      # build the optimized Rust extension
 make test                             # run Rust and Python tests
@@ -142,6 +157,8 @@ See [BENCHMARKS.md](BENCHMARKS.md) for results, protocol, and machine details.
   `Actions.DISCRETE` provides Stable Retro-compatible 36-way actions.
 - **Playback:** Play commands require a discoverable native SDL2 library and
   open local gameplay windows.
+- **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) and follow the
+  [Code of Conduct](CODE_OF_CONDUCT.md).
 - **Affiliation:** This unofficial research project is not affiliated with or
   endorsed by Nintendo. See [NOTICE.md](NOTICE.md).
 

@@ -208,9 +208,9 @@ def infer_status(aggregate: dict[str, Any]) -> str:
     limit_stop_reason = aggregate.get("limit_stop_reason")
     ratio = aggregate.get("median_pair_ratio")
     if tier == "local_triage":
-        if isinstance(ratio, int | float) and ratio >= 1.03:
+        if isinstance(ratio, (int, float)) and ratio >= 1.03:
             return "triage_promote"
-        if isinstance(ratio, int | float) and ratio < 1.01:
+        if isinstance(ratio, (int, float)) and ratio < 1.01:
             return "triage_discard"
         return "inconclusive"
     if tier == "stack_acceptance":
@@ -221,14 +221,14 @@ def infer_status(aggregate: dict[str, Any]) -> str:
         if (
             aggregate.get("validity_passed") is True
             and load_ok
-            and isinstance(ratio, int | float)
+            and isinstance(ratio, (int, float))
             and ratio >= 1.03
             and isinstance(faster, int)
             and faster >= 6
         ):
             return "keep_stack"
         if decision == "converged_no_meaningful_win" or (
-            isinstance(ratio, int | float) and ratio <= 1.0
+            isinstance(ratio, (int, float)) and ratio <= 1.0
         ):
             return "discard_stack"
         return "inconclusive"
@@ -254,7 +254,7 @@ def infer_status(aggregate: dict[str, Any]) -> str:
         limit_stop_reason is None
         and load_ok
         and gate_truths(aggregate, "stability_gates")
-        and isinstance(ratio, int | float)
+        and isinstance(ratio, (int, float))
         and ratio > 1.0
         and ci_low_ok
         and faster_ok
@@ -262,7 +262,7 @@ def infer_status(aggregate: dict[str, Any]) -> str:
         return "keep_small_gain"
 
     if decision == "converged_no_meaningful_win" or (
-        isinstance(ratio, int | float) and ratio <= 1.0
+        isinstance(ratio, (int, float)) and ratio <= 1.0
     ):
         return "discard"
     return "inconclusive"
@@ -275,7 +275,7 @@ def json_cell(value: Any) -> str:
         return value
     if isinstance(value, bool):
         return "true" if value else "false"
-    if isinstance(value, int | float):
+    if isinstance(value, (int, float)):
         return str(value)
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
@@ -454,7 +454,7 @@ def read_tsv_tail(path: Path, limit: int = 5) -> list[dict[str, str]]:
     if len(lines) <= 1:
         return []
     header = lines[0].split("\t")
-    rows = [dict(zip(header, line.split("\t"), strict=False)) for line in lines[1:]]
+    rows = [dict(zip(header, line.split("\t"))) for line in lines[1:]]
     return rows[-limit:]
 
 

@@ -278,7 +278,10 @@ def test_record_appends_events_and_results_tsv(tmp_path: Path) -> None:
     assert event["status"] == "triage_promote"
     assert event["commit"] == "2" * 40
     assert rows[0].split("\t") == list(RESULTS_TSV_COLUMNS)
-    values = dict(zip(rows[0].split("\t"), rows[1].split("\t"), strict=True))
+    header = rows[0].split("\t")
+    result = rows[1].split("\t")
+    assert len(header) == len(result)
+    values = dict(zip(header, result))
     assert values["status"] == "triage_promote"
     assert values["median_pair_ratio"] == "1.04"
     assert values["description"] == "screen passed"

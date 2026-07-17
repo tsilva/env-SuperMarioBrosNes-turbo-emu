@@ -35,7 +35,8 @@ def assert_step_equal(
     actual: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     expected: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    for actual_array, expected_array in zip(actual, expected, strict=True):
+    assert len(actual) == len(expected)
+    for actual_array, expected_array in zip(actual, expected):
         np.testing.assert_array_equal(actual_array, expected_array)
 
 
@@ -71,7 +72,7 @@ def test_repeated_state_lanes_match_independent_lane_references() -> None:
         ]
         for lane, state in enumerate(lane_states):
             ref_index = GROUP_STATES.index(state)
-            for actual_array, expected_array in zip(vector_result, ref_results[ref_index], strict=True):
+            for actual_array, expected_array in zip(vector_result, ref_results[ref_index]):
                 np.testing.assert_array_equal(actual_array[lane], expected_array[0])
 
 
@@ -92,7 +93,7 @@ def test_repeated_state_lanes_match_references_after_autoreset() -> None:
         saw_done |= bool(np.any(vector_result[2]) or np.any(vector_result[3]))
         for lane, state in enumerate(lane_states):
             ref_index = GROUP_STATES.index(state)
-            for actual_array, expected_array in zip(vector_result, ref_results[ref_index], strict=True):
+            for actual_array, expected_array in zip(vector_result, ref_results[ref_index]):
                 np.testing.assert_array_equal(actual_array[lane], expected_array[0])
         if saw_done:
             return

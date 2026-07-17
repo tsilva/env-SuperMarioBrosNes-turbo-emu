@@ -2,7 +2,12 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Add PyPI-first installation and installed ROM import, training, and playback
+  commands while retaining the checkout entry points.
+- Add contribution and conduct policies, expand oldest/latest Python CI, and
+  make strict Clippy validation part of the contributor workflow.
+- Clarify the licensing boundary for promotional gameplay media and remove
+  repository-local editor color customization.
 
 ## 0.3.1 - 2026-07-16
 

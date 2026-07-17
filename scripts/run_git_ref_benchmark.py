@@ -1022,7 +1022,7 @@ def base_aggregate(
         "state_sha256": state_sha256,
         "load_1min_labels": load_labels,
         "load_1min_values": load_values,
-        "load_1min_by_label": dict(zip(load_labels, load_values, strict=False)),
+        "load_1min_by_label": dict(zip(load_labels, load_values)),
         "load_policy": {
             "max_load": args.max_load,
             "force_busy": bool(args.force_busy),

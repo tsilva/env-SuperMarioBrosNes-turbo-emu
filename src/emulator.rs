@@ -240,6 +240,7 @@ impl Ppu {
         (self.bg_color_index(x, y), self.bg_pixel_opaque(x, y))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn load_fceu_state(
         &mut self,
         ntar: &[u8],
@@ -2245,6 +2246,9 @@ impl NesEmulator {
         self.lives == -1
     }
 
+    // Keeping each fast-path arm explicit makes the fallback-to-interpreter
+    // boundary auditable in this performance-critical dispatch loop.
+    #[allow(clippy::collapsible_match)]
     fn run_frame(&mut self, buttons: u8) {
         self.controller_state = buttons;
         let mut cpu_cycle_guard = 0usize;
@@ -2394,6 +2398,7 @@ impl NesEmulator {
         }
     }
 
+    #[allow(clippy::collapsible_match)]
     fn run_frame_profiled(&mut self, buttons: u8, profiler: &mut Profiler) {
         self.controller_state = buttons;
         let mut cpu_cycle_guard = 0usize;

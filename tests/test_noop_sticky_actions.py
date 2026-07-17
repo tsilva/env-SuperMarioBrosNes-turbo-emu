@@ -58,7 +58,8 @@ def assert_step_equal(
     actual: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
     expected: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    for actual_array, expected_array in zip(actual, expected, strict=True):
+    assert len(actual) == len(expected)
+    for actual_array, expected_array in zip(actual, expected):
         np.testing.assert_array_equal(actual_array, expected_array)
 
 

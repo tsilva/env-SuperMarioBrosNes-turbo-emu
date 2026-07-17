@@ -16,3 +16,8 @@ at reproducible locations. They are not intended to contain a complete ROM.
 Release checks reject known ROM file formats from source and wheel artifacts.
 Do not contribute ROMs, extracted game assets, proprietary firmware, or other
 content that you are not authorized to redistribute.
+
+Promotional media in this repository contains captured gameplay used to show
+the environment and its measured throughput. Gameplay media, packaged states,
+third-party names, and marks are excluded from the MIT license; no rights in
+them are granted by this repository.

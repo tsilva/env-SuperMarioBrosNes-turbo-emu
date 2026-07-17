@@ -131,7 +131,7 @@ def test_explicit_thread_counts_preserve_deterministic_lane_contract() -> None:
 
     def assert_result_equal(actual: tuple[object, ...], expected: tuple[object, ...]) -> None:
         assert len(actual) == len(expected)
-        for actual_value, expected_value in zip(actual, expected, strict=True):
+        for actual_value, expected_value in zip(actual, expected):
             if isinstance(actual_value, dict):
                 assert isinstance(expected_value, dict)
                 assert actual_value.keys() == expected_value.keys()

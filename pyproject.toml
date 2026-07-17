@@ -42,6 +42,12 @@ dependencies = [
   "numpy>=1.26",
 ]
 
+[project.scripts]
+smb-turbo-import = "supermariobrosnes_turbo.import_cli:main"
+smb-turbo-play = "play:main"
+smb-turbo-play-policy = "scripts.play_policy:main"
+smb-turbo-train = "train:main"
+
 [project.urls]
 Homepage = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
 Documentation = "https://github.com/tsilva/SuperMarioBros-Nes-turbo#readme"
@@ -73,6 +79,14 @@ features = ["pyo3/extension-module"]
 include = [
   "python/supermariobrosnes_turbo/data/**/*.state",
   "python/supermariobrosnes_turbo/py.typed",
+  "play.py",
+  "train.py",
+  "scripts/__init__.py",
+  "scripts/benchmark_rom.py",
+  "scripts/benchmark_sps.py",
+  "scripts/benchmark_workload.py",
+  "scripts/play.py",
+  "scripts/play_policy.py",
 ]
 exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]
 

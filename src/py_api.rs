@@ -1,3 +1,7 @@
+// PyO3's generated return conversion code triggers false-positive
+// useless-conversion warnings for PyResult methods.
+#![allow(clippy::useless_conversion)]
+
 use numpy::{PyReadonlyArray1, PyReadwriteArray1, PyReadwriteArray4, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -18,6 +22,8 @@ pub struct RetroVecEnv {
     num_threads: usize,
 }
 
+// PyO3 exposes wide buffer-oriented methods directly to Python.
+#[allow(clippy::too_many_arguments)]
 #[pymethods]
 impl RetroVecEnv {
     #[new]
@@ -84,8 +90,8 @@ impl RetroVecEnv {
         if matches!(num_threads, Some(value) if value <= 0) {
             return Err(PyValueError::new_err("num_threads must be > 0"));
         }
-        let crop_mode = build_crop_mode(&crop_mode)?;
-        let resize_algorithm = build_resize_algorithm(&resize_algorithm)?;
+        let crop_mode = build_crop_mode(crop_mode)?;
+        let resize_algorithm = build_resize_algorithm(resize_algorithm)?;
         let available_threads = thread::available_parallelism()
             .map(|count| count.get())
             .unwrap_or(1);
