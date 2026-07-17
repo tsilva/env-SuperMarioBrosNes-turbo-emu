@@ -200,6 +200,7 @@ impl MarioVecEnv {
         if self.initial_states.is_empty() {
             for env_idx in 0..self.config.num_envs {
                 self.envs[env_idx].reset();
+                self.envs[env_idx].prime_cold_boot();
                 self.last_actions[env_idx] = 0;
                 self.apply_noop_reset(env_idx);
             }
@@ -723,6 +724,7 @@ impl MarioVecEnv {
     ) -> Result<(), StateLoadError> {
         if self.initial_states.is_empty() {
             self.envs[env_idx].reset();
+            self.envs[env_idx].prime_cold_boot();
             self.active_state_indices[env_idx] = -1;
             self.last_actions[env_idx] = 0;
             self.apply_noop_reset(env_idx);

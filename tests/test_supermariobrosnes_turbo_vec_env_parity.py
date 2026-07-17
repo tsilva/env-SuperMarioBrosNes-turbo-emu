@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import gzip
 import importlib.metadata
 import inspect
+from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -10,12 +14,14 @@ from rom_helpers import require_rom
 from scripts.benchmark_sps import (
     GAME,
     PreprocessingConfig,
+    create_stable_retro_overlay,
     create_stable_retro_vector_env,
     named_action_mask,
 )
 from supermariobrosnes_turbo import (
     Actions,
     NES_BUTTONS,
+    State,
     SuperMarioBrosNesTurboVecEnv,
 )
 from supermariobrosnes_turbo import _supermariobrosnes_turbo as native
@@ -56,6 +62,73 @@ def test_public_signature_preserves_vector_features() -> None:
         assert name in params
     for name in ("done_on", "autoreset_mode"):
         assert name not in params
+
+
+def test_public_state_masks_high_palette_bits_without_aborting(tmp_path: Path) -> None:
+    rom_path = require_rom()
+    repo_root = Path(__file__).resolve().parents[1]
+    packaged_state = (
+        repo_root
+        / "python"
+        / "supermariobrosnes_turbo"
+        / "data"
+        / GAME
+        / "Level1-1.state"
+    )
+    raw_state = bytearray(gzip.decompress(packaged_state.read_bytes()))
+    palette_field = b"PRAM" + (32).to_bytes(4, "little")
+    palette_offset = raw_state.index(palette_field) + len(palette_field)
+
+    low_state = raw_state.copy()
+    low_state[palette_offset] = 0x00
+    high_state = raw_state.copy()
+    high_state[palette_offset] = 0x40
+    low_path = tmp_path / "low-palette.state"
+    high_path = tmp_path / "high-palette.state"
+    low_path.write_bytes(low_state)
+    high_path.write_bytes(high_state)
+
+    script = r"""
+import sys
+import numpy as np
+from supermariobrosnes_turbo import Actions, NES_BUTTONS, SuperMarioBrosNesTurboVecEnv
+
+def rollout(state_path):
+    env = SuperMarioBrosNesTurboVecEnv(
+        "SuperMarioBros-Nes-v0",
+        state=state_path,
+        rom_path=sys.argv[1],
+        num_envs=1,
+        use_restricted_actions=Actions.ALL,
+        frame_skip=4,
+        frame_stack=1,
+        obs_grayscale=True,
+        obs_resize=(84, 84),
+        obs_resize_algorithm="area",
+        obs_layout="chw",
+    )
+    try:
+        reset_obs, _ = env.reset()
+        action = np.zeros((1, len(NES_BUTTONS)), dtype=np.uint8)
+        step_result = env.step(action)
+        return (reset_obs, *step_result[:4])
+    finally:
+        env.close()
+
+low = rollout(sys.argv[2])
+high = rollout(sys.argv[3])
+for low_value, high_value in zip(low, high, strict=True):
+    np.testing.assert_array_equal(low_value, high_value)
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(rom_path), str(low_path), str(high_path)],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 @pytest.mark.retro_oracle
@@ -124,6 +197,66 @@ def test_upstream_oracle_exact_short_sequence_parity(num_envs: int) -> None:
     finally:
         retro_env.close()
         fast_env.close()
+
+
+@pytest.mark.retro_oracle
+def test_upstream_oracle_state_none_cold_boot_parity() -> None:
+    import stable_retro
+
+    rom_path = require_rom()
+    overlay, integration_path = create_stable_retro_overlay(rom_path, [None])
+    stable_retro.data.add_custom_integration(integration_path)
+    retro_env = stable_retro.RetroEnv(
+        game=GAME,
+        state=stable_retro.State.NONE,
+        use_restricted_actions=stable_retro.Actions.ALL,
+        inttype=stable_retro.data.Integrations.ALL,
+        render_mode="rgb_array",
+    )
+    fast_env = SuperMarioBrosNesTurboVecEnv(
+        GAME,
+        state=State.NONE,
+        rom_path=rom_path,
+        num_envs=1,
+        use_restricted_actions=Actions.ALL,
+        frame_skip=1,
+        frame_stack=1,
+        obs_grayscale=False,
+        obs_crop=(0, 0, 0, 0),
+        obs_resize=(224, 240),
+        obs_resize_algorithm="area",
+        obs_layout="hwc",
+    )
+    buttons = tuple(stable_retro.get_system_info("Nes")["buttons"])
+    action_sequence = (
+        ("noop", 30),
+        ("start", 8),
+        ("noop", 30),
+        ("right_b", 120),
+        ("right_a_b", 60),
+    )
+    try:
+        retro_obs, _ = retro_env.reset()
+        fast_obs, _ = fast_env.reset()
+        np.testing.assert_array_equal(retro_obs, fast_obs[0])
+
+        for action_name, count in action_sequence:
+            action = named_action_mask(action_name, buttons)
+            for _ in range(count):
+                retro_obs, retro_reward, retro_terminated, retro_truncated, _ = retro_env.step(
+                    action
+                )
+                fast_obs, fast_rewards, fast_terminated, fast_truncated, _ = fast_env.step(
+                    action[None, :]
+                )
+                np.testing.assert_array_equal(retro_obs, fast_obs[0])
+                assert retro_reward == fast_rewards[0]
+                assert retro_terminated == bool(fast_terminated[0])
+                assert retro_truncated == bool(fast_truncated[0])
+    finally:
+        retro_env.close()
+        fast_env.close()
+        overlay.cleanup()
 
 
 def test_action_and_layout_runtime_smoke() -> None:

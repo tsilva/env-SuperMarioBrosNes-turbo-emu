@@ -1421,7 +1421,7 @@ impl Ppu {
 
     fn refresh_gray_palette_cache(&mut self) {
         for (dst, &color) in self.palette_gray.iter_mut().zip(self.palette.iter()) {
-            *dst = NES_GRAY_PALETTE[color as usize];
+            *dst = NES_GRAY_PALETTE[(color & 0x3f) as usize];
         }
         *self.gray_bg_quad_cache.tables.get_mut().unwrap() =
             build_gray_bg_quad_tables(&self.palette_gray);
@@ -1429,7 +1429,7 @@ impl Ppu {
     }
 
     fn refresh_gray_palette_entry(&mut self, idx: usize) {
-        self.palette_gray[idx] = NES_GRAY_PALETTE[self.palette[idx] as usize];
+        self.palette_gray[idx] = NES_GRAY_PALETTE[(self.palette[idx] & 0x3f) as usize];
         if idx == 0 {
             self.gray_bg_quad_cache.dirty.store(0x0f, Ordering::Relaxed);
         } else if idx < 16 && idx & 3 != 0 {
@@ -1990,13 +1990,21 @@ impl NesEmulator {
     pub fn reset(&mut self) {
         self.cpu = Cpu::new();
         self.ppu.reset();
-        self.ram = [0; 2048];
+        self.ram = [0xff; 2048];
         self.controller_state = 0;
         self.controller_shift = 0;
         self.controller_strobe = false;
         self.extra_cycles = 0;
         self.done = false;
         self.cpu.pc = self.cpu_read_u16(0xfffc);
+        self.refresh_smb_state();
+    }
+
+    pub(crate) fn prime_cold_boot(&mut self) {
+        // Stable Retro consumes this power-on frame before its first public
+        // step. Keep it at the State.NONE environment boundary so reset()
+        // itself preserves the exact FCEU RAM initialization contract.
+        self.run_frame(0);
         self.refresh_smb_state();
     }
 
@@ -4978,11 +4986,14 @@ mod tests {
             (0x3f0f, 0x31),
             (0x3f11, 0x0f),
             (0x3f10, 0x30),
+            (0x3f00, 0x40),
+            (0x3f01, 0x7f),
+            (0x3f05, 0xff),
         ] {
             ppu.ppu_write(addr, value);
             let mut expected_gray = [0; 32];
             for (dst, &color) in expected_gray.iter_mut().zip(ppu.palette.iter()) {
-                *dst = NES_GRAY_PALETTE[color as usize];
+                *dst = NES_GRAY_PALETTE[(color & 0x3f) as usize];
             }
             assert_eq!(ppu.palette_gray, expected_gray);
             ppu.refresh_gray_bg_quad_tables();
@@ -4991,6 +5002,26 @@ mod tests {
                 build_gray_bg_quad_tables(&expected_gray)
             );
         }
+    }
+
+    #[test]
+    fn gray_palette_cache_masks_high_bits_on_full_refresh() {
+        let mut ppu = Ppu::new(vec![0; 8192], true);
+        ppu.palette[..3].copy_from_slice(&[0x40, 0x7f, 0xff]);
+
+        ppu.refresh_gray_palette_cache();
+
+        assert_eq!(&ppu.palette[..3], &[0x40, 0x7f, 0xff]);
+        assert_eq!(ppu.palette_gray[0], NES_GRAY_PALETTE[0x00]);
+        assert_eq!(ppu.palette_gray[1], NES_GRAY_PALETTE[0x3f]);
+        assert_eq!(ppu.palette_gray[2], NES_GRAY_PALETTE[0x3f]);
+    }
+
+    #[test]
+    fn reset_uses_fceu_power_on_ram_pattern() {
+        let emu = NesEmulator::new_with_options(make_test_cart_with_prg(vec![0xea; 32768]), true);
+
+        assert!(emu.ram.iter().all(|&value| value == 0xff));
     }
 
     #[test]
