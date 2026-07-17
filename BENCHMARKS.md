@@ -9,14 +9,15 @@ specifications.
 
 ## Results
 
-SuperMarioBros-Nes-turbo `0.3.0` was compared with upstream
-`stable-retro==1.0.1` using seven alternating paired runs per environment count.
+SuperMarioBros-Nes-turbo was compared with upstream `stable-retro==1.0.1`
+using seven alternating paired runs per environment count. Turbo versions are
+listed with each machine's runtime specifications.
 
 | Machine ID | Commit | Envs | Median SPS | Baseline median SPS | Median speedup | 95% bootstrap CI | Measured pairs |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `amd-ryzen-5-3600-6c` | `545131bf` | 1 | 5,458.4 | 411.4 | 13.27x | 12.85x–13.33x | 7 |
-| `amd-ryzen-5-3600-6c` | `545131bf` | 16 | 28,591.6 | 1,847.7 | 15.49x | 15.30x–15.83x | 7 |
-| `amd-ryzen-5-3600-6c` | `545131bf` | 32 | 35,778.4 | 1,958.0 | 18.27x | 18.20x–18.30x | 7 |
+| `amd-ryzen-5-3600-6c` | `3131fc0c` | 1 | 5,403.6 | 406.0 | 13.10x | 13.07x–13.35x | 7 |
+| `amd-ryzen-5-3600-6c` | `3131fc0c` | 16 | 28,234.4 | 1,841.4 | 15.36x | 15.22x–15.64x | 7 |
+| `amd-ryzen-5-3600-6c` | `3131fc0c` | 32 | 35,104.4 | 1,956.3 | 17.95x | 17.80x–18.08x | 7 |
 | `apple-m1-pro-8c` | `ae1171e` | 1 | 8,574.5 | 584.3 | 14.68x | 14.61x–14.78x | 7 |
 | `apple-m1-pro-8c` | `ae1171e` | 16 | 36,675.3 | 2,608.5 | 13.79x | 13.45x–14.55x | 7 |
 | `apple-m1-pro-8c` | `ae1171e` | 32 | 43,443.0 | 2,555.0 | 17.23x | 16.38x–17.86x | 7 |
@@ -26,7 +27,8 @@ bootstrap interval for the paired speedup ratio.
 
 ## Protocol
 
-Both backends use the canonical public `step()` workload: frame skip 4, four
+Both backends use the canonical public `step()` workload: canonical round-robin
+`Level1-1` through `Level1-4` lane states, frame skip 4, no max-pooling, four
 grayscale frames, a zeroed 32-row HUD, integer area resize to `84x84`, CHW
 output, deterministic sampled actions, and manual terminal-lane resets. Runs
 alternate backend order within each environment-count shape to reduce ordering
@@ -55,10 +57,10 @@ preflight to pass.
 | Storage | 1 TB nominal WDC WDS100T2B0C-00PXH0 NVMe SSD (931.5 GiB reported) |
 | OS | Ubuntu 26.04, Linux 7.0.0-27-generic, glibc 2.43, x86_64 |
 | CPU frequency policy | `amd_pstate` active, `powersave` scaling governor |
-| Runtime | CPython 3.13.14; `supermariobrosnes-turbo==0.3.0`, `stable-retro==1.0.1`, `numpy==2.5.0`, `gymnasium==1.3.0` |
+| Runtime | CPython 3.13.14; `supermariobrosnes-turbo==0.3.2`, `stable-retro==1.0.1`, `numpy==2.5.0`, `gymnasium==1.3.0` |
 
-The Ryzen results were measured from clean commit `545131bf` after the
-ROM-backed parity checks passed. The session-start one-minute load was 0.23,
+The Ryzen results were measured from clean commit `3131fc0c` after the
+ROM-backed parity checks passed. The session-start one-minute load was 0.36,
 below the protocol limit of 4.0.
 
 ### `apple-m1-pro-8c`
