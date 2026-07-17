@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.3.2 - 2026-07-17
+
 - Replace provider-side saved-state sampling and per-lane constructor states
   with immutable `state_catalog` entries selected explicitly through
   `options["state_indices"]`, including active-index and reset-info reporting.
