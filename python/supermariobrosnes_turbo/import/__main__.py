@@ -7,8 +7,9 @@ from typing import Sequence
 from ..roms import import_roms
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
+        prog=prog,
         description="Import the supported Super Mario Bros ROM into Stable Retro-compatible data.",
     )
     parser.add_argument(
@@ -21,8 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def main(argv: Sequence[str] | None = None, *, prog: str | None = None) -> int:
+    args = build_parser(prog=prog).parse_args(argv)
     try:
         destination = import_roms(args.paths)
     except (FileNotFoundError, OSError) as exc:

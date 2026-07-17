@@ -503,6 +503,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         num_envs: int = 1,
         num_threads: int | None = None,
         rom_path: str | Path | None = None,
+        state_dir: str | Path | None = None,
         action_set: str | Sequence[str] | None = None,
         obs_copy: str = "copy",
         obs_resize: Sequence[int] | None = None,
@@ -573,7 +574,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         )
         initial_states, initial_state_names, initial_state_weights = _normalize_initial_state_config(
             state,
-            None,
+            state_dir,
             num_envs,
         )
         self.obs_layout = _normalize_obs_layout(obs_layout)

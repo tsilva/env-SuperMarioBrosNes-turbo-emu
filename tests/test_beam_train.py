@@ -3,9 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import train_beam
+from supermariobrosnes_turbo import beam_training as train_beam
+from supermariobrosnes_turbo import training
 from supermariobrosnes_turbo.beam import BeamSearch
-from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy, RetainedProgram
+from supermariobrosnes_turbo.jerk import (
+    ActionRun,
+    JerkPolicy,
+    RetainedProgram,
+    run_directory_for_state,
+)
 
 
 ACTIONS = ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left")
@@ -84,12 +90,36 @@ def test_beam_observation_refreshes_parents_and_emits_compatible_policy() -> Non
     assert policy.metadata["search_algorithm"] == "beam"
 
 
-def test_beam_cli_defaults_to_separate_output_and_shared_action_contract() -> None:
-    args = train_beam.build_parser().parse_args(["Level1-1"])
+def test_beam_active_best_candidate_carries_observed_progress() -> None:
+    search = _search()
+    search.next_actions()
 
-    assert args.n_envs == 64
+    search.observe([5.0], [False], progresses=[654.0])
+
+    candidate = search.best_candidate()
+    assert candidate is not None
+    assert candidate.progress == 654.0
+
+    search.next_actions()
+    search.observe(
+        [-10.0],
+        [True],
+        {0: SimpleNamespace(completed=False, progress=999.0)},
+        progresses=[999.0],
+    )
+    retained = search.best_candidate()
+    assert retained is not None
+    assert retained.progress == 654.0
+
+
+def test_beam_cli_defaults_to_separate_output_and_shared_action_contract() -> None:
+    parser = training.build_parser()
+    args = parser.parse_args(["Level1-1", "--algorithm", "beam"])
+    training._apply_algorithm_defaults(parser, args)
+
+    assert args.lanes == 64
     assert args.beam_width == 16
-    assert args.stop_on_completion is True
-    assert train_beam.run_directory_for_level("Level1-1") == Path(
+    assert args.continue_after_completion is False
+    assert run_directory_for_state("Level1-1", algorithm="beam") == Path(
         "runs/Level1-1-beam"
     )

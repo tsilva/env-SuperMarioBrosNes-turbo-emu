@@ -1,94 +1,155 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
+from supermariobrosnes_turbo import cli, state_playback, training
 from supermariobrosnes_turbo.jerk import (
-    normalize_level_name,
-    policy_path_for_level,
-    run_directory_for_level,
+    policy_path_for_state,
+    resolve_state_name,
+    run_directory_for_state,
+    validate_state_name,
 )
-from train import build_parser as build_train_parser
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_level_player():
-    spec = importlib.util.spec_from_file_location("level_policy_cli", ROOT / "play.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+@pytest.mark.parametrize("state", ["Level1-1", "Level2-1-clouds-easy", "Custom"])
+def test_state_deterministically_selects_run_and_policy_names(state: str) -> None:
+    assert validate_state_name(state) == state
+    assert run_directory_for_state(state) == Path(f"runs/{state}-jerk")
+    assert policy_path_for_state(state) == Path(
+        f"runs/{state}-jerk/{state}.zip"
+    )
 
 
-def test_level_deterministically_selects_run_and_policy_names() -> None:
-    assert normalize_level_name("Level1-1") == "Level1-1"
-    assert run_directory_for_level("Level1-1") == Path("runs/Level1-1-jerk")
-    assert policy_path_for_level("Level1-1") == Path("runs/Level1-1-jerk/Level1-1.zip")
+@pytest.mark.parametrize("state", ["", ".", "..", "../Level1-1", "a/b", r"a\b"])
+def test_path_like_state_names_cannot_escape_policy_directory(state: str) -> None:
+    with pytest.raises(ValueError, match="state name|state identifier"):
+        policy_path_for_state(state)
 
 
-@pytest.mark.parametrize("level", ["level1-1", "Level1", "../Level1-1", "Level0-1"])
-def test_invalid_level_names_cannot_escape_policy_directory(level: str) -> None:
-    with pytest.raises(ValueError, match="invalid level name"):
-        policy_path_for_level(level)
+def test_state_resolution_is_exact_and_supports_custom_names(tmp_path: Path) -> None:
+    tmp_path.joinpath("Custom.state").write_bytes(b"state")
+
+    assert resolve_state_name("Custom", state_dir=tmp_path) == "Custom"
+    with pytest.raises(ValueError, match="unknown state 'custom'"):
+        resolve_state_name("custom", state_dir=tmp_path)
+    with pytest.raises(ValueError, match="unknown state '1-1'"):
+        resolve_state_name("1-1", state_dir=tmp_path)
 
 
-def test_train_command_takes_level_as_its_positional_key() -> None:
-    args = build_train_parser().parse_args(["Level1-1"])
+def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
+    parser = training.build_parser()
+    args = parser.parse_args(
+        [
+            "Level1-1",
+            "--transitions",
+            "100",
+            "--lanes",
+            "4",
+            "--continue-after-completion",
+            "--overwrite",
+        ]
+    )
 
-    assert args.level == "Level1-1"
-    assert args.output is None
+    assert args.state == "Level1-1"
+    assert args.transitions == 100
+    assert args.lanes == 4
+    assert args.continue_after_completion
+    assert args.overwrite
+    with pytest.raises(SystemExit):
+        parser.parse_args(["Level1-1", "--timesteps", "100"])
 
 
-def test_play_command_resolves_level_policy_and_forwards_options(
-    tmp_path: Path,
-) -> None:
-    player = load_level_player()
-    policy = tmp_path / "Level1-1-jerk" / "Level1-1.zip"
+def test_algorithm_specific_options_are_rejected() -> None:
+    parser = training.build_parser()
+    args = parser.parse_args(
+        ["Level1-1", "--algorithm", "beam", "--retained-limit", "3"]
+    )
+
+    with pytest.raises(SystemExit):
+        training._apply_algorithm_defaults(parser, args)
+
+
+def test_play_parser_owns_modes_and_playback_options() -> None:
+    parser = state_playback.build_parser()
+    assert parser.parse_args([]).state == "Level1-1"
+    args = parser.parse_args(
+        ["Level1-1", "--policy", "policy.zip", "--backend", "native"]
+    )
+
+    assert args.state == "Level1-1"
+    assert args.policy == "policy.zip"
+    assert args.backend == "native"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["Level1-1", "--manual", "--policy", "policy.zip"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["Level1-1", "--rom-path", "mario.nes"])
+
+
+def test_play_without_state_starts_from_level_1_1(monkeypatch) -> None:
+    played: list[str] = []
+
+    class Player:
+        def __init__(self, args) -> None:
+            played.append(args.state)
+
+        def run(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        state_playback,
+        "resolve_state_name",
+        lambda state, **_kwargs: state,
+    )
+    monkeypatch.setattr(state_playback, "SdlExternalVecPlayer", Player)
+
+    assert state_playback.main(["--manual"]) == 0
+    assert played == ["Level1-1"]
+
+
+def test_play_command_resolves_exact_state_policy(tmp_path: Path) -> None:
+    policy = policy_path_for_state("Custom", runs_root=tmp_path)
     policy.parent.mkdir(parents=True)
     policy.touch()
 
-    argv = player.policy_playback_argv(
-        "Level1-1",
-        ["--backend", "native"],
-        runs_root=tmp_path,
+    assert state_playback.resolve_state_policy("Custom", runs_dir=tmp_path) == policy
+    assert state_playback.resolve_state_policy("Level1-1", runs_dir=tmp_path) is None
+
+
+def test_unified_cli_exposes_only_import_train_and_play() -> None:
+    parser = cli.build_parser()
+    help_text = parser.format_help()
+
+    assert "{import,train,play}" in help_text
+    pyproject = ROOT.joinpath("pyproject.toml").read_text()
+    assert 'smb-turbo = "supermariobrosnes_turbo.cli:main"' in pyproject
+    assert "smb-turbo-train" not in pyproject
+
+
+@pytest.mark.parametrize("launcher", ["train.py", "play.py"])
+def test_root_launchers_delegate_to_package_cli(launcher: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, str(ROOT / launcher), "--help"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
     )
 
-    assert argv == [
-        str(policy),
-        "--state",
-        "Level1-1",
-        "--level-policy-root",
-        str(tmp_path),
-        "--backend",
-        "native",
-    ]
+    assert completed.returncode == 0, completed.stderr
+    assert "Level1-1" in completed.stdout
 
 
-def test_play_command_uses_manual_play_for_a_level_without_a_policy(
-    tmp_path: Path,
-) -> None:
-    player = load_level_player()
+def test_train_main_dispatches_beam(monkeypatch) -> None:
+    from supermariobrosnes_turbo import beam_training
 
-    assert (
-        player.policy_playback_argv(
-            "Level9-9", ["--rom-path", "mario.nes"], runs_root=tmp_path
-        )
-        is None
-    )
-    assert player.manual_playback_argv("Level9-9", ["--rom-path", "mario.nes"]) == [
-        "--state",
-        "Level9-9",
-        "--rom-path",
-        "mario.nes",
-    ]
+    monkeypatch.setattr(training, "resolve_state_name", lambda state, **_kwargs: state)
+    monkeypatch.setattr(beam_training, "run", lambda args, _parser: int(args.algorithm == "beam"))
 
-
-def test_play_command_rejects_a_separate_state_override() -> None:
-    player = load_level_player()
-
-    with pytest.raises(ValueError, match="derives --state from the level"):
-        player.manual_playback_argv("Level1-2", ["--state", "Level1-1"])
+    assert training.main(["Level1-1", "--algorithm", "beam"]) == 1

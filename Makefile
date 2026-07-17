@@ -15,7 +15,7 @@ BENCHMARK_ENV_ARGS ?= $(shell $(PYTHON) scripts/benchmark_workload.py)
 BENCHMARK_LOAD_ARGS ?= --skip-load-preflight
 BENCHMARK_ARGS ?=
 BENCHMARK_REPORT_ARGS ?=
-PLAY_ARGS ?=
+PLAY_ARGS ?= Level1-1
 BASELINE_REF ?=
 CANDIDATE_REF ?=
 CALIBRATE_REF ?= HEAD
@@ -36,7 +36,7 @@ benchmark-report: develop-release
 	$(PYTHON) scripts/benchmark_report.py $(BENCHMARK_REPORT_ARGS)
 
 play: develop-release
-	$(PYTHON) scripts/play.py --mode external $(PLAY_ARGS)
+	$(PYTHON) play.py $(PLAY_ARGS)
 
 autoresearch-diagnose:
 	$(PYTHON) scripts/autoresearch.py diagnose

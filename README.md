@@ -45,12 +45,12 @@ and development setup.
 directory, or ZIP archive:
 
 ```bash
-smb-turbo-import /path/to/roms
+smb-turbo import /path/to/roms
 ```
 
 The importer uses the Stable Retro-compatible `RETRO_DATA_PATH` layout, or the
 equivalent data tree inside the installed package when the variable is unset.
-`rom_path=` and `--rom-path` remain available as overrides. The canonical ROM
+`rom_path=` and the CLI's `--rom` remain available as overrides. The canonical ROM
 SHA-256 is:
 
 ```text
@@ -96,42 +96,64 @@ env.close()
 **Important:** Autoreset is disabled. Selectively reset terminal lanes before
 stepping again.
 
+## Gymrec provider
+
+The package registers `supermariobrosnes-turbo` under the
+`gymrec.environment_providers` entry-point group. Its single-environment
+session owns Mario preprocessing, action sets, policy-action adaptation,
+named-control conversion, vector-lane adaptation, reward shaping, life/level
+events, stalling, episode limits, and ROM/state provenance. Gymrec receives only
+the resulting Gymnasium transition contract.
+
 ## 🏁 Train and play
 
 ```bash
-smb-turbo-train Level1-1
-smb-turbo-play Level1-1
+smb-turbo train Level1-1
+smb-turbo play
 ```
 
 **Training** searches observation-free `(action, duration)` programs and retains
 useful prefixes. It stops on the first level completion by default; pass
-`--no-stop-on-completion` to continue through the transition budget. Existing
-policies are protected unless `--force` is passed. `Level1-1` writes
+`--continue-after-completion` to continue through the transition budget. Existing
+policies are protected unless `--overwrite` is passed. `Level1-1` writes
 `runs/Level1-1-jerk/Level1-1.zip`; playback uses the matching trained policy when
-available and switches policies as levels change. Run either command with
-`--help` for configuration options.
+available and switches policies as levels change. Running `smb-turbo play`
+without a state starts from `Level1-1`; pass an exact state identifier to start
+elsewhere. Run either command with `--help` for configuration options.
+
+State names are exact identifiers from the configured state catalog. This
+includes canonical names such as `Level1-1`, packaged variants such as
+`Level2-1-clouds-easy`, and imported names such as `Custom`; shorthand and case
+normalization are intentionally unsupported.
+
+In an interactive terminal, both trainers automatically open a full-screen
+dashboard with live transition, throughput, search, best-path, and event stats.
+Redirected output and CI use the existing plain logs; pass `--ui plain` to
+select them explicitly. Press `q` or `Ctrl-C` in the dashboard for a safe stop:
+the current vector step finishes, final metrics are written, and the best
+policy is saved when a candidate exists.
 
 The checkout-compatible `uv run python train.py Level1-1` and
-`uv run python play.py Level1-1` entry points remain available.
+`uv run python play.py` entry points remain available.
 
 To compare the retained-knowledge search with a fixed-width beam while keeping
 the same action-run representation, reward, episode boundary, and playback
 format, run:
 
 ```bash
-uv run python train_beam.py Level1-1
-uv run python scripts/play_policy.py runs/Level1-1-beam/Level1-1.zip --state Level1-1
+smb-turbo train Level1-1 --algorithm beam
+smb-turbo play Level1-1 --policy runs/Level1-1-beam/Level1-1.zip
 ```
 
-Beam runs use a separate `runs/<Level>-beam/` directory and do not replace the
+Beam runs use a separate `runs/<State>-beam/` directory and do not replace the
 default JERK policy selected by `play.py`.
 
 ## 🧰 Commands
 
 ```bash
-smb-turbo-import /path/to/roms       # import the supported ROM
-smb-turbo-train Level1-1             # train a level-keyed JERK policy
-smb-turbo-play Level1-1              # play manually or use its trained policy
+smb-turbo import /path/to/roms        # import the supported ROM
+smb-turbo train Level1-1              # train a state-keyed JERK policy
+smb-turbo play                        # play Level1-1 manually or with its policy
 uv sync --frozen --extra dev          # install development dependencies
 uv run maturin develop --release      # build the optimized Rust extension
 make test                             # run Rust and Python tests

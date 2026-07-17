@@ -2,8 +2,15 @@
 
 ## Unreleased
 
-- Add PyPI-first installation and installed ROM import, training, and playback
-  commands while retaining the checkout entry points.
+- Expose the `supermariobrosnes-turbo` gymrec environment-provider entry point,
+  including package-owned Mario task rules, action adaptation, control labels,
+  vector-lane adaptation, and ROM/state provenance.
+- Add the package-owned `smb-turbo import`, `train`, and `play` command tree,
+  replacing the fragmented installed commands while retaining thin checkout
+  launchers.
+- Make training and playback use exact discoverable state identifiers, expose
+  beam search through `train --algorithm beam`, default state-less playback to
+  `Level1-1`, and simplify the public options.
 - Add contribution and conduct policies, expand oldest/latest Python CI, and
   make strict Clippy validation part of the contributor workflow.
 - Clarify the licensing boundary for promotional gameplay media and remove

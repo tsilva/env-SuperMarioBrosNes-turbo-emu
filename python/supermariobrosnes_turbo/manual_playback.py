@@ -10,14 +10,14 @@ from pathlib import Path
 
 import numpy as np
 
-from supermariobrosnes_turbo import (
+from . import (
     ACTION_BUTTONS,
     BUTTON_TO_INDEX,
     NES_BUTTONS,
     Actions,
     CORE_ACTION_MEANINGS as ACTION_MEANINGS,
 )
-from supermariobrosnes_turbo import (
+from . import (
     SuperMarioBrosNesTurboVecEnv,
     default_rom_path,
     resolve_required_rom_path,

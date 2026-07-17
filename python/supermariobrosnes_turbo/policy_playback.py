@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 try:
-    from scripts.play import (
+    from .manual_playback import (
         DEFAULT_ROM,
         NES_HEIGHT,
         NES_WIDTH,
@@ -29,8 +29,8 @@ try:
         display_frame_from_obs,
         load_sdl2,
     )
-except ModuleNotFoundError:
-    from play import (
+except ImportError:
+    from .manual_playback import (
         DEFAULT_ROM,
         NES_HEIGHT,
         NES_WIDTH,
@@ -47,30 +47,22 @@ except ModuleNotFoundError:
         display_frame_from_obs,
         load_sdl2,
     )
-from supermariobrosnes_turbo import (
+from . import (
     ACTION_SETS,
     Actions,
     SuperMarioBrosNesTurboVecEnv,
     action_mask,
     resolve_required_rom_path,
 )
-from supermariobrosnes_turbo.jerk import load_jerk_checkpoint
-from supermariobrosnes_turbo.jerk import policy_path_for_level
+from .jerk import load_jerk_checkpoint
+from .jerk import policy_path_for_state
 
-try:
-    from benchmark_sps import (
-        PreprocessingConfig,
-        create_stable_retro_vector_env,
-        named_action_mask,
-        stable_retro_buttons,
-    )
-except ModuleNotFoundError:
-    from scripts.benchmark_sps import (
-        PreprocessingConfig,
-        create_stable_retro_vector_env,
-        named_action_mask,
-        stable_retro_buttons,
-    )
+from .benchmark_sps import (
+    PreprocessingConfig,
+    create_stable_retro_vector_env,
+    named_action_mask,
+    stable_retro_buttons,
+)
 
 
 DEFAULT_HF_FILENAME = "final_model.zip"
@@ -413,7 +405,7 @@ class SdlPolicyPlayer:
     def activate_named_level_policy(self, level_name: str) -> bool:
         if self.args.level_policy_root is None:
             return False
-        model_path = policy_path_for_level(
+        model_path = policy_path_for_state(
             level_name, runs_root=self.args.level_policy_root
         )
         if not model_path.is_file():

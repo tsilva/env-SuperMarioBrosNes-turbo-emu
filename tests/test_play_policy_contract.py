@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
 from supermariobrosnes_turbo import ACTION_SETS
-from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy, policy_path_for_level
+from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy, policy_path_for_state
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-import play_policy  # noqa: E402
+from supermariobrosnes_turbo import policy_playback as play_policy
 
 
 def test_jerk_checkpoint_uses_native_lightweight_contract() -> None:
@@ -55,7 +50,7 @@ def test_level_counters_map_to_named_policy() -> None:
 
 
 def test_player_activates_policy_for_new_level(tmp_path: Path) -> None:
-    target_path = policy_path_for_level("Level1-2", runs_root=tmp_path)
+    target_path = policy_path_for_state("Level1-2", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
     JerkPolicy(
         action_names=ACTION_SETS["simple"],

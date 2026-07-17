@@ -24,6 +24,7 @@ class _BeamLaneState:
     episode_return: float = 0.0
     best_return: float = float("-inf")
     best_steps: int = 0
+    best_progress: float = 0.0
     parent: RetainedProgram | None = None
     replay_limit_runs: int = 0
     replay_run_index: int = 0
@@ -272,6 +273,7 @@ class BeamSearch:
         else:
             runs = truncate_runs(state.runs, state.best_steps)
             score_return = state.best_return
+            progress = state.best_progress
         if not runs or not math.isfinite(score_return):
             return
         self._upsert_candidate(
@@ -299,6 +301,8 @@ class BeamSearch:
         rewards: Sequence[float],
         dones: Sequence[bool],
         records_by_lane: Mapping[int, Any] | None = None,
+        *,
+        progresses: Sequence[float] | None = None,
     ) -> None:
         rewards_array = np.asarray(rewards, dtype=np.float64)
         dones_array = np.asarray(dones, dtype=bool)
@@ -308,6 +312,13 @@ class BeamSearch:
             raise ValueError(
                 "beam rewards and dones must contain one value per environment"
             )
+        progress_array = (
+            np.zeros(self.n_envs, dtype=np.float64)
+            if progresses is None
+            else np.asarray(progresses, dtype=np.float64)
+        )
+        if progress_array.shape != (self.n_envs,):
+            raise ValueError("beam progresses must contain one value per environment")
         records_by_lane = records_by_lane or {}
         self.global_step += self.n_envs
         for lane, state in enumerate(self._lanes):
@@ -316,6 +327,7 @@ class BeamSearch:
             if state.episode_return > state.best_return:
                 state.best_return = state.episode_return
                 state.best_steps = state.step_count
+                state.best_progress = float(progress_array[lane])
             if not dones_array[lane]:
                 continue
             record = records_by_lane.get(lane)
@@ -337,6 +349,7 @@ class BeamSearch:
                         runs=truncate_runs(state.runs, state.best_steps),
                         return_sum=state.best_return,
                         return_count=1,
+                        progress=state.best_progress,
                     )
                 )
         return max(candidates, key=lambda candidate: candidate.rank, default=None)

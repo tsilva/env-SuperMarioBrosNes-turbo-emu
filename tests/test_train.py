@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 from gymnasium import spaces
 
-import train as train_module
+from supermariobrosnes_turbo import training as train_module
 from supermariobrosnes_turbo import ACTION_SETS
 from supermariobrosnes_turbo.jerk import (
     ActionRun,
@@ -22,7 +22,7 @@ from supermariobrosnes_turbo.jerk import (
     save_jerk_checkpoint,
     truncate_runs,
 )
-from train import (
+from supermariobrosnes_turbo.training import (
     MarioJerkTask,
     episode_boundary,
     exploit_probability,
@@ -45,7 +45,8 @@ def test_jerk_task_uses_native_simple_discrete_action_set(monkeypatch) -> None:
     monkeypatch.setattr(train_module, "SuperMarioBrosNesTurboVecEnv", FakeNative)
 
     task = MarioJerkTask(
-        level="Level1-1",
+        state="Level1-1",
+        state_dir=None,
         rom_path=None,
         seed=0,
         n_envs=2,
@@ -135,14 +136,36 @@ def test_training_flags_stop_and_protect_policies_by_default() -> None:
 
     defaults = parser.parse_args(["Level1-1"])
     continuous = parser.parse_args(
-        ["Level1-1", "--no-stop-on-completion", "--force"]
+        ["Level1-1", "--continue-after-completion", "--overwrite"]
     )
 
-    assert defaults.n_envs == 64
-    assert defaults.stop_on_completion is True
-    assert defaults.force is False
-    assert continuous.stop_on_completion is False
-    assert continuous.force is True
+    assert defaults.lanes == 64
+    assert defaults.continue_after_completion is False
+    assert defaults.overwrite is False
+    assert continuous.continue_after_completion is True
+    assert continuous.overwrite is True
+
+
+def test_active_best_candidate_carries_observed_progress() -> None:
+    search = _search()
+    search.next_actions()
+
+    search.observe([5.0], [False], progresses=[432.0])
+
+    candidate = search.best_candidate()
+    assert candidate is not None
+    assert candidate.progress == 432.0
+
+    search.next_actions()
+    search.observe(
+        [-10.0],
+        [True],
+        {0: SimpleNamespace(completed=False, progress=999.0)},
+        progresses=[999.0],
+    )
+    retained = search.best_candidate()
+    assert retained is not None
+    assert retained.progress == 432.0
 
 
 def test_training_log_helpers_are_readable_and_emit_exact_play_commands() -> None:
@@ -182,7 +205,7 @@ def test_training_log_helpers_are_readable_and_emit_exact_play_commands() -> Non
             default_output=True,
             rom_path=None,
         )
-        == "uv run python play.py Level1-1"
+        == "smb-turbo play Level1-1"
     )
     assert (
         train_module._play_command(
@@ -191,8 +214,8 @@ def test_training_log_helpers_are_readable_and_emit_exact_play_commands() -> Non
             default_output=False,
             rom_path=Path("roms/Mario Bros.nes"),
         )
-        == "uv run python scripts/play_policy.py 'custom run/Level1-1.zip' "
-        "--state Level1-1 --rom-path 'roms/Mario Bros.nes'"
+        == "smb-turbo play Level1-1 --policy 'custom run/Level1-1.zip' "
+        "--rom 'roms/Mario Bros.nes'"
     )
 
 
@@ -203,9 +226,11 @@ def test_training_refuses_existing_policy_without_force(
     output.mkdir()
     policy_path = output / "Level1-1.zip"
     policy_path.write_bytes(b"existing policy")
-    monkeypatch.setattr(train_module, "list_available_states", lambda: ["Level1-1"])
+    monkeypatch.setattr(
+        train_module, "resolve_state_name", lambda state, **_kwargs: state
+    )
 
-    with pytest.raises(SystemExit, match="pass --force"):
+    with pytest.raises(SystemExit, match="pass --overwrite"):
         train_module.main(["Level1-1", "--output", str(output)])
 
     assert policy_path.read_bytes() == b"existing policy"
@@ -220,7 +245,7 @@ def test_policy_save_requires_force_to_replace_existing_file(tmp_path) -> None:
         fallback_action=0,
     )
 
-    with pytest.raises(FileExistsError, match="pass --force"):
+    with pytest.raises(FileExistsError, match="pass --overwrite"):
         train_module._save_policy(policy, policy_path)
     assert policy_path.read_bytes() == b"existing policy"
 
@@ -262,7 +287,9 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
             return None
 
     monkeypatch.setattr(train_module, "MarioJerkTask", FakeTask)
-    monkeypatch.setattr(train_module, "list_available_states", lambda: ["Level1-1"])
+    monkeypatch.setattr(
+        train_module, "resolve_state_name", lambda state, **_kwargs: state
+    )
 
     stopped_output = tmp_path / "stopped"
     assert (
@@ -271,11 +298,11 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
                 "Level1-1",
                 "--output",
                 str(stopped_output),
-                "--timesteps",
+                "--transitions",
                 "4",
-                "--n-envs",
+                "--lanes",
                 "1",
-                "--log-interval-steps",
+                "--log-every",
                 "10",
             ]
         )
@@ -295,13 +322,13 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
                 "Level1-1",
                 "--output",
                 str(continuous_output),
-                "--timesteps",
+                "--transitions",
                 "4",
-                "--n-envs",
+                "--lanes",
                 "1",
-                "--log-interval-steps",
+                "--log-every",
                 "10",
-                "--no-stop-on-completion",
+                "--continue-after-completion",
             ]
         )
         == 0

@@ -529,11 +529,32 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
     pycache_entries = [name for name in names if "__pycache__" in Path(name).parts or name.endswith(".pyc")]
     license_entries = [name for name in names if name.endswith("/LICENSE")]
     notice_entries = [name for name in names if name.endswith("/NOTICE.md")]
+    entry_point_entries = [
+        name for name in names if name.endswith(".dist-info/entry_points.txt")
+    ]
+    entry_points = ""
+    if len(entry_point_entries) == 1:
+        with zipfile.ZipFile(wheel) as zf:
+            entry_points = zf.read(entry_point_entries[0]).decode("utf-8")
     checks = {
         "version_in_filename": version in wheel.name,
         "abi3_wheel": "abi3" in wheel.name,
         "has_package_init": f"{IMPORT_NAME}/__init__.py" in names,
         "has_env_source": f"{IMPORT_NAME}/env.py" in names,
+        "has_unified_cli_source": f"{IMPORT_NAME}/cli.py" in names,
+        "has_training_source": f"{IMPORT_NAME}/training.py" in names,
+        "has_playback_source": f"{IMPORT_NAME}/state_playback.py" in names,
+        "has_unified_entry_point": (
+            "smb-turbo=supermariobrosnes_turbo.cli:main" in entry_points.replace(" ", "")
+        ),
+        "no_legacy_entry_points": not any(
+            command in entry_points
+            for command in (
+                "smb-turbo-import",
+                "smb-turbo-play",
+                "smb-turbo-train",
+            )
+        ),
         "has_extension": bool(extension_entries),
         "has_metadata": bool(metadata_entries),
         "has_license": bool(license_entries),
@@ -548,6 +569,7 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
         "metadata_entries": metadata_entries,
         "license_entries": license_entries,
         "notice_entries": notice_entries,
+        "entry_point_entries": entry_point_entries,
         "rom_payloads": rom_payloads,
         "pycache_entries": pycache_entries,
         "checks": checks,
@@ -638,15 +660,17 @@ def smoke_distribution(distribution: Path, python: Path) -> None:
     distribution = distribution.resolve()
     with tempfile.TemporaryDirectory(prefix="supermariobrosnes-distribution-smoke.", dir=release_temp_dir()) as tmp:
         target = Path(tmp)
+        environment = target / "venv"
+        run([str(python), "-m", "venv", str(environment)])
+        scripts = environment / ("Scripts" if os.name == "nt" else "bin")
+        environment_python = scripts / ("python.exe" if os.name == "nt" else "python")
         run(
             [
                 "uv",
                 "pip",
                 "install",
                 "--python",
-                str(python),
-                "--target",
-                str(target),
+                str(environment_python),
                 str(distribution),
             ]
         )
@@ -655,12 +679,18 @@ import {IMPORT_NAME}
 from {IMPORT_NAME} import {EXTENSION_NAME}
 print({IMPORT_NAME}.__file__)
 print({EXTENSION_NAME}.__file__)
-assert {IMPORT_NAME}.__file__.startswith({str(target)!r})
+assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
 assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
 """
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(target)
-        run([str(python), "-c", code], cwd=release_temp_dir(), env=env)
+        run([str(environment_python), "-c", code], cwd=target)
+        command = scripts / ("smb-turbo.exe" if os.name == "nt" else "smb-turbo")
+        for arguments in (
+            ["--help"],
+            ["import", "--help"],
+            ["train", "--help"],
+            ["play", "--help"],
+        ):
+            run([str(command), *arguments], cwd=target)
 
 
 def smoke_wheel(args: argparse.Namespace) -> None:

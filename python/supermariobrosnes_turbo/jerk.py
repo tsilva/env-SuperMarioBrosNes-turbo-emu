@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import math
-import re
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -11,31 +10,58 @@ from typing import Any
 
 import numpy as np
 
-from .env import ACTION_SETS
+from .env import ACTION_SETS, list_available_states
 
 
 JERK_POLICY_SCHEMA_VERSION = 2
 JERK_POLICY_MEMBER = "jerk_policy.json"
-LEVEL_NAME_PATTERN = re.compile(r"^Level[1-9][0-9]*-[1-9][0-9]*$")
+def validate_state_name(state: str) -> str:
+    """Return an exact, path-safe state identifier without normalizing it."""
+    if not isinstance(state, str) or not state:
+        raise ValueError("state name must be a non-empty string")
+    if state in {".", ".."} or "/" in state or "\\" in state:
+        raise ValueError(f"invalid state name {state!r}; expected an exact state identifier")
+    return state
 
 
-def normalize_level_name(level: str) -> str:
-    name = str(level).strip()
-    if LEVEL_NAME_PATTERN.fullmatch(name) is None:
-        raise ValueError(
-            f"invalid level name {level!r}; expected a name such as 'Level1-1'"
-        )
+def resolve_state_name(
+    state: str,
+    *,
+    state_dir: str | Path | None = None,
+) -> str:
+    """Resolve an exact state identifier from the configured state sources."""
+    name = validate_state_name(state)
+    available = list_available_states(state_dir)
+    if name not in available:
+        choices = ", ".join(available) or "<none>"
+        raise ValueError(f"unknown state {name!r}; available states: {choices}")
     return name
 
 
-def run_directory_for_level(level: str, *, runs_root: str | Path = "runs") -> Path:
-    name = normalize_level_name(level)
-    return Path(runs_root) / f"{name}-jerk"
+def run_directory_for_state(
+    state: str,
+    *,
+    algorithm: str = "jerk",
+    runs_root: str | Path = "runs",
+) -> Path:
+    name = validate_state_name(state)
+    if algorithm not in {"jerk", "beam"}:
+        raise ValueError(f"unknown training algorithm {algorithm!r}")
+    return Path(runs_root) / f"{name}-{algorithm}"
 
 
-def policy_path_for_level(level: str, *, runs_root: str | Path = "runs") -> Path:
-    name = normalize_level_name(level)
-    return run_directory_for_level(name, runs_root=runs_root) / f"{name}.zip"
+def policy_path_for_state(
+    state: str,
+    *,
+    algorithm: str = "jerk",
+    runs_root: str | Path = "runs",
+) -> Path:
+    name = validate_state_name(state)
+    return run_directory_for_state(
+        name,
+        algorithm=algorithm,
+        runs_root=runs_root,
+    ) / f"{name}.zip"
 
 
 @dataclass(frozen=True, order=True)
@@ -124,6 +150,7 @@ class _LaneState:
     episode_return: float = 0.0
     best_return: float = float("-inf")
     best_steps: int = 0
+    best_progress: float = 0.0
     archive_candidate: RetainedProgram | None = None
     replay_limit_runs: int = 0
     replay_run_index: int = 0
@@ -374,6 +401,7 @@ class JerkSearch:
         else:
             runs = truncate_runs(state.runs, state.best_steps)
             score_return = state.best_return
+            progress = state.best_progress
         if not runs or not math.isfinite(score_return):
             return
         self._upsert_retained(
@@ -414,6 +442,8 @@ class JerkSearch:
         rewards: Sequence[float],
         dones: Sequence[bool],
         records_by_lane: Mapping[int, Any] | None = None,
+        *,
+        progresses: Sequence[float] | None = None,
     ) -> None:
         rewards_array = np.asarray(rewards, dtype=np.float64)
         dones_array = np.asarray(dones, dtype=bool)
@@ -421,6 +451,13 @@ class JerkSearch:
             raise ValueError(
                 "JERK rewards and dones must contain one value per environment"
             )
+        progress_array = (
+            np.zeros(self.n_envs, dtype=np.float64)
+            if progresses is None
+            else np.asarray(progresses, dtype=np.float64)
+        )
+        if progress_array.shape != (self.n_envs,):
+            raise ValueError("JERK progresses must contain one value per environment")
         records_by_lane = records_by_lane or {}
         self.global_step += self.n_envs
         for lane, state in enumerate(self._lanes):
@@ -429,6 +466,7 @@ class JerkSearch:
             if state.episode_return > state.best_return:
                 state.best_return = state.episode_return
                 state.best_steps = state.step_count
+                state.best_progress = float(progress_array[lane])
             if dones_array[lane]:
                 record = records_by_lane.get(lane)
                 completed, _progress = self._record_facts(record)
@@ -446,6 +484,7 @@ class JerkSearch:
                         runs=truncate_runs(state.runs, state.best_steps),
                         return_sum=state.best_return,
                         return_count=1,
+                        progress=state.best_progress,
                     )
                 )
         return max(candidates, key=lambda candidate: candidate.rank, default=None)
