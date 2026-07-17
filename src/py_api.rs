@@ -28,7 +28,7 @@ pub struct RetroVecEnv {
 #[pymethods]
 impl RetroVecEnv {
     #[new]
-    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, initial_states=None, initial_state_names=None, initial_state_weights=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None))]
+    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, state_catalog_data=None, state_catalog_names=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None))]
     pub fn new(
         rom_path: String,
         num_envs: usize,
@@ -40,9 +40,8 @@ impl RetroVecEnv {
         crop_bottom: usize,
         resize_width: usize,
         resize_height: usize,
-        initial_states: Option<Vec<Vec<u8>>>,
-        initial_state_names: Option<Vec<String>>,
-        initial_state_weights: Option<Vec<f64>>,
+        state_catalog_data: Option<Vec<Vec<u8>>>,
+        state_catalog_names: Option<Vec<String>>,
         seed: u64,
         frame_maxpool: bool,
         noop_reset_max: isize,
@@ -125,11 +124,9 @@ impl RetroVecEnv {
 
         let cart = Cartridge::load_ines_for(rom_path, EXPECTED_SMB_ROM_SHA256)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
-        let (initial_states, weighted_initial_states) = build_initial_states(
-            initial_states.unwrap_or_default(),
-            initial_state_names.unwrap_or_default(),
-            initial_state_weights,
-            num_envs,
+        let state_catalog = build_state_catalog(
+            state_catalog_data.unwrap_or_default(),
+            state_catalog_names.unwrap_or_default(),
         )?;
         let config = VecEnvConfig {
             num_envs,
@@ -153,7 +150,7 @@ impl RetroVecEnv {
             sticky_action_prob,
         };
         Ok(Self {
-            inner: MarioVecEnv::new(cart, config, initial_states, weighted_initial_states, seed)
+            inner: MarioVecEnv::new(cart, config, state_catalog, seed)
                 .map_err(|err| PyValueError::new_err(err.to_string()))?,
             thread_pool,
             num_threads: effective_num_threads,
@@ -230,16 +227,8 @@ impl RetroVecEnv {
     }
 
     #[getter]
-    pub fn initial_state_names(&self) -> Vec<String> {
-        self.inner.initial_state_names()
-    }
-
-    pub fn initial_state_policy_names(&self) -> Vec<String> {
-        self.inner.initial_state_policy_names()
-    }
-
-    pub fn initial_state_weights(&self) -> Vec<f64> {
-        self.inner.initial_state_weights()
+    pub fn state_catalog(&self) -> Vec<String> {
+        self.inner.state_catalog()
     }
 
     pub fn active_state_indices(&self) -> Vec<i32> {
@@ -336,38 +325,43 @@ impl RetroVecEnv {
         py: Python<'py>,
         mut obs: PyReadwriteArray4<'py, u8>,
         reset_mask: PyReadonlyArray1<'py, bool>,
-        start_indices: PyReadonlyArray1<'py, i32>,
+        state_indices: PyReadonlyArray1<'py, i32>,
         seeds: Vec<Option<u64>>,
     ) -> PyResult<()> {
         self.validate_obs_shape(&obs)?;
         self.validate_vec_len(reset_mask.len(), "reset_mask")?;
-        self.validate_vec_len(start_indices.len(), "start_indices")?;
+        self.validate_vec_len(state_indices.len(), "state_indices")?;
         self.validate_vec_len(seeds.len(), "seeds")?;
         let reset_mask_ro = reset_mask.as_array();
         let reset_mask_slice = reset_mask_ro
             .as_slice()
             .ok_or_else(|| PyValueError::new_err("reset_mask must be C-contiguous"))?;
-        let start_indices_ro = start_indices.as_array();
-        let start_indices_slice = start_indices_ro
+        let state_indices_ro = state_indices.as_array();
+        let state_indices_slice = state_indices_ro
             .as_slice()
-            .ok_or_else(|| PyValueError::new_err("start_indices must be C-contiguous"))?;
+            .ok_or_else(|| PyValueError::new_err("state_indices must be C-contiguous"))?;
         if !reset_mask_slice.iter().any(|selected| *selected) {
             return Err(PyValueError::new_err(
                 "reset_mask must select at least one lane",
             ));
         }
-        let state_count = self.inner.initial_state_policy_names().len();
-        for (env_idx, (&selected, &start_index)) in reset_mask_slice
+        let state_count = self.inner.state_catalog().len();
+        for (env_idx, (&selected, &state_index)) in reset_mask_slice
             .iter()
-            .zip(start_indices_slice.iter())
+            .zip(state_indices_slice.iter())
             .enumerate()
         {
             if !selected {
                 continue;
             }
-            if start_index < -1 || (start_index >= 0 && start_index as usize >= state_count) {
+            let valid = if state_count == 0 {
+                state_index == -1
+            } else {
+                state_index >= 0 && (state_index as usize) < state_count
+            };
+            if !valid {
                 return Err(PyValueError::new_err(format!(
-                    "start_indices[{env_idx}] must be -1 or a valid initial-state catalog index",
+                    "state_indices[{env_idx}] must index state_catalog",
                 )));
             }
         }
@@ -379,7 +373,7 @@ impl RetroVecEnv {
         let inner = &mut self.inner;
         py.allow_threads(|| {
             install_in_pool(pool, || {
-                inner.reset_masked_into(obs_slice, reset_mask_slice, start_indices_slice, &seeds)
+                inner.reset_masked_into(obs_slice, reset_mask_slice, state_indices_slice, &seeds)
             })
         })
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -670,33 +664,26 @@ impl RetroVecEnv {
     }
 }
 
-fn build_initial_states(
+fn build_state_catalog(
     state_data: Vec<Vec<u8>>,
     state_names: Vec<String>,
-    state_weights: Option<Vec<f64>>,
-    num_envs: usize,
-) -> PyResult<(Vec<InitialState>, bool)> {
+) -> PyResult<Vec<InitialState>> {
     if state_data.is_empty() {
         if !state_names.is_empty() {
             return Err(PyValueError::new_err(
-                "initial_state_names requires initial_states",
+                "state_catalog_names requires state_catalog_data",
             ));
         }
-        if state_weights.is_some() {
-            return Err(PyValueError::new_err(
-                "initial_state_weights requires initial_states",
-            ));
-        }
-        return Ok((Vec::new(), false));
+        return Ok(Vec::new());
     }
     if state_data.iter().any(Vec::is_empty) {
         return Err(PyValueError::new_err(
-            "initial_states entries must not be empty",
+            "state_catalog_data entries must not be empty",
         ));
     }
     if !state_names.is_empty() && state_names.len() != state_data.len() {
         return Err(PyValueError::new_err(
-            "initial_state_names length must match initial_states length",
+            "state_catalog_names length must match state_catalog_data length",
         ));
     }
 
@@ -708,51 +695,18 @@ fn build_initial_states(
         state_names
     };
 
-    if let Some(weights) = state_weights {
-        if weights.len() != state_data.len() {
-            return Err(PyValueError::new_err(
-                "initial_state_weights length must match initial_states length",
-            ));
-        }
-        let total = weights.iter().try_fold(0.0, |acc, weight| {
-            if !weight.is_finite() || *weight < 0.0 {
-                Err(PyValueError::new_err(
-                    "initial_state_weights must contain non-negative finite values",
-                ))
-            } else {
-                Ok(acc + *weight)
-            }
-        })?;
-        if !total.is_finite() || total <= 0.0 {
-            return Err(PyValueError::new_err(
-                "initial_state_weights must sum to a positive finite value",
-            ));
-        }
-
-        let mut cumulative = 0.0;
-        let mut states = Vec::with_capacity(state_data.len());
-        for ((name, data), weight) in names.into_iter().zip(state_data).zip(weights) {
-            cumulative += weight / total;
-            states.push(InitialState::new(name, data, cumulative.min(1.0)));
-        }
-        return Ok((states, true));
+    let mut unique_names = std::collections::HashSet::with_capacity(names.len());
+    if names.iter().any(|name| !unique_names.insert(name.clone())) {
+        return Err(PyValueError::new_err(
+            "state_catalog_names must not contain duplicates",
+        ));
     }
 
-    if state_data.len() != 1 && state_data.len() != num_envs {
-        return Err(PyValueError::new_err(format!(
-            "initial_states length must be 1 or num_envs when weights are not provided: got {} for num_envs={num_envs}",
-            state_data.len(),
-        )));
-    }
-
-    Ok((
-        names
-            .into_iter()
-            .zip(state_data)
-            .map(|(name, data)| InitialState::new(name, data, 0.0))
-            .collect(),
-        false,
-    ))
+    Ok(names
+        .into_iter()
+        .zip(state_data)
+        .map(|(name, data)| InitialState::new(name, data))
+        .collect())
 }
 
 fn build_crop_mode(mode: &str) -> PyResult<CropMode> {

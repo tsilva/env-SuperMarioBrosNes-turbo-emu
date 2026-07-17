@@ -17,7 +17,6 @@ from supermariobrosnes_turbo import (
     SuperMarioBrosNesTurboVecEnv,
     list_available_states,
 )
-from supermariobrosnes_turbo.env import _normalize_initial_state_config
 
 CANONICAL_LEVEL_STATES = tuple(
     f"Level{world}-{level}"
@@ -27,9 +26,14 @@ CANONICAL_LEVEL_STATES = tuple(
 
 
 def make_env(**kwargs: object) -> SuperMarioBrosNesTurboVecEnv:
+    state_kwargs = (
+        {}
+        if "state_catalog" in kwargs and "state" not in kwargs
+        else {"state": kwargs.pop("state", "Level1-1")}
+    )
     return SuperMarioBrosNesTurboVecEnv(
         "SuperMarioBros-Nes-v0",
-        state=kwargs.pop("state", "Level1-1"),
+        **state_kwargs,
         rom_path=require_rom(),
         num_envs=kwargs.pop("num_envs", 2),
         use_restricted_actions=Actions.ALL,
@@ -52,7 +56,13 @@ def test_public_surface_is_manual_reset_only() -> None:
     signature = inspect.signature(SuperMarioBrosNesTurboVecEnv)
     for name in ("done_on", "autoreset_mode", "done_on_info"):
         assert name not in signature.parameters
-    for name in ("set_state_policy", "set_state_sampling_weights", "state_sampling_weights"):
+    for name in (
+        "set_state_policy",
+        "set_state_sampling_weights",
+        "state_sampling_weights",
+        "initial_state_names",
+        "active_states",
+    ):
         assert not hasattr(SuperMarioBrosNesTurboVecEnv, name)
     assert SuperMarioBrosNesTurboVecEnv.metadata["autoreset_mode"] is AutoresetMode.DISABLED
     with pytest.raises(TypeError, match="done_on"):
@@ -126,8 +136,8 @@ finally:
 
 def test_explicit_thread_counts_preserve_deterministic_lane_contract() -> None:
     states = ["Level1-1", "Level1-2", "Level1-3", "Level1-4"]
-    sequential = make_env(state=states, num_envs=4, num_threads=1, frame_skip=1)
-    parallel = make_env(state=states, num_envs=4, num_threads=4, frame_skip=1)
+    sequential = make_env(state_catalog=states, num_envs=4, num_threads=1, frame_skip=1)
+    parallel = make_env(state_catalog=states, num_envs=4, num_threads=4, frame_skip=1)
 
     def assert_result_equal(actual: tuple[object, ...], expected: tuple[object, ...]) -> None:
         assert len(actual) == len(expected)
@@ -153,9 +163,11 @@ def test_explicit_thread_counts_preserve_deterministic_lane_contract() -> None:
 
         mask = np.array([True, False, True, False], dtype=np.bool_)
         starts = np.array([1, -1, 0, -1], dtype=np.int32)
-        options = {"reset_mask": mask, "start_indices": starts}
+        options = {"reset_mask": mask, "state_indices": starts}
         assert_result_equal(sequential.reset(options=options), parallel.reset(options=options))
-        assert sequential.active_states() == parallel.active_states()
+        np.testing.assert_array_equal(
+            sequential.active_state_indices(), parallel.active_state_indices()
+        )
         assert_result_equal(sequential.step(actions), parallel.step(actions))
     finally:
         sequential.close()
@@ -197,30 +209,43 @@ def test_named_simple_action_set_is_discrete_and_maps_indices() -> None:
 
 def test_constructor_state_forms_and_packaged_inventory() -> None:
     assert {"Level1-1", "Level8-4", "Level2-1-clouds"} <= set(list_available_states())
-    _states, names, weights = _normalize_initial_state_config(
-        {"Level1-1": 0.0, "Level1-2": 3.0}, None, num_envs=2
-    )
-    assert names == ("Level1-1", "Level1-2")
-    assert weights == [0.0, 1.0]
-    with pytest.raises(ValueError, match="positive finite"):
-        _normalize_initial_state_config(
-            {"Level1-1": 0.0, "Level1-2": 0.0}, None, num_envs=2
-        )
+    env = make_env(state_catalog=("Level1-1", "Level1-2"))
+    try:
+        assert env.state_catalog == ("Level1-1", "Level1-2")
+        np.testing.assert_array_equal(env.active_state_indices(), [0, 0])
+    finally:
+        env.close()
+    with pytest.raises(TypeError, match="single state"):
+        make_env(state=["Level1-1", "Level1-2"])
+    with pytest.raises(TypeError, match="single state"):
+        make_env(state={"Level1-1": 0.25, "Level1-2": 0.75})
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        make_env(state="Level1-1", state_catalog=("Level1-1",))
+    with pytest.raises(ValueError, match="at least one"):
+        make_env(state_catalog=())
+    with pytest.raises(ValueError, match="duplicate"):
+        make_env(state_catalog=("Level1-1", "Level1-1"))
+    with pytest.raises(FileNotFoundError, match="could not resolve"):
+        make_env(state_catalog=("DefinitelyMissingState",))
 
 
 def test_all_canonical_packaged_states_load_and_step() -> None:
     assert set(CANONICAL_LEVEL_STATES) <= set(list_available_states())
     env = make_env(
-        state=list(CANONICAL_LEVEL_STATES),
+        state_catalog=CANONICAL_LEVEL_STATES,
         num_envs=len(CANONICAL_LEVEL_STATES),
         frame_skip=1,
     )
     expected_level_hi = np.repeat(np.arange(8, dtype=np.int32), 4)
     expected_level_lo = np.tile(np.arange(4, dtype=np.int32), 8)
     try:
-        obs, infos = env.reset(seed=0)
+        state_indices = np.arange(len(CANONICAL_LEVEL_STATES), dtype=np.int32)
+        obs, infos = env.reset(seed=0, options={"state_indices": state_indices})
         assert obs.shape == (len(CANONICAL_LEVEL_STATES), 1, 84, 84)
-        assert env.active_states() == CANONICAL_LEVEL_STATES
+        assert env.state_catalog == CANONICAL_LEVEL_STATES
+        np.testing.assert_array_equal(env.active_state_indices(), state_indices)
+        np.testing.assert_array_equal(infos["state_index"], state_indices)
+        assert np.all(infos["_state_index"])
         np.testing.assert_array_equal(infos["levelHi"], expected_level_hi)
         np.testing.assert_array_equal(infos["levelLo"], expected_level_lo)
 
@@ -257,18 +282,22 @@ def test_reset_step_raw_signals_preprocessing_and_reward_clip() -> None:
 
 
 def test_masked_reset_isolates_unselected_lane_and_tracks_active_state() -> None:
-    env = make_env(state=["Level1-1", "Level1-2"])
+    env = make_env(state_catalog=("Level1-1", "Level1-2"))
     try:
-        obs, _ = env.reset(seed=9)
+        obs, _ = env.reset(
+            seed=9,
+            options={"state_indices": np.array([0, 1], dtype=np.int32)},
+        )
         env.step(noop(2))
         lane_zero = env._obs[0].copy()
         mask = np.array([False, True], dtype=np.bool_)
         starts = np.array([-1, 0], dtype=np.int32)
-        reset_obs, infos = env.reset(options={"reset_mask": mask, "start_indices": starts})
+        reset_obs, infos = env.reset(options={"reset_mask": mask, "state_indices": starts})
         np.testing.assert_array_equal(env._obs[0], lane_zero)
         np.testing.assert_array_equal(reset_obs[0], lane_zero)
-        assert env.active_states()[0] == "Level1-1"
-        assert env.active_states()[1] == "Level1-1"
+        np.testing.assert_array_equal(env.active_state_indices(), [0, 0])
+        np.testing.assert_array_equal(infos["state_index"], [0, 0])
+        np.testing.assert_array_equal(infos["_state_index"], mask)
         assert bool(infos["_lives"][1])
         assert not bool(infos["_lives"][0])
     finally:
@@ -284,6 +313,50 @@ def test_reset_mask_validation() -> None:
             env.reset(options={"reset_mask": np.array([1], dtype=np.int8)})
         with pytest.raises(ValueError, match="at least one"):
             env.reset(options={"reset_mask": np.array([False], dtype=np.bool_)})
+        with pytest.raises(TypeError, match="state_indices.*NumPy"):
+            env.reset(options={"state_indices": [0]})
+        with pytest.raises(TypeError, match="state_indices.*dtype"):
+            env.reset(options={"state_indices": np.array([0], dtype=np.int64)})
+        with pytest.raises(ValueError, match="state_catalog"):
+            env.reset(options={"state_indices": np.array([-1], dtype=np.int32)})
+        with pytest.raises(ValueError, match="state_catalog"):
+            env.reset(options={"state_indices": np.array([1], dtype=np.int32)})
+        with pytest.raises(ValueError, match="unsupported"):
+            env.reset(options={"start_indices": np.array([0], dtype=np.int32)})
+    finally:
+        env.close()
+
+
+def test_invalid_state_index_is_rejected_atomically() -> None:
+    env = make_env(state_catalog=("Level1-1", "Level1-2"), num_envs=2)
+    try:
+        env.reset(options={"state_indices": np.array([0, 1], dtype=np.int32)})
+        env.step(noop(2))
+        before_obs = env._obs.copy()
+        before_states = env.active_state_indices().copy()
+        with pytest.raises(ValueError, match="state_indices"):
+            env.reset(
+                options={
+                    "reset_mask": np.array([True, True], dtype=np.bool_),
+                    "state_indices": np.array([0, 9], dtype=np.int32),
+                }
+            )
+        np.testing.assert_array_equal(env._obs, before_obs)
+        np.testing.assert_array_equal(env.active_state_indices(), before_states)
+    finally:
+        env.close()
+
+
+def test_direct_rom_reset_reports_negative_state_index() -> None:
+    env = make_env(state=None, num_envs=1)
+    try:
+        _obs, infos = env.reset()
+        assert env.state_catalog == ()
+        np.testing.assert_array_equal(env.active_state_indices(), [-1])
+        np.testing.assert_array_equal(infos["state_index"], [-1])
+        np.testing.assert_array_equal(infos["_state_index"], [True])
+        with pytest.raises(ValueError, match="non-empty state_catalog"):
+            env.reset(options={"state_indices": np.array([0], dtype=np.int32)})
     finally:
         env.close()
 

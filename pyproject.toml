@@ -46,9 +46,6 @@ dependencies = [
 [project.scripts]
 smb-turbo = "supermariobrosnes_turbo.cli:main"
 
-[project.entry-points."gymrec.environment_providers"]
-supermariobrosnes-turbo = "supermariobrosnes_turbo.gymrec_provider:provider"
-
 [project.urls]
 Homepage = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
 Documentation = "https://github.com/tsilva/SuperMarioBros-Nes-turbo#readme"

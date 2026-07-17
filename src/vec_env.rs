@@ -124,10 +124,8 @@ pub struct MarioVecEnv {
     config: VecEnvConfig,
     resize_plan: AreaResizePlan,
     envs: Vec<NesEmulator>,
-    initial_states: Vec<InitialState>,
-    weighted_initial_states: bool,
+    state_catalog: Vec<InitialState>,
     active_state_indices: Vec<i32>,
-    initial_state_names: Vec<String>,
     last_actions: Vec<u8>,
     rngs: Vec<XorShift64>,
     pending_reset: Vec<bool>,
@@ -141,8 +139,7 @@ impl MarioVecEnv {
     pub fn new(
         cart: Cartridge,
         config: VecEnvConfig,
-        initial_states: Vec<InitialState>,
-        weighted_initial_states: bool,
+        state_catalog: Vec<InitialState>,
         seed: u64,
     ) -> Result<Self, StateLoadError> {
         let resize_plan = AreaResizePlan::new(
@@ -162,10 +159,8 @@ impl MarioVecEnv {
             config,
             resize_plan,
             envs,
-            initial_states,
-            weighted_initial_states,
+            state_catalog,
             active_state_indices: vec![-1; config.num_envs],
-            initial_state_names: Vec::new(),
             last_actions: vec![0; config.num_envs],
             rngs: (0..config.num_envs)
                 .map(|env_idx| XorShift64::new(seed.wrapping_add(env_idx as u64)))
@@ -176,28 +171,18 @@ impl MarioVecEnv {
             profiler: None,
             profile_shards: Vec::new(),
         };
-        env.intern_initial_state_names();
+        if !env.state_catalog.is_empty() {
+            let mut validator = NesEmulator::new_with_options(cart, config.terminate_on_flag);
+            for state in &env.state_catalog {
+                validator.load_fceu_state(&state.data)?;
+            }
+        }
         env.reset_envs()?;
         Ok(env)
     }
 
-    fn intern_initial_state_names(&mut self) {
-        for state in &mut self.initial_states {
-            if let Some(index) = self
-                .initial_state_names
-                .iter()
-                .position(|name| name == &state.name)
-            {
-                state.name_index = index as i32;
-            } else {
-                state.name_index = self.initial_state_names.len() as i32;
-                self.initial_state_names.push(state.name.clone());
-            }
-        }
-    }
-
     fn reset_envs(&mut self) -> Result<(), StateLoadError> {
-        if self.initial_states.is_empty() {
+        if self.state_catalog.is_empty() {
             for env_idx in 0..self.config.num_envs {
                 self.envs[env_idx].reset();
                 self.envs[env_idx].prime_cold_boot();
@@ -209,29 +194,12 @@ impl MarioVecEnv {
         }
 
         for env_idx in 0..self.config.num_envs {
-            let state_index = self.initial_state_index_for_env(env_idx);
-            self.active_state_indices[env_idx] = self.initial_states[state_index].name_index;
-            self.envs[env_idx].load_fceu_state(&self.initial_states[state_index].data)?;
+            self.envs[env_idx].load_fceu_state(&self.state_catalog[0].data)?;
+            self.active_state_indices[env_idx] = 0;
             self.last_actions[env_idx] = 0;
             self.apply_noop_reset(env_idx);
         }
         Ok(())
-    }
-
-    fn initial_state_index_for_env(&mut self, env_idx: usize) -> usize {
-        if self.weighted_initial_states {
-            let sample = self.rngs[env_idx].next_unit_f64();
-            for (idx, state) in self.initial_states.iter().enumerate() {
-                if sample < state.cumulative_weight {
-                    return idx;
-                }
-            }
-            self.initial_states.len() - 1
-        } else if self.initial_states.len() == 1 {
-            0
-        } else {
-            env_idx
-        }
     }
 
     fn apply_noop_reset(&mut self, env_idx: usize) {
@@ -272,22 +240,23 @@ impl MarioVecEnv {
 
     pub fn reset_into(&mut self, obs: &mut [u8]) -> Result<(), StateLoadError> {
         let reset_mask = vec![true; self.config.num_envs];
-        let start_indices = vec![-1; self.config.num_envs];
+        let default_index = if self.state_catalog.is_empty() { -1 } else { 0 };
+        let state_indices = vec![default_index; self.config.num_envs];
         let seeds = vec![None; self.config.num_envs];
-        self.reset_masked_into(obs, &reset_mask, &start_indices, &seeds)
+        self.reset_masked_into(obs, &reset_mask, &state_indices, &seeds)
     }
 
     pub fn reset_masked_into(
         &mut self,
         obs: &mut [u8],
         reset_mask: &[bool],
-        start_indices: &[i32],
+        state_indices: &[i32],
         seeds: &[Option<u64>],
     ) -> Result<(), StateLoadError> {
         let config = self.config;
         let obs_stride = config.obs_len_per_env();
         debug_assert_eq!(reset_mask.len(), config.num_envs);
-        debug_assert_eq!(start_indices.len(), config.num_envs);
+        debug_assert_eq!(state_indices.len(), config.num_envs);
         debug_assert_eq!(seeds.len(), config.num_envs);
 
         for env_idx in 0..config.num_envs {
@@ -297,9 +266,7 @@ impl MarioVecEnv {
             if let Some(seed) = seeds[env_idx] {
                 self.rngs[env_idx] = XorShift64::from_explicit_seed(seed);
             }
-            let explicit_index =
-                (start_indices[env_idx] >= 0).then_some(start_indices[env_idx] as usize);
-            self.reset_one_env(env_idx, explicit_index)?;
+            self.reset_one_env(env_idx, state_indices[env_idx])?;
             self.pending_reset[env_idx] = false;
         }
 
@@ -338,31 +305,11 @@ impl MarioVecEnv {
         Ok(())
     }
 
-    pub fn initial_state_names(&self) -> Vec<String> {
-        self.initial_state_names.clone()
-    }
-
-    pub fn initial_state_policy_names(&self) -> Vec<String> {
-        self.initial_states
+    pub fn state_catalog(&self) -> Vec<String> {
+        self.state_catalog
             .iter()
             .map(|state| state.name.clone())
             .collect()
-    }
-
-    pub fn initial_state_weights(&self) -> Vec<f64> {
-        if self.initial_states.is_empty() {
-            return Vec::new();
-        }
-        if !self.weighted_initial_states {
-            return vec![1.0 / self.initial_states.len() as f64; self.initial_states.len()];
-        }
-        let mut weights = Vec::with_capacity(self.initial_states.len());
-        let mut previous = 0.0;
-        for state in &self.initial_states {
-            weights.push((state.cumulative_weight - previous).max(0.0));
-            previous = state.cumulative_weight;
-        }
-        weights
     }
 
     pub fn active_state_indices(&self) -> &[i32] {
@@ -717,12 +664,8 @@ impl MarioVecEnv {
         }
     }
 
-    fn reset_one_env(
-        &mut self,
-        env_idx: usize,
-        explicit_state_index: Option<usize>,
-    ) -> Result<(), StateLoadError> {
-        if self.initial_states.is_empty() {
+    fn reset_one_env(&mut self, env_idx: usize, state_index: i32) -> Result<(), StateLoadError> {
+        if self.state_catalog.is_empty() {
             self.envs[env_idx].reset();
             self.envs[env_idx].prime_cold_boot();
             self.active_state_indices[env_idx] = -1;
@@ -731,10 +674,9 @@ impl MarioVecEnv {
             return Ok(());
         }
 
-        let state_index =
-            explicit_state_index.unwrap_or_else(|| self.initial_state_index_for_env(env_idx));
-        self.active_state_indices[env_idx] = self.initial_states[state_index].name_index;
-        self.envs[env_idx].load_fceu_state(&self.initial_states[state_index].data)?;
+        let state_index = state_index as usize;
+        self.envs[env_idx].load_fceu_state(&self.state_catalog[state_index].data)?;
+        self.active_state_indices[env_idx] = state_index as i32;
         self.last_actions[env_idx] = 0;
         self.apply_noop_reset(env_idx);
         Ok(())
@@ -757,18 +699,11 @@ impl MarioVecEnv {
 pub struct InitialState {
     name: String,
     data: Vec<u8>,
-    cumulative_weight: f64,
-    name_index: i32,
 }
 
 impl InitialState {
-    pub fn new(name: String, data: Vec<u8>, cumulative_weight: f64) -> Self {
-        Self {
-            name,
-            data,
-            cumulative_weight,
-            name_index: -1,
-        }
+    pub fn new(name: String, data: Vec<u8>) -> Self {
+        Self { name, data }
     }
 }
 
@@ -1925,7 +1860,7 @@ mod tests {
             chr_rom: vec![0; 8192],
             vertical_mirroring: true,
         };
-        let mut env = MarioVecEnv::new(cart, config, Vec::new(), false, 1).unwrap();
+        let mut env = MarioVecEnv::new(cart, config, Vec::new(), 1).unwrap();
         let previous_controller_state = 0b1011_0111;
         env.last_actions[0] = previous_controller_state;
 

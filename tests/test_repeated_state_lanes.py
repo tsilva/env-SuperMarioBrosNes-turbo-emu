@@ -15,9 +15,14 @@ GROUP_STATES = ("Level1-1", "Level1-2", "Level1-3", "Level1-4")
 
 
 def make_env(rom_path: Path, state: str | list[str], num_envs: int) -> SuperMarioBrosNesTurboVecEnv:
+    state_config = (
+        {"state_catalog": tuple(dict.fromkeys(state))}
+        if isinstance(state, list)
+        else {"state": state}
+    )
     return SuperMarioBrosNesTurboVecEnv(
         "SuperMarioBros-Nes-v0",
-        state=state,
+        **state_config,
         rom_path=rom_path,
         num_envs=num_envs,
         use_restricted_actions=Actions.ALL,
@@ -48,8 +53,12 @@ def step_arrays(
     return obs, rewards, terminated, truncated
 
 
-def reset_obs(env: SuperMarioBrosNesTurboVecEnv) -> np.ndarray:
-    obs, _infos = env.reset()
+def reset_obs(
+    env: SuperMarioBrosNesTurboVecEnv,
+    state_indices: np.ndarray | None = None,
+) -> np.ndarray:
+    options = None if state_indices is None else {"state_indices": state_indices}
+    obs, _infos = env.reset(options=options)
     return obs
 
 
@@ -59,7 +68,10 @@ def test_repeated_state_lanes_match_independent_lane_references() -> None:
     vector_env = make_env(rom_path, lane_states, num_envs=16)
     refs = [make_env(rom_path, state, num_envs=1) for state in GROUP_STATES]
 
-    vector_obs = reset_obs(vector_env)
+    lane_indices = np.asarray(
+        [GROUP_STATES.index(state) for state in lane_states], dtype=np.int32
+    )
+    vector_obs = reset_obs(vector_env, lane_indices)
     ref_obs = [reset_obs(ref) for ref in refs]
     for lane, state in enumerate(lane_states):
         ref_index = GROUP_STATES.index(state)
@@ -82,7 +94,10 @@ def test_repeated_state_lanes_match_references_after_autoreset() -> None:
     vector_env = make_env(rom_path, lane_states, num_envs=16)
     refs = [make_env(rom_path, state, num_envs=1) for state in GROUP_STATES]
 
-    reset_obs(vector_env)
+    lane_indices = np.asarray(
+        [GROUP_STATES.index(state) for state in lane_states], dtype=np.int32
+    )
+    reset_obs(vector_env, lane_indices)
     for ref in refs:
         reset_obs(ref)
 
@@ -106,8 +121,11 @@ def test_repeated_state_lanes_match_independent_env_with_divergent_actions() -> 
     lane_states = [GROUP_STATES[index % len(GROUP_STATES)] for index in range(16)]
     vector_env = make_env(rom_path, lane_states, num_envs=16)
     independent = make_env(rom_path, lane_states, num_envs=16)
-    vector_env.reset()
-    independent.reset()
+    lane_indices = np.asarray(
+        [GROUP_STATES.index(state) for state in lane_states], dtype=np.int32
+    )
+    vector_env.reset(options={"state_indices": lane_indices})
+    independent.reset(options={"state_indices": lane_indices})
 
     actions = action_batch("noop", 16)
     actions[4] = action_batch("right", 1)[0]

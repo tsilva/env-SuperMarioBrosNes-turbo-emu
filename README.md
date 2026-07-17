@@ -60,6 +60,8 @@ f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de
 ## 🎮 Use
 
 ```python
+import numpy as np
+
 from supermariobrosnes_turbo import (
     Actions,
     SuperMarioBrosNesTurboVecEnv,
@@ -86,8 +88,10 @@ observations, rewards, terminated, truncated, infos = env.step(
 
 done = terminated | truncated
 if done.any():
+    state_indices = np.full(env.num_envs, -1, dtype=np.int32)
+    state_indices[done] = 0
     observations, reset_infos = env.reset(
-        options={"reset_mask": done.copy()},
+        options={"reset_mask": done.copy(), "state_indices": state_indices},
     )
 
 env.close()
@@ -95,15 +99,6 @@ env.close()
 
 **Important:** Autoreset is disabled. Selectively reset terminal lanes before
 stepping again.
-
-## Gymrec provider
-
-The package registers `supermariobrosnes-turbo` under the
-`gymrec.environment_providers` entry-point group. Its single-environment
-session owns Mario preprocessing, action sets, policy-action adaptation,
-named-control conversion, vector-lane adaptation, reward shaping, life/level
-events, stalling, episode limits, and ROM/state provenance. Gymrec receives only
-the resulting Gymnasium transition contract.
 
 ## 🏁 Train and play
 
@@ -173,8 +168,8 @@ See [BENCHMARKS.md](BENCHMARKS.md) for results, protocol, and machine details.
 - **Scope:** This emulator supports only `SuperMarioBros-Nes-v0` on mapper
   0/NROM; it is not a general NES or Stable Retro replacement.
 - **States:** Packaged states cover `Level1-1` through `Level8-4`, with
-  additional variants. `state=` also accepts paths, bytes, per-lane states, and
-  weighted mappings.
+  additional variants. `state=` accepts one name, path, or byte payload;
+  `state_catalog=` preloads an ordered selection for explicit per-lane resets.
 - **Actions:** `Actions.ALL` and `Actions.FILTERED` accept per-button masks;
   `Actions.DISCRETE` provides Stable Retro-compatible 36-way actions.
 - **Playback:** Play commands require a discoverable native SDL2 library and

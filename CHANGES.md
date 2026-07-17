@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-- Expose the `supermariobrosnes-turbo` gymrec environment-provider entry point,
-  including package-owned Mario task rules, action adaptation, control labels,
-  vector-lane adaptation, and ROM/state provenance.
+- Replace provider-side saved-state sampling and per-lane constructor states
+  with immutable `state_catalog` entries selected explicitly through
+  `options["state_indices"]`, including active-index and reset-info reporting.
 - Add the package-owned `smb-turbo import`, `train`, and `play` command tree,
   replacing the fragmented installed commands while retaining thin checkout
   launchers.

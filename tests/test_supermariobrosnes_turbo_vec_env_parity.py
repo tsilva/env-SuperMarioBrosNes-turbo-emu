@@ -145,7 +145,7 @@ def test_upstream_oracle_exact_short_sequence_parity(num_envs: int) -> None:
     )
     fast_env = SuperMarioBrosNesTurboVecEnv(
         GAME,
-        state=states,
+        state_catalog=states,
         rom_path=rom_path,
         num_envs=num_envs,
         use_restricted_actions=Actions.ALL,
@@ -162,7 +162,9 @@ def test_upstream_oracle_exact_short_sequence_parity(num_envs: int) -> None:
     action_names = ("noop", "right", "right_b", "right_a") * 4
     try:
         retro_obs, _ = retro_env.reset()
-        fast_obs, _ = fast_env.reset()
+        fast_obs, _ = fast_env.reset(
+            options={"state_indices": np.arange(num_envs, dtype=np.int32)}
+        )
         assert retro_obs.shape == fast_obs.shape == (num_envs, 4, 84, 84)
         assert retro_obs.dtype == fast_obs.dtype == np.uint8
         np.testing.assert_array_equal(retro_obs, fast_obs)

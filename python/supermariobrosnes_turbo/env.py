@@ -44,6 +44,7 @@ MASK_BIT_WEIGHTS = (1 << np.arange(len(NES_BUTTONS), dtype=np.uint16)).astype(np
 STABLE_RETRO_BUTTON_COMBOS = ((0, 16, 32), (0, 64, 128), (0, 1, 256, 257))
 DEFAULT_STABLE_RETRO_GAME = "SuperMarioBros-Nes-v0"
 GZIP_MAGIC = b"\x1f\x8b"
+_STATE_UNSET = object()
 INFO_KEYS = (
     "x_pos",
     "coins",
@@ -200,48 +201,44 @@ def _state_label(state: StateSpec, fallback: str) -> str:
     return str(state)
 
 
-def _normalize_initial_state_config(
-    state: StateSpec | Sequence[StateSpec] | Mapping[StateSpec, float] | None,
+def _normalize_state_config(
+    state: Any,
+    state_catalog: Sequence[StateSpec] | None,
     state_dir: str | Path | None,
-    num_envs: int,
-) -> tuple[list[bytes], tuple[str, ...], list[float] | None]:
-    if state is None:
-        return [], (), None
+) -> tuple[list[bytes], tuple[str, ...]]:
+    if state_catalog is None:
+        if state is _STATE_UNSET:
+            state = State.DEFAULT
+        if isinstance(state, Mapping) or (
+            isinstance(state, Sequence)
+            and not isinstance(state, (str, bytes, bytearray, memoryview))
+        ):
+            raise TypeError("state must be a single state; use state_catalog for multiple states")
+        state = _normalize_state_value(state)
+        if state is None:
+            return [], ()
+        return [_load_initial_state(state, state_dir)], (_state_label(state, "state-0"),)
 
-    if isinstance(state, Mapping):
-        if not state:
-            raise ValueError("weighted state mapping must contain at least one state")
-        initial_states: list[bytes] = []
-        state_names: list[str] = []
-        state_weights: list[float] = []
-        for index, (state_value, weight_value) in enumerate(state.items()):
-            weight = float(weight_value)
-            if not np.isfinite(weight) or weight < 0.0:
-                raise ValueError("weighted state values must be non-negative finite numbers")
-            initial_states.append(_load_initial_state(state_value, state_dir))
-            state_names.append(_state_label(state_value, f"state-{index}"))
-            state_weights.append(weight)
-        total_weight = float(np.sum(state_weights))
-        if not np.isfinite(total_weight) or total_weight <= 0.0:
-            raise ValueError("weighted state values must sum to a positive finite number")
-        return initial_states, tuple(state_names), [weight / total_weight for weight in state_weights]
-
-    if isinstance(state, Sequence) and not isinstance(state, (str, bytes, bytearray, memoryview)):
-        states = list(state)
-        if len(states) != num_envs:
-            raise ValueError(
-                "state sequences must provide exactly one state per env slot: "
-                f"got {len(states)} states for num_envs={num_envs}"
-            )
-        if not states:
-            raise ValueError("state sequence must contain at least one state")
-        return (
-            [_load_initial_state(state_value, state_dir) for state_value in states],
-            tuple(_state_label(state_value, f"state-{index}") for index, state_value in enumerate(states)),
-            None,
-        )
-
-    return [_load_initial_state(state, state_dir)], (_state_label(state, "state-0"),), None
+    if state is not _STATE_UNSET:
+        raise ValueError("state and state_catalog are mutually exclusive")
+    if isinstance(state_catalog, (str, bytes, bytearray, memoryview)) or not isinstance(
+        state_catalog, Sequence
+    ):
+        raise TypeError("state_catalog must be a sequence of states")
+    states = [_normalize_state_value(value) for value in state_catalog]
+    if not states:
+        raise ValueError("state_catalog must contain at least one state")
+    if any(value is None for value in states):
+        raise ValueError("state_catalog entries must resolve to saved states")
+    labels = tuple(
+        _state_label(state_value, f"state-{index}")
+        for index, state_value in enumerate(states)
+    )
+    duplicates = sorted(label for label in set(labels) if labels.count(label) > 1)
+    if duplicates:
+        names = ", ".join(repr(name) for name in duplicates)
+        raise ValueError(f"state_catalog contains duplicate states: {names}")
+    return [_load_initial_state(state_value, state_dir) for state_value in states], labels
 
 
 def _resolve_action_set(action_set: str | Sequence[str]) -> tuple[str, ...]:
@@ -479,6 +476,10 @@ def _normalize_retro_resize(
 class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     """Gymnasium VectorEnv for the native Super Mario Bros NES fast path.
 
+    ``state`` accepts one saved state. ``state_catalog`` accepts the ordered,
+    immutable set of saved states selectable by this environment. Selected
+    lanes load exact entries through ``options["state_indices"]``.
+
     ``num_threads=None`` uses Rayon's process-global automatic thread pool.
     A positive value creates a private pool for this environment, capped by the
     lane count and the machine's available parallelism.
@@ -490,7 +491,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     def __init__(
         self,
         game: str,
-        state: Any = State.DEFAULT,
+        state: Any = _STATE_UNSET,
         scenario: str | Path | None = None,
         info: str | Path | None = None,
         use_restricted_actions: Any = Actions.FILTERED,
@@ -520,6 +521,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         sticky_action_prob: float = 0.0,
         reward_clip: bool | Sequence[float] = False,
         info_filter: Any = "all",
+        state_catalog: Sequence[StateSpec] | None = None,
     ) -> None:
         if str(game) != DEFAULT_STABLE_RETRO_GAME:
             raise ValueError(f"SuperMarioBrosNesTurboVecEnv only supports {DEFAULT_STABLE_RETRO_GAME!r}")
@@ -568,14 +570,10 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.action_set = action_set_name
         self._named_action_controller_bytes = _named_action_controller_bytes(self.action_meanings)
         self._action_masks = _action_masks(self.action_meanings)
-        state = _normalize_retro_state(state)
-        self._state_collection = isinstance(state, Mapping) or (
-            isinstance(state, Sequence) and not isinstance(state, (str, bytes, bytearray, memoryview))
-        )
-        initial_states, initial_state_names, initial_state_weights = _normalize_initial_state_config(
+        initial_states, state_names = _normalize_state_config(
             state,
+            state_catalog,
             state_dir,
-            num_envs,
         )
         self.obs_layout = _normalize_obs_layout(obs_layout)
         self.obs_copy, self._copy_obs, self._unsafe_view = _normalize_obs_copy(obs_copy)
@@ -603,8 +601,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             self._output_resize_width,
             self._output_resize_height,
             initial_states,
-            list(initial_state_names),
-            initial_state_weights,
+            list(state_names),
             0,
             bool(maxpool_last_two),
             noop_reset_max,
@@ -616,8 +613,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             self.obs_resize_algorithm,
             num_threads,
         )
-        self._state_policy_names = tuple(self._core.initial_state_policy_names())
-        self.initial_state_names = self._state_policy_names
+        self._state_catalog = tuple(state_names)
         self.num_envs = self._core.num_envs
         self.num_threads = self._core.num_threads
         self.num_buttons = len(NES_BUTTONS)
@@ -697,7 +693,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._xscroll_hi = np.empty((self.num_envs,), dtype=np.uint8)
         self._xscroll_lo = np.empty((self.num_envs,), dtype=np.uint8)
         self._active_state_indices = np.empty((self.num_envs,), dtype=np.int32)
-        self._active_state_labels: tuple[str | None, ...] = tuple(None for _ in range(self.num_envs))
         self._info_all_lanes_mask = np.ones((self.num_envs,), dtype=np.bool_)
         self._rgb_frames: np.ndarray | None = (
             np.empty(self._core.rgb_frame_shape(), dtype=np.uint8)
@@ -728,23 +723,30 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         elif not np.any(reset_mask):
             raise ValueError("options['reset_mask'] must select at least one lane")
 
-        start_indices = reset_options.pop("start_indices", None)
+        state_indices = reset_options.pop("state_indices", None)
         if reset_options:
             names = ", ".join(sorted(reset_options))
             raise ValueError(f"unsupported reset option(s): {names}")
-        if start_indices is None:
-            start_indices = np.full(self.num_envs, -1, dtype=np.int32)
-        elif not isinstance(start_indices, np.ndarray):
-            raise TypeError("options['start_indices'] must be a NumPy array")
-        elif start_indices.shape != (self.num_envs,):
-            raise ValueError(f"options['start_indices'] must have shape {(self.num_envs,)}")
-        elif start_indices.dtype != np.int32:
-            raise TypeError("options['start_indices'] must have dtype np.int32")
+        if state_indices is None:
+            default_index = 0 if self.state_catalog else -1
+            state_indices = np.full(self.num_envs, default_index, dtype=np.int32)
+        elif not isinstance(state_indices, np.ndarray):
+            raise TypeError("options['state_indices'] must be a NumPy array")
+        elif state_indices.shape != (self.num_envs,):
+            raise ValueError(f"options['state_indices'] must have shape {(self.num_envs,)}")
+        elif state_indices.dtype != np.int32:
+            raise TypeError("options['state_indices'] must have dtype np.int32")
+        if self.state_catalog:
+            selected = state_indices[reset_mask]
+            if np.any(selected < 0) or np.any(selected >= len(self.state_catalog)):
+                raise ValueError("selected state_indices entries must index state_catalog")
+        elif np.any(state_indices[reset_mask] != -1):
+            raise ValueError("state_indices require a non-empty state_catalog")
 
         seeds = self._normalize_reset_seed(seed)
         if seed is not None and not isinstance(seed, Sequence):
             super().reset(seed=int(seed))
-        self._core.reset_masked_into(self._obs, reset_mask, start_indices, seeds)
+        self._core.reset_masked_into(self._obs, reset_mask, state_indices, seeds)
         self._rewards[reset_mask] = 0
         self._terminated[reset_mask] = False
         self._truncated[reset_mask] = False
@@ -926,22 +928,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         )
 
     def _write_active_state_indices(self) -> None:
-        raw_indices = np.asarray(self._core.active_state_indices(), dtype=np.int32)
-        core_names = tuple(self._core.initial_state_names)
-        policy_indices = {name: index for index, name in enumerate(self._state_policy_names)}
-        active_labels: list[str | None] = []
-        public_indices = raw_indices.copy()
-        for lane, raw_index in enumerate(raw_indices):
-            if int(raw_index) < 0:
-                active_labels.append(None)
-                public_indices[lane] = -1
-                continue
-            label = core_names[int(raw_index)]
-            active_labels.append(label)
-            if label in policy_indices:
-                public_indices[lane] = policy_indices[label]
-        self._active_state_labels = tuple(active_labels)
-        self._active_state_indices[:] = public_indices
+        self._active_state_indices[:] = np.asarray(
+            self._core.active_state_indices(), dtype=np.int32
+        )
 
     def _return_obs(self) -> np.ndarray:
         public = self._public_obs_view()
@@ -1031,12 +1020,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         }
 
     def _reset_info_dict(self, index: int) -> dict[str, Any]:
-        if not self._state_collection:
-            return {}
-        state = self._active_state_labels[index]
-        if state is None:
-            return {}
-        return {"state": state, "start_state": state}
+        return {"state_index": int(self._active_state_indices[index])}
 
     @property
     def x_pos(self) -> np.ndarray:
@@ -1078,13 +1062,14 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     def xscroll_lo(self) -> np.ndarray:
         return self._xscroll_lo
 
+    @property
+    def state_catalog(self) -> tuple[str, ...]:
+        return self._state_catalog
+
     def active_state_indices(self) -> np.ndarray:
         view = self._active_state_indices.view()
         view.setflags(write=False)
         return view
-
-    def active_states(self) -> tuple[str | None, ...]:
-        return self._active_state_labels
 
     def close(self) -> None:
         self.closed = True
@@ -1112,14 +1097,6 @@ def _normalize_state_value(state: Any) -> Any:
     if name == "NONE":
         return None
     return state
-
-
-def _normalize_retro_state(state: Any) -> Any:
-    if isinstance(state, Mapping):
-        return {_normalize_state_value(key): value for key, value in state.items()}
-    if isinstance(state, Sequence) and not isinstance(state, (str, bytes, bytearray, memoryview)):
-        return [_normalize_state_value(value) for value in state]
-    return _normalize_state_value(state)
 
 
 def _resolve_rom_path(game: str, rom_path: str | Path | None) -> str | Path:

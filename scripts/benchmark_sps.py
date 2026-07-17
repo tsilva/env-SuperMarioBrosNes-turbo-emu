@@ -383,12 +383,6 @@ def assigned_lane_states(args: argparse.Namespace) -> list[str | None]:
     return states if states is not None else [None] * args.num_envs
 
 
-def benchmark_state(args: argparse.Namespace) -> str | list[str] | None:
-    if args.parsed_states is None:
-        return args.state
-    return lane_states(args.num_envs, args.parsed_states)
-
-
 def has_initial_state(args: argparse.Namespace) -> bool:
     return args.state is not None or args.parsed_states is not None
 
@@ -709,9 +703,14 @@ def create_turbo_env(args: argparse.Namespace, rom_path: Path) -> Any:
     candidate = importlib.import_module(TURBO_IMPORT)
     if args.state_dir is not None:
         os.environ["SUPERMARIOBROSNES_FASTENV_STATE_DIR"] = str(args.state_dir)
+    state_config = (
+        {"state": args.state}
+        if args.parsed_states is None
+        else {"state_catalog": tuple(dict.fromkeys(args.parsed_states))}
+    )
     return candidate.SuperMarioBrosNesTurboVecEnv(
         GAME,
-        state=benchmark_state(args),
+        **state_config,
         rom_path=rom_path,
         num_envs=args.num_envs,
         use_restricted_actions=candidate.Actions.ALL,
@@ -731,7 +730,12 @@ def step_env(env: Any, actions: np.ndarray) -> None:
     _obs, _rewards, terminated, truncated, _infos = env.step(actions)
     reset_mask = np.asarray(terminated) | np.asarray(truncated)
     if np.any(reset_mask):
-        env.reset(options={"reset_mask": reset_mask})
+        options = {"reset_mask": reset_mask}
+        if getattr(env, "state_catalog", ()):
+            state_indices = np.full(env.num_envs, -1, dtype=np.int32)
+            state_indices[reset_mask] = env.active_state_indices()[reset_mask]
+            options["state_indices"] = state_indices
+        env.reset(options=options)
 
 
 def step_action_sequence(env: Any, actions: Sequence[np.ndarray]) -> None:
@@ -745,7 +749,16 @@ def prepare_game(
     backend: str,
     buttons: Sequence[str | None] | None,
 ) -> np.ndarray:
-    obs, _infos = env.reset()
+    reset_options = None
+    if backend == "turbo" and args.parsed_states is not None:
+        catalog_indices = {name: index for index, name in enumerate(env.state_catalog)}
+        reset_options = {
+            "state_indices": np.asarray(
+                [catalog_indices[state] for state in assigned_lane_states(args)],
+                dtype=np.int32,
+            )
+        }
+    obs, _infos = env.reset(options=reset_options)
     if args.no_start_game or has_initial_state(args) or "start" not in ACTION_SETS[args.action_set]:
         return obs
     noop = fill_action(backend, args.num_envs, "noop", buttons)
@@ -922,7 +935,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         if args.profile_output is not None:
             env.enable_profiler()
         obs = prepare_game(env, args, backend, buttons)
-        active_states = env.active_states()
+        if backend == "turbo":
+            catalog = env.state_catalog
+            active_states = tuple(
+                catalog[int(index)] if int(index) >= 0 else None
+                for index in env.active_state_indices()
+            )
+        else:
+            active_states = env.active_states()
         templates = action_templates(backend, args.num_envs, args.parsed_actions, buttons)
         warmup_actions = sampled_action_sequence(templates, args.warmup, args.action_seed + 1)
         measured_actions = sampled_action_sequence(templates, args.steps, args.action_seed)
