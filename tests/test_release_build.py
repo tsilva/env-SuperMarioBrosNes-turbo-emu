@@ -43,6 +43,18 @@ def test_release_validates_python_314_with_stable_abi_wheels():
     assert 'features = ["abi3-py39", "extension-module"]' in cargo
 
 
+def test_local_release_runs_the_ci_source_gates():
+    root = Path(__file__).resolve().parents[1]
+    release_script = (root / "scripts" / "release.py").read_text(encoding="utf-8")
+
+    assert '"fmt", "--check", "--all"' in release_script
+    assert '"clippy"' in release_script
+    assert '"--workspace"' in release_script
+    assert '"--all-targets"' in release_script
+    assert '"--all-features"' in release_script
+    assert "check_smb_dependency_closure.py" in release_script
+
+
 def test_release_wheel_builds_use_platform_scoped_cargo_caches():
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "release.yml").read_text(

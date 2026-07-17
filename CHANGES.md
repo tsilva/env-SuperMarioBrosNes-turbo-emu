@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Keep the local release checks aligned with CI and refresh the deliberate Rust
+  dependency-closure baseline after lockfile regeneration.
 
 ## 0.3.2 - 2026-07-17
 
