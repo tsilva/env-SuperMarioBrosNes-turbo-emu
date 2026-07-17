@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from pathlib import Path
 import threading
 import time
 from typing import Any
@@ -25,20 +24,8 @@ from .training_ui import (
 )
 from .training import (
     ACTION_SET,
-    FALLBACK_ACTION,
-    LOG_INTERVAL_STEPS,
-    MAX_EPISODE_STEPS,
     N_ENVS,
-    PROTECTED_PREFIX_RUNS,
-    RUN_DURATION_MAX,
-    RUN_DURATION_MEAN,
-    STALL_STEPS,
-    STEP_COST,
-    TOTAL_TIMESTEPS,
     MarioJerkTask,
-    _format_box,
-    _format_elapsed,
-    _format_progress,
     _play_command,
     _protect_existing_policies,
     _save_policy,
@@ -50,6 +37,11 @@ BEAM_WIDTH = 16
 BEAM_REFRESH_EPISODES = N_ENVS
 MUTATION_RUNS = 8
 BRANCH_DURATIONS = (1, 2, 4, 8, 16, 32)
+
+
+def _overwrite_existing(args: argparse.Namespace) -> bool:
+    """Canonical beam runs replace the current default policy and artifacts."""
+    return args.output is None or args.overwrite
 
 
 def _metric_row(
@@ -78,7 +70,7 @@ def _metric_row(
 
 
 def _initial_snapshot(args: argparse.Namespace) -> TrainingSnapshot:
-    run_dir = args.output or run_directory_for_state(args.state, algorithm="beam")
+    run_dir = args.output or run_directory_for_state(args.state)
     policy_path = run_dir / f"{args.state}.zip"
     return TrainingSnapshot(
         algorithm="Beam",
@@ -104,7 +96,7 @@ def _run_training(
     reporter: TrainingReporter,
     stop_event: threading.Event,
 ) -> TrainingResult:
-    run_dir = args.output or run_directory_for_state(args.state, algorithm="beam")
+    run_dir = args.output or run_directory_for_state(args.state)
     policy_path = run_dir / f"{args.state}.zip"
     metrics_path = run_dir / "episodes.jsonl"
     action_names = tuple(ACTION_SETS[ACTION_SET])
@@ -167,7 +159,11 @@ def _run_training(
                     accepted_path = (
                         run_dir / "checkpoints" / f"{args.state}-{step}.zip"
                     )
-                    _save_policy(search.policy(), accepted_path, force=args.overwrite)
+                    _save_policy(
+                        search.policy(),
+                        accepted_path,
+                        force=_overwrite_existing(args),
+                    )
                     elapsed = time.perf_counter() - started_at
                     success_row = _metric_row(
                         search, elapsed=elapsed, accepted=accepted
@@ -275,7 +271,7 @@ def _run_training(
                 checkpoint_path = _save_policy(
                     search.policy(),
                     run_dir / "checkpoints" / f"{args.state}-{step}.zip",
-                    force=args.overwrite,
+                    force=_overwrite_existing(args),
                 )
                 reporter.update(
                     snapshot,
@@ -307,7 +303,11 @@ def _run_training(
         user_stopped = stop_event.is_set()
         final_path = None
         if not user_stopped or candidate is not None:
-            final_path = _save_policy(final_policy, policy_path, force=args.overwrite)
+            final_path = _save_policy(
+                final_policy,
+                policy_path,
+                force=_overwrite_existing(args),
+            )
         elapsed = time.perf_counter() - started_at
         final_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
         stop_reason = (
@@ -416,8 +416,8 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    run_dir = args.output or run_directory_for_state(args.state, algorithm="beam")
-    _protect_existing_policies(run_dir, force=args.overwrite)
+    run_dir = args.output or run_directory_for_state(args.state)
+    _protect_existing_policies(run_dir, force=_overwrite_existing(args))
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")
     (run_dir / "run_config.json").write_text(

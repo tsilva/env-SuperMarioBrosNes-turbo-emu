@@ -10,6 +10,7 @@ import pytest
 
 from supermariobrosnes_turbo import training as train
 from supermariobrosnes_turbo import beam_training as train_beam
+from supermariobrosnes_turbo.jerk import JerkPolicy, policy_path_for_state
 
 
 class _FakeFailureTask:
@@ -81,7 +82,7 @@ class _NullReporter:
 
 
 TRAINERS = [
-    (train, []),
+    (train, ["--algorithm", "jerk"]),
     (
         train_beam,
         [
@@ -105,6 +106,34 @@ def _parse_args(values: list[str]):
     args = parser.parse_args(values)
     train._apply_algorithm_defaults(parser, args)
     return args
+
+
+def test_default_beam_run_overwrites_existing_canonical_policy(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(train_beam, "MarioJerkTask", _FakeSuccessTask)
+    policy_path = policy_path_for_state("Level1-1")
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_bytes(b"old policy")
+    args = _parse_args(
+        [
+            "Level1-1",
+            "--algorithm",
+            "beam",
+            "--transitions",
+            "1",
+            "--lanes",
+            "1",
+            "--log-every",
+            "10",
+        ]
+    )
+
+    result = train_beam._run_training(args, _NullReporter(), threading.Event())
+
+    assert result.accepted
+    assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "beam"
 
 
 @pytest.mark.parametrize(("module", "extra_args"), TRAINERS)
@@ -232,6 +261,8 @@ def test_periodic_metric_schema_is_unchanged_and_only_final_has_stop_reason(
     args = _parse_args(
         [
             "Level1-1",
+            "--algorithm",
+            "jerk",
             "--output",
             str(output),
             "--transitions",

@@ -41,27 +41,53 @@ def resolve_state_name(
 def run_directory_for_state(
     state: str,
     *,
-    algorithm: str = "jerk",
     runs_root: str | Path = "runs",
 ) -> Path:
     name = validate_state_name(state)
-    if algorithm not in {"jerk", "beam"}:
-        raise ValueError(f"unknown training algorithm {algorithm!r}")
-    return Path(runs_root) / f"{name}-{algorithm}"
+    return Path(runs_root) / name
 
 
 def policy_path_for_state(
     state: str,
     *,
-    algorithm: str = "jerk",
     runs_root: str | Path = "runs",
 ) -> Path:
     name = validate_state_name(state)
     return run_directory_for_state(
         name,
-        algorithm=algorithm,
         runs_root=runs_root,
     ) / f"{name}.zip"
+
+
+def policy_paths_for_state(
+    state: str,
+    *,
+    runs_root: str | Path = "runs",
+) -> tuple[Path, ...]:
+    """Return canonical and legacy policy paths in playback precedence order."""
+    name = validate_state_name(state)
+    root = Path(runs_root)
+    return (
+        policy_path_for_state(name, runs_root=root),
+        root / f"{name}-beam" / f"{name}.zip",
+        root / f"{name}-jerk" / f"{name}.zip",
+    )
+
+
+def find_policy_path_for_state(
+    state: str,
+    *,
+    runs_root: str | Path = "runs",
+) -> Path | None:
+    """Find a canonical policy, preferring legacy beam over legacy JERK."""
+    return next(
+        (
+            path
+            for path in policy_paths_for_state(state, runs_root=runs_root)
+            if path.is_file()
+        ),
+        None,
+    )
 
 
 @dataclass(frozen=True, order=True)

@@ -201,7 +201,7 @@ def test_training_log_helpers_are_readable_and_emit_exact_play_commands() -> Non
     assert (
         train_module._play_command(
             "Level1-1",
-            Path("runs/Level1-1-jerk/Level1-1.zip"),
+            Path("runs/Level1-1/Level1-1.zip"),
             default_output=True,
             rom_path=None,
         )
@@ -231,7 +231,9 @@ def test_training_refuses_existing_policy_without_force(
     )
 
     with pytest.raises(SystemExit, match="pass --overwrite"):
-        train_module.main(["Level1-1", "--output", str(output)])
+        train_module.main(
+            ["Level1-1", "--algorithm", "jerk", "--output", str(output)]
+        )
 
     assert policy_path.read_bytes() == b"existing policy"
 
@@ -296,6 +298,8 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
         train_module.main(
             [
                 "Level1-1",
+                "--algorithm",
+                "jerk",
                 "--output",
                 str(stopped_output),
                 "--transitions",
@@ -320,6 +324,8 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
         train_module.main(
             [
                 "Level1-1",
+                "--algorithm",
+                "jerk",
                 "--output",
                 str(continuous_output),
                 "--transitions",

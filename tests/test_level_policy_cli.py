@@ -21,10 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.mark.parametrize("state", ["Level1-1", "Level2-1-clouds-easy", "Custom"])
 def test_state_deterministically_selects_run_and_policy_names(state: str) -> None:
     assert validate_state_name(state) == state
-    assert run_directory_for_state(state) == Path(f"runs/{state}-jerk")
-    assert policy_path_for_state(state) == Path(
-        f"runs/{state}-jerk/{state}.zip"
-    )
+    assert run_directory_for_state(state) == Path(f"runs/{state}")
+    assert policy_path_for_state(state) == Path(f"runs/{state}/{state}.zip")
 
 
 @pytest.mark.parametrize("state", ["", ".", "..", "../Level1-1", "a/b", r"a\b"])
@@ -58,6 +56,7 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     )
 
     assert args.state == "Level1-1"
+    assert args.algorithm == "beam"
     assert args.transitions == 100
     assert args.lanes == 4
     assert args.continue_after_completion
@@ -120,6 +119,22 @@ def test_play_command_resolves_exact_state_policy(tmp_path: Path) -> None:
 
     assert state_playback.resolve_state_policy("Custom", runs_dir=tmp_path) == policy
     assert state_playback.resolve_state_policy("Level1-1", runs_dir=tmp_path) is None
+
+
+def test_play_prefers_legacy_beam_over_legacy_jerk(tmp_path: Path) -> None:
+    beam = tmp_path / "Custom-beam" / "Custom.zip"
+    jerk = tmp_path / "Custom-jerk" / "Custom.zip"
+    beam.parent.mkdir()
+    jerk.parent.mkdir()
+    beam.touch()
+    jerk.touch()
+
+    assert state_playback.resolve_state_policy("Custom", runs_dir=tmp_path) == beam
+
+    canonical = policy_path_for_state("Custom", runs_root=tmp_path)
+    canonical.parent.mkdir()
+    canonical.touch()
+    assert state_playback.resolve_state_policy("Custom", runs_dir=tmp_path) == canonical
 
 
 def test_unified_cli_exposes_only_import_train_and_play() -> None:
