@@ -60,6 +60,25 @@ class _FakeSuccessTask(_FakeFailureTask):
         )
 
 
+class _FakeImprovingSuccessTask(_FakeFailureTask):
+    def step(self, actions):
+        rewards = (1.0, 3.0, 2.0)
+        reward = rewards[min(self.steps, len(rewards) - 1)]
+        self.steps += 1
+        count = len(actions)
+        records = {
+            lane: SimpleNamespace(completed=True, progress=3154.0)
+            for lane in range(count)
+        }
+        return (
+            np.zeros((count, 1), dtype=np.uint8),
+            np.full(count, reward, dtype=np.float64),
+            np.zeros(count, dtype=np.bool_),
+            records,
+            np.ones(count, dtype=np.bool_),
+        )
+
+
 class _StopAfterCandidateReporter:
     def __init__(self, stop_event: threading.Event) -> None:
         self.stop_event = stop_event
@@ -134,6 +153,59 @@ def test_default_beam_run_overwrites_existing_canonical_policy(
 
     assert result.accepted
     assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "beam"
+
+
+def test_continued_beam_publishes_later_better_completion_and_archives_all(
+    tmp_path: Path, monkeypatch
+) -> None:
+    output = tmp_path / "continued-beam"
+    output.mkdir()
+    monkeypatch.setattr(train_beam, "MarioJerkTask", _FakeImprovingSuccessTask)
+    args = _parse_args(
+        [
+            "Level1-1",
+            "--algorithm",
+            "beam",
+            "--output",
+            str(output),
+            "--overwrite",
+            "--continue-after-completion",
+            "--transitions",
+            "3",
+            "--lanes",
+            "1",
+            "--beam-width",
+            "1",
+            "--beam-refresh-episodes",
+            "1",
+            "--mutation-runs",
+            "1",
+            "--branch-durations",
+            "1",
+            "--run-duration-max",
+            "1",
+            "--log-every",
+            "10",
+        ]
+    )
+
+    result = train_beam._run_training(
+        args, _NullReporter(), threading.Event()
+    )
+
+    policy = JerkPolicy.load(output / "Level1-1.zip")
+    successes = [
+        json.loads(line)
+        for line in output.joinpath("successes.jsonl").read_text().splitlines()
+    ]
+    assert result.accepted
+    assert result.timesteps == 3
+    assert policy.best_reward == 3.0
+    assert result.final_row["first_success_reward"] == 1.0
+    assert result.final_row["best_success_reward"] == 3.0
+    assert result.final_row["improvement_count"] == 1
+    assert [row["episode_return"] for row in successes] == [1.0, 3.0, 2.0]
+    assert [row["improved"] for row in successes] == [True, True, False]
 
 
 @pytest.mark.parametrize(("module", "extra_args"), TRAINERS)

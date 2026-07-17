@@ -20,6 +20,7 @@ from . import (
     ACTION_SETS,
     SuperMarioBrosNesTurboVecEnv,
 )
+from .env import VISIBLE_HEIGHT, VISIBLE_WIDTH
 from .jerk import (
     JerkPolicy,
     JerkSearch,
@@ -56,6 +57,7 @@ RETAINED_LIMIT = 256
 FALLBACK_ACTION = "noop"
 STEP_COST = 0.1
 INVALID_XSCROLL_MIN = 0xFF00
+OBSERVATION_FREE_CROP = (0, VISIBLE_HEIGHT - 1, 0, VISIBLE_WIDTH - 1)
 
 
 @dataclass(frozen=True)
@@ -152,10 +154,10 @@ class MarioJerkTask:
             num_envs=self.n_envs,
             num_threads=self.n_envs,
             rom_path=rom_path,
-            render_mode="rgb_array",
+            render_mode=None,
             action_set=ACTION_SET,
             obs_copy="unsafe_view",
-            obs_resize=(1, 1),
+            obs_crop=OBSERVATION_FREE_CROP,
             obs_grayscale=True,
             obs_layout="chw",
             frame_skip=4,
@@ -163,7 +165,7 @@ class MarioJerkTask:
             maxpool_last_two=False,
             sticky_action_prob=0.0,
             reward_clip=False,
-            info_filter="all",
+            info_filter="none",
         )
         self.action_names = tuple(self.native.action_meanings)
         self.episode_steps = np.zeros(self.n_envs, dtype=np.int64)
@@ -436,12 +438,24 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     beam.add_argument("--beam-refresh-episodes", type=int, default=None)
     beam.add_argument("--mutation-runs", type=int, default=None)
     beam.add_argument(
+        "--improvement-protected-prefix-runs",
+        type=int,
+        default=None,
+        help=(
+            "prefix runs protected only during post-completion improvement "
+            "(default: 0)"
+        ),
+    )
+    beam.add_argument(
         "--branch-durations", type=int, nargs="+", default=None, metavar="STEPS"
     )
     parser.add_argument(
         "--continue-after-completion",
         action="store_true",
-        help="continue until the transition budget after the first completion",
+        help=(
+            "continue to the transition budget and publish only higher-return "
+            "completed paths"
+        ),
     )
     parser.add_argument(
         "--overwrite",
@@ -792,6 +806,7 @@ def _apply_algorithm_defaults(
         "beam_width": BEAM_WIDTH,
         "beam_refresh_episodes": BEAM_REFRESH_EPISODES,
         "mutation_runs": MUTATION_RUNS,
+        "improvement_protected_prefix_runs": 0,
         "branch_durations": list(BRANCH_DURATIONS),
     }
     selected = jerk_defaults if args.algorithm == "jerk" else beam_defaults

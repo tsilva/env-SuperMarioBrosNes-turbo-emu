@@ -13,7 +13,7 @@ import numpy as np
 
 from . import ACTION_SETS
 from .beam import BeamSearch
-from .jerk import JerkPolicy, run_directory_for_state
+from .jerk import run_directory_for_state
 from . import training_ui
 from .training_ui import (
     PlainReporter,
@@ -55,6 +55,7 @@ def _metric_row(
         "generation": search.generation,
         "beam_count": search.beam_count,
         "pending_count": search.pending_count,
+        "active_candidate_count": search.active_candidate_count,
         "retained_count": search.retained_count,
         "locked_count": search.locked_count,
         "incomplete_retained_count": search.incomplete_retained_count,
@@ -64,6 +65,13 @@ def _metric_row(
         "best_mean_reward": candidate.mean_return if candidate else 0.0,
         "best_progress": candidate.progress if candidate else 0.0,
         "best_completed": candidate.completed if candidate else False,
+        "first_success_reward": search.first_success_return,
+        "best_success_reward": search.best_success_return,
+        "improvement_count": search.improvement_count,
+        "improvement_mode": search.improvement_mode,
+        "cut_depth": search.cut_depth,
+        "coverage_completed": search.coverage_completed,
+        "coverage_total": search.coverage_total,
         "accepted": accepted,
         "loop_fps": search.global_step / max(elapsed, 1e-9),
     }
@@ -99,6 +107,7 @@ def _run_training(
     run_dir = args.output or run_directory_for_state(args.state)
     policy_path = run_dir / f"{args.state}.zip"
     metrics_path = run_dir / "episodes.jsonl"
+    successes_path = run_dir / "successes.jsonl"
     action_names = tuple(ACTION_SETS[ACTION_SET])
     search = BeamSearch(
         n_envs=args.lanes,
@@ -112,6 +121,10 @@ def _run_training(
         branch_durations=args.branch_durations,
         run_duration_mean=args.run_duration_mean,
         run_duration_max=args.run_duration_max,
+        improve_after_completion=args.continue_after_completion,
+        improvement_protected_prefix_runs=(
+            args.improvement_protected_prefix_runs
+        ),
     )
     task = MarioJerkTask(
         state=args.state,
@@ -149,9 +162,25 @@ def _run_training(
                 records,
                 progresses=getattr(task, "max_global_x", None),
             )
+            completion_events = search.take_completion_events()
             step = search.global_step
 
-            if np.any(successes):
+            for completion in completion_events:
+                success_row = {
+                    "timesteps": step,
+                    "episode_return": completion.episode_return,
+                    "progress": completion.progress,
+                    "improved": completion.improved,
+                    "action_runs": [
+                        [run.action, run.duration] for run in completion.runs
+                    ],
+                }
+                with successes_path.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(success_row, sort_keys=True) + "\n")
+                if completion.improved:
+                    _save_policy(search.policy(), policy_path, force=True)
+
+            if completion_events:
                 if not accepted:
                     accepted = True
                     first_success_step = step
@@ -202,6 +231,17 @@ def _run_training(
             task.reset_lanes(search_dones)
             elapsed = time.perf_counter() - started_at
             events: list[TrainingEvent] = []
+            if first_success_step != step:
+                for completion in completion_events:
+                    if completion.improved:
+                        events.append(
+                            TrainingEvent(
+                                "new-best-success",
+                                "Completed path improved: "
+                                f"return {completion.episode_return:,.1f}",
+                                elapsed,
+                            )
+                        )
             if search.generation != previous_generation:
                 events.append(
                     TrainingEvent(
@@ -285,28 +325,14 @@ def _run_training(
                 next_checkpoint += args.checkpoint_every
 
         candidate = search.best_candidate()
-        final_policy = JerkPolicy(
-            action_names=search.action_names,
-            action_runs=() if candidate is None else candidate.runs,
-            fallback_action=search.fallback_action,
-            timesteps=search.global_step,
-            episodes=search.completed_episodes,
-            best_reward=0.0 if candidate is None else candidate.mean_return,
-            metadata={
-                "search_algorithm": "beam",
-                "beam_width": args.beam_width,
-                "generation": search.generation,
-                "terminate_on_life_loss": True,
-                "terminate_on_level_change": False,
-            },
-        )
+        final_policy = search.policy()
         user_stopped = stop_event.is_set()
         final_path = None
         if not user_stopped or candidate is not None:
             final_path = _save_policy(
                 final_policy,
                 policy_path,
-                force=_overwrite_existing(args),
+                force=True,
             )
         elapsed = time.perf_counter() - started_at
         final_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
@@ -317,6 +343,9 @@ def _run_training(
             {
                 "accepted_lane": accepted_lane,
                 "first_success_step": first_success_step,
+                "first_success_reward": search.first_success_return,
+                "best_success_reward": search.best_success_return,
+                "improvement_count": search.improvement_count,
                 "budget_exhausted": search.global_step >= args.transitions,
                 "stopped_on_completion": stopped_on_completion,
                 "phase": "final",
@@ -402,6 +431,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         args.stall_steps < 0
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
+        or args.improvement_protected_prefix_runs < 0
         or args.step_cost < 0
     ):
         raise SystemExit("beam non-negative sizes must not be negative")
@@ -420,6 +450,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     _protect_existing_policies(run_dir, force=_overwrite_existing(args))
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")
+    (run_dir / "successes.jsonl").write_text("", encoding="utf-8")
     (run_dir / "run_config.json").write_text(
         json.dumps(vars(args), default=str, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",

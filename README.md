@@ -122,11 +122,17 @@ smb-turbo play
 
 **Training** searches observation-free `(action, duration)` programs with beam
 search by default. It stops on the first level completion; pass
-`--continue-after-completion` to continue through the transition budget. A new
-default beam run replaces the existing canonical run; custom outputs and explicit
-JERK runs remain protected unless `--overwrite` is passed. `Level1-1` writes
-`runs/Level1-1/Level1-1.zip`; playback uses the matching trained policy when
-available and switches policies as levels change. Running `smb-turbo play`
+`--continue-after-completion` to turn the remaining transition budget into an
+anytime improvement search. Continued runs keep the best completed path locked,
+reserve beam capacity for incomplete alternatives, and systematically move
+mutations from the tail toward the root. The published policy is replaced only
+when completed shaped return improves, while every completion is appended to
+`successes.jsonl`.
+
+A new default beam run replaces the existing canonical run; custom outputs and
+explicit JERK runs remain protected unless `--overwrite` is passed. `Level1-1`
+writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained policy
+when available and switches policies as levels change. Running `smb-turbo play`
 without a state starts from `Level1-1`; pass an exact state identifier to start
 elsewhere. Run either command with `--help` for configuration options.
 

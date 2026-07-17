@@ -34,10 +34,13 @@ from supermariobrosnes_turbo.training import (
 ACTIONS = ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left")
 
 
-def test_jerk_task_uses_native_simple_discrete_action_set(monkeypatch) -> None:
+def test_jerk_task_uses_minimal_native_observation_and_simple_action_set(
+    monkeypatch,
+) -> None:
     class FakeNative:
         def __init__(self, *args, **kwargs) -> None:
             del args
+            self.config = kwargs
             self.action_set = kwargs["action_set"]
             self.action_meanings = ACTION_SETS[self.action_set]
             self.single_action_space = spaces.Discrete(len(self.action_meanings))
@@ -58,6 +61,14 @@ def test_jerk_task_uses_native_simple_discrete_action_set(monkeypatch) -> None:
     assert task.native.action_set == "simple"
     assert task.native.single_action_space.n == 7
     assert task.action_names == ACTION_SETS["simple"]
+    assert task.native.config["render_mode"] is None
+    assert task.native.config["obs_crop"] == (0, 223, 0, 239)
+    assert "obs_resize" not in task.native.config
+    assert task.native.config["obs_grayscale"] is True
+    assert task.native.config["obs_copy"] == "unsafe_view"
+    assert task.native.config["frame_stack"] == 1
+    assert task.native.config["maxpool_last_two"] is False
+    assert task.native.config["info_filter"] == "none"
 
 
 def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:

@@ -4,7 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from supermariobrosnes_turbo import beam_training, training
-from supermariobrosnes_turbo.beam import BeamSearch
+from supermariobrosnes_turbo.beam import BeamCandidate, BeamSearch
 from supermariobrosnes_turbo.jerk import (
     ActionRun,
     JerkPolicy,
@@ -118,6 +118,8 @@ def test_beam_cli_defaults_to_canonical_output_and_shared_action_contract() -> N
 
     assert args.lanes == 64
     assert args.beam_width == 16
+    assert args.protected_prefix_runs == 8
+    assert args.improvement_protected_prefix_runs == 0
     assert args.continue_after_completion is False
     assert run_directory_for_state("Level1-1") == Path("runs/Level1-1")
     assert beam_training._overwrite_existing(args)
@@ -141,3 +143,86 @@ def test_beam_custom_output_requires_explicit_overwrite() -> None:
 
     assert not beam_training._overwrite_existing(custom)
     assert beam_training._overwrite_existing(forced)
+
+
+def test_beam_keeps_completed_return_separate_from_failed_prefix_score() -> None:
+    search = _search()
+    runs = _runs((1, 2))
+
+    search._upsert_candidate(
+        runs, score_return=100.0, completed=False, progress=200.0
+    )
+    candidate = search._upsert_candidate(
+        runs, score_return=10.0, completed=True, progress=300.0
+    )
+
+    assert candidate.incomplete_return == 100.0
+    assert candidate.completed_return == 10.0
+    assert candidate.mean_return == 10.0
+    assert search.best_success_return == 10.0
+
+
+def test_improvement_mode_promotes_success_and_mutates_from_root() -> None:
+    search = BeamSearch(
+        n_envs=1,
+        seed=7,
+        action_names=("noop",),
+        fallback_action="noop",
+        beam_width=1,
+        refresh_episodes=1,
+        protected_prefix_runs=1,
+        mutation_runs=1,
+        branch_durations=(1,),
+        run_duration_mean=1.0,
+        run_duration_max=1,
+        improve_after_completion=True,
+    )
+    search.next_actions()
+
+    search.observe(
+        [1.0],
+        [True],
+        {0: SimpleNamespace(completed=True, progress=10.0)},
+    )
+
+    assert search.improvement_mode
+    assert search.best_success_return == 1.0
+    assert search.coverage_total == 1
+    assert search._lanes[0].parent is search.best_candidate()
+    assert search._lanes[0].replay_limit_runs == 0
+
+    search.next_actions()
+    search.observe(
+        [2.0],
+        [True],
+        {0: SimpleNamespace(completed=True, progress=20.0)},
+    )
+
+    assert search.best_success_return == 2.0
+    assert search.improvement_count == 1
+    assert search.policy().best_reward == 2.0
+
+
+def test_beam_reserves_incomplete_parent_capacity_after_success() -> None:
+    search = _search(beam_width=4)
+    for action, score in ((1, 10.0), (2, 9.0), (3, 8.0), (4, 7.0)):
+        search._upsert_candidate(
+            _runs((action, 1)),
+            score_return=score,
+            completed=True,
+            progress=100.0,
+        )
+    for action, score in ((5, 100.0), (6, 90.0)):
+        search._upsert_candidate(
+            _runs((action, 1)),
+            score_return=score,
+            completed=False,
+            progress=200.0,
+        )
+
+    search._refresh_beam()
+
+    retained = tuple(search._beam.values())
+    assert sum(candidate.completed for candidate in retained) == 2
+    assert sum(not candidate.completed for candidate in retained) == 2
+    assert isinstance(search.best_candidate(), BeamCandidate)
