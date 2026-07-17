@@ -279,6 +279,7 @@ macro_rules! smb_fast_paths {
                 capabilities
             }
 
+            #[inline(always)]
             fn dispatch(
                 &self,
                 core: &mut NromCore<SmbPpuTiming>,
@@ -1457,7 +1458,7 @@ impl NromGame for SuperMarioBros {
         }
     }
 
-    #[inline]
+    #[inline(always)]
     fn dispatch_fast_path(
         core: &mut NromCore<SmbPpuTiming>,
         fast_paths: &SmbFastPaths,
