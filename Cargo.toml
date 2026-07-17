@@ -9,16 +9,27 @@ homepage = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
 readme = "README.md"
 publish = false
 
+[workspace]
+members = [
+    ".",
+    "crates/nes-turbo-nrom-core",
+    "crates/smb-turbo-driver",
+]
+resolver = "2"
+
 [lib]
 name = "_supermariobrosnes_turbo"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+nes-turbo-nrom-core = { path = "crates/nes-turbo-nrom-core" }
+smb-turbo-driver = { path = "crates/smb-turbo-driver" }
 numpy = "0.22"
 pyo3 = { version = "0.22", features = ["abi3-py39", "extension-module"] }
 rayon = "1"
-sha2 = "0.11"
-thiserror = "2"
+
+[dev-dependencies]
+nes-turbo-nrom-core = { path = "crates/nes-turbo-nrom-core", features = ["test-support"] }
 
 [profile.release]
 codegen-units = 1

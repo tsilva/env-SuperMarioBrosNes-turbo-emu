@@ -14,6 +14,7 @@ use crate::emulator::{
     NES_HEIGHT, NES_WIDTH, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT, VISIBLE_FRAME_WIDTH,
 };
 use crate::vec_env::{CropMode, InitialState, MarioVecEnv, ResizeAlgorithm, VecEnvConfig};
+use smb_turbo_driver::EXPECTED_SMB_ROM_SHA256;
 
 #[pyclass(name = "_RetroVecEnv")]
 pub struct RetroVecEnv {
@@ -122,7 +123,7 @@ impl RetroVecEnv {
                 )
             };
 
-        let cart = Cartridge::load_ines(rom_path)
+        let cart = Cartridge::load_ines_for(rom_path, EXPECTED_SMB_ROM_SHA256)
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))?;
         let (initial_states, weighted_initial_states) = build_initial_states(
             initial_states.unwrap_or_default(),

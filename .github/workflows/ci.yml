@@ -55,9 +55,10 @@ jobs:
       - name: Check formatting and release compilation
         if: matrix.python-version == '3.14'
         run: |
-          cargo fmt --check
-          cargo clippy --all-targets --all-features -- -D warnings
-          cargo check --release
+          cargo fmt --check --all
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo check --workspace --release
+          uv run python scripts/check_smb_dependency_closure.py
 
       - name: Build editable extension
         run: uv run maturin develop --release
@@ -101,6 +102,7 @@ jobs:
           uv run python .codex/skills/build-release/scripts/release_build.py audit-sdist \
             --version "$version" \
             dist/*.tar.gz
+          uv run python scripts/check_sdist_internal_crates.py dist/*.tar.gz
           uv run twine check dist/*
 
       - name: Smoke stable ABI on Python 3.9

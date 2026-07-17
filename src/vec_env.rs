@@ -741,11 +741,11 @@ impl MarioVecEnv {
     }
 
     pub fn env_ram(&self, env_idx: usize) -> Option<&[u8; 2048]> {
-        self.envs.get(env_idx).map(NesEmulator::ram)
+        self.envs.get(env_idx).map(|env| env.ram())
     }
 
     pub fn env_oam(&self, env_idx: usize) -> Option<&[u8; 256]> {
-        self.envs.get(env_idx).map(NesEmulator::oam)
+        self.envs.get(env_idx).map(|env| env.oam())
     }
 
     pub fn env_bg_pixel(&self, env_idx: usize, x: usize, y: usize) -> Option<(u8, bool)> {
@@ -854,16 +854,17 @@ fn write_info_from_env(
     xscroll_hi_out: &mut u8,
     xscroll_lo_out: &mut u8,
 ) {
-    *x_out = env.x_pos();
-    *coins_out = env.coins();
-    *level_hi_out = env.level_hi();
-    *level_lo_out = env.level_lo();
-    *lives_out = env.lives();
-    *score_out = env.score();
-    *scrolling_out = env.scrolling();
-    *time_out = env.time();
-    *xscroll_hi_out = env.xscroll_hi();
-    *xscroll_lo_out = env.xscroll_lo();
+    let signals = env.signals();
+    *x_out = signals.x_pos;
+    *coins_out = signals.coins;
+    *level_hi_out = signals.level_hi;
+    *level_lo_out = signals.level_lo;
+    *lives_out = signals.lives;
+    *score_out = signals.score;
+    *scrolling_out = signals.scrolling;
+    *time_out = signals.time;
+    *xscroll_hi_out = signals.xscroll_hi;
+    *xscroll_lo_out = signals.xscroll_lo;
 }
 
 #[allow(clippy::too_many_arguments)]

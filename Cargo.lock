@@ -154,6 +154,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nes-turbo-nrom-core"
+version = "0.3.1"
+dependencies = [
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
 name = "num-complex"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -347,14 +355,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "smb-turbo-driver"
+version = "0.3.1"
+dependencies = [
+ "nes-turbo-nrom-core",
+]
+
+[[package]]
 name = "supermariobrosnes-turbo"
 version = "0.3.1"
 dependencies = [
+ "nes-turbo-nrom-core",
  "numpy",
  "pyo3",
  "rayon",
- "sha2",
- "thiserror",
+ "smb-turbo-driver",
 ]
 
 [[package]]

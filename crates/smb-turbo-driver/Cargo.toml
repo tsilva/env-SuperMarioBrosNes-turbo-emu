@@ -1,0 +1,14 @@
+[package]
+name = "smb-turbo-driver"
+version = "0.3.1"
+edition = "2021"
+publish = false
+license = "MIT"
+repository = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
+description = "Unpublished Super Mario Bros driver for supermariobrosnes-turbo"
+
+[dependencies]
+nes-turbo-nrom-core = { path = "../nes-turbo-nrom-core" }
+
+[dev-dependencies]
+nes-turbo-nrom-core = { path = "../nes-turbo-nrom-core", features = ["test-support"] }

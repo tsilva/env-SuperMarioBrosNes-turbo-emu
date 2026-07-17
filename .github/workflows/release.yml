@@ -102,8 +102,10 @@ jobs:
 
       - name: Run source checks
         run: |
-          cargo fmt --check
-          cargo check --release
+          cargo fmt --check --all
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          cargo check --workspace --release
+          uv run python scripts/check_smb_dependency_closure.py
           uv run maturin develop --release
           make test PYTHON=.venv/bin/python
 
@@ -227,6 +229,7 @@ jobs:
           uv run python .codex/skills/build-release/scripts/release_build.py audit-sdist \
             --version "${{ needs.validate.outputs.version }}" \
             dist/*.tar.gz
+          uv run python scripts/check_sdist_internal_crates.py dist/*.tar.gz
           uv run twine check dist/*
 
       - name: Smoke stable ABI on Python 3.9

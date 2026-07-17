@@ -67,7 +67,7 @@ release:
 	scripts/release.py
 
 test-rust:
-	RUSTFLAGS="$(RUSTFLAGS_EXT)" cargo test --lib
+	RUSTFLAGS="$(RUSTFLAGS_EXT)" cargo test --workspace
 
 test-python:
 	$(PYTHON) -m pytest -m "not retro_oracle" $(PYTEST_ARGS)
