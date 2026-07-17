@@ -134,7 +134,12 @@ explicit JERK runs remain protected unless `--overwrite` is passed. `Level1-1`
 writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained policy
 when available and switches policies as levels change. Running `smb-turbo play`
 without a state starts from `Level1-1`; pass an exact state identifier to start
-elsewhere. Run either command with `--help` for configuration options.
+elsewhere. Playback defaults to 30 FPS; pass `--fps max` (or its `--fpx max`
+alias) to run without an explicit delay or renderer-vsync cap. Run either command
+with `--help` for configuration options. Policy playback defaults to `--view raw`,
+which displays RGB directly from its sole emulator without grayscale conversion,
+cropping, resizing, max-pooling, or frame stacking; `--view preprocessed` instead
+shows the transformed policy observation.
 
 State names are exact identifiers from the configured state catalog. This
 includes canonical names such as `Level1-1`, packaged variants such as

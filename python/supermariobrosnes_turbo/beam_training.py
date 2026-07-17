@@ -13,7 +13,7 @@ import numpy as np
 
 from . import ACTION_SETS
 from .beam import BeamSearch
-from .jerk import run_directory_for_state
+from .jerk import JerkPolicy, run_directory_for_state
 from . import training_ui
 from .training_ui import (
     PlainReporter,
@@ -23,7 +23,6 @@ from .training_ui import (
     TrainingSnapshot,
 )
 from .training import (
-    ACTION_SET,
     N_ENVS,
     MarioJerkTask,
     _play_command,
@@ -35,6 +34,7 @@ from .training import (
 LOGGER = logging.getLogger("beam_train")
 BEAM_WIDTH = 16
 BEAM_REFRESH_EPISODES = N_ENVS
+BEAM_DEEPEN_AFTER_GENERATIONS = 64
 MUTATION_RUNS = 8
 BRANCH_DURATIONS = (1, 2, 4, 8, 16, 32)
 
@@ -72,6 +72,7 @@ def _metric_row(
         "cut_depth": search.cut_depth,
         "coverage_completed": search.coverage_completed,
         "coverage_total": search.coverage_total,
+        "frontier_pending": search.frontier_pending,
         "accepted": accepted,
         "loop_fps": search.global_step / max(elapsed, 1e-9),
     }
@@ -90,6 +91,7 @@ def _initial_snapshot(args: argparse.Namespace) -> TrainingSnapshot:
         ),
         output=policy_path,
         total_timesteps=args.transitions,
+        action_set=f"{args.action_set} ({len(ACTION_SETS[args.action_set])} actions)",
         beam_width=args.beam_width,
         generation=0,
         beam_count=0,
@@ -108,7 +110,7 @@ def _run_training(
     policy_path = run_dir / f"{args.state}.zip"
     metrics_path = run_dir / "episodes.jsonl"
     successes_path = run_dir / "successes.jsonl"
-    action_names = tuple(ACTION_SETS[ACTION_SET])
+    action_names = tuple(ACTION_SETS[args.action_set])
     search = BeamSearch(
         n_envs=args.lanes,
         seed=args.seed,
@@ -125,7 +127,15 @@ def _run_training(
         improvement_protected_prefix_runs=(
             args.improvement_protected_prefix_runs
         ),
+        deepening_after_generations=args.beam_deepen_after_generations,
     )
+    if args.initial_policy is not None:
+        initial_policy = JerkPolicy.load(args.initial_policy)
+        if initial_policy.action_names != search.action_names:
+            raise ValueError(
+                "beam initial policy action table does not match --action-set"
+            )
+        search.seed_program(initial_policy.action_runs)
     task = MarioJerkTask(
         state=args.state,
         state_dir=args.state_dir,
@@ -135,6 +145,7 @@ def _run_training(
         max_episode_steps=args.max_episode_steps,
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
+        action_set=args.action_set,
     )
     started_at = time.perf_counter()
     next_log = args.log_every
@@ -367,6 +378,7 @@ def _run_training(
             final_path,
             default_output=False,
             rom_path=args.rom,
+            action_set=args.action_set,
         )
     )
     result = TrainingResult(
@@ -419,6 +431,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         args.log_every,
         args.beam_width,
         args.beam_refresh_episodes,
+        args.beam_deepen_after_generations,
         args.mutation_runs,
         args.run_duration_max,
         *args.branch_durations,

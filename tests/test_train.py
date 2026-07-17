@@ -24,6 +24,7 @@ from supermariobrosnes_turbo.jerk import (
 )
 from supermariobrosnes_turbo.training import (
     MarioJerkTask,
+    mark_new_scroll_transitions,
     episode_boundary,
     exploit_probability,
     sanitize_progress_x,
@@ -69,6 +70,30 @@ def test_jerk_task_uses_minimal_native_observation_and_simple_action_set(
     assert task.native.config["frame_stack"] == 1
     assert task.native.config["maxpool_last_two"] is False
     assert task.native.config["info_filter"] == "none"
+
+
+def test_jerk_task_accepts_a_state_general_down_action_set(monkeypatch) -> None:
+    class FakeNative:
+        def __init__(self, *args, **kwargs) -> None:
+            del args
+            self.action_set = kwargs["action_set"]
+            self.action_meanings = ACTION_SETS[self.action_set]
+
+    monkeypatch.setattr(train_module, "SuperMarioBrosNesTurboVecEnv", FakeNative)
+
+    task = MarioJerkTask(
+        state="Level8-4",
+        state_dir=None,
+        rom_path=None,
+        seed=0,
+        n_envs=2,
+        max_episode_steps=100,
+        stall_steps=10,
+        step_cost=0.1,
+        action_set="simple-down",
+    )
+
+    assert task.action_names == ACTION_SETS["simple-down"]
 
 
 def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:
@@ -129,6 +154,27 @@ def test_progress_ignores_invalid_scroll_sentinel() -> None:
         sanitize_progress_x(current, previous),
         np.asarray([120, 180, 200, 250], dtype=np.int64),
     )
+
+
+def test_scroll_transition_progress_counts_each_route_edge_once() -> None:
+    seen: list[set[tuple[int, int]]] = [set(), set(), set()]
+    blocked = np.asarray([False, False, True])
+
+    first = mark_new_scroll_transitions(
+        np.asarray([741, 1159, 500]),
+        np.asarray([256, 144, 0]),
+        blocked,
+        seen,
+    )
+    repeated = mark_new_scroll_transitions(
+        np.asarray([743, 1160, 500]),
+        np.asarray([258, 145, 0]),
+        blocked,
+        seen,
+    )
+
+    np.testing.assert_array_equal(first, [True, True, False])
+    np.testing.assert_array_equal(repeated, [False, False, False])
 
 
 def test_step_reward_charges_time_on_every_transition() -> None:

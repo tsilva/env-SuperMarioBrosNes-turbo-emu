@@ -120,6 +120,7 @@ class BeamSearch:
         run_duration_max: int,
         improve_after_completion: bool = False,
         improvement_protected_prefix_runs: int = 0,
+        deepening_after_generations: int = 64,
     ) -> None:
         if n_envs < 1:
             raise ValueError("beam search requires at least one environment")
@@ -146,6 +147,7 @@ class BeamSearch:
         self.improvement_protected_prefix_runs = int(
             improvement_protected_prefix_runs
         )
+        self.deepening_after_generations = int(deepening_after_generations)
         if self.beam_width < 1:
             raise ValueError("beam width must be positive")
         if self.refresh_episodes < 1:
@@ -156,6 +158,8 @@ class BeamSearch:
             raise ValueError(
                 "beam improvement protected prefix must be non-negative"
             )
+        if self.deepening_after_generations < 1:
+            raise ValueError("beam deepening generation must be positive")
         if self.mutation_runs < 1:
             raise ValueError("beam mutation runs must be positive")
         if not self.branch_durations or any(
@@ -196,11 +200,15 @@ class BeamSearch:
         )
         self._improvement_mode = False
         self._cut_depth = 0
+        self._deepening_frontier = 0
         self._coverage_queue: deque[_ExpansionJob] = deque()
+        self._frontier_queue: deque[_ExpansionJob] = deque()
         self._coverage_templates: tuple[_ExpansionJob, ...] = ()
         self._coverage_total = 0
         self._coverage_completed = 0
         self._overflow_cursor = 0
+        self._frontier_cursor = 0
+        self._frontier_best_return = float("-inf")
 
     @property
     def beam_count(self) -> int:
@@ -242,6 +250,10 @@ class BeamSearch:
     @property
     def coverage_completed(self) -> int:
         return self._coverage_completed
+
+    @property
+    def frontier_pending(self) -> int:
+        return len(self._frontier_queue)
 
     @property
     def best_success_return(self) -> float | None:
@@ -345,11 +357,12 @@ class BeamSearch:
 
     def _start_lane(self, lane: int) -> None:
         if self._improvement_mode and self._parents:
-            job = (
-                self._coverage_queue.popleft()
-                if self._coverage_queue
-                else self._overflow_job()
-            )
+            if self._frontier_queue:
+                job = self._frontier_queue.popleft()
+            elif self._coverage_queue:
+                job = self._coverage_queue.popleft()
+            else:
+                job = self._overflow_job()
             self._lanes[lane] = self._state_for_job(job)
             return
 
@@ -431,6 +444,13 @@ class BeamSearch:
         candidate = self._candidate_for(canonical)
         previous_best = self.best_success_return
         candidate.observe(score_return, completed=completed, progress=progress)
+        if (
+            self._improvement_mode
+            and not completed
+            and candidate.incomplete_return > self._frontier_best_return
+        ):
+            self._frontier_best_return = candidate.incomplete_return
+            self._queue_frontier(candidate)
         if completed:
             improved = previous_best is None or score_return > previous_best
             if improved:
@@ -538,28 +558,59 @@ class BeamSearch:
                 0,
             )
             removed_runs = min(self._cut_depth, mutable_runs)
-            replay_limit_runs = len(parent.runs) - removed_runs
-            branches = self._branch_neighborhood(parent, replay_limit_runs)
-            for branch_index, branch in enumerate(branches):
-                jobs.append(
-                    _ExpansionJob(
-                        parent=parent,
-                        replay_limit_runs=replay_limit_runs,
-                        branch=branch,
-                        generation=self.generation,
-                        parent_index=parent_index,
-                        branch_index=branch_index,
-                    )
+            replay_limits = tuple(
+                dict.fromkeys(
+                    (len(parent.runs), len(parent.runs) - removed_runs)
                 )
+            )
+            branch_index = 0
+            for replay_limit_runs in replay_limits:
+                branches = self._branch_neighborhood(parent, replay_limit_runs)
+                for branch in branches:
+                    jobs.append(
+                        _ExpansionJob(
+                            parent=parent,
+                            replay_limit_runs=replay_limit_runs,
+                            branch=branch,
+                            generation=self.generation,
+                            parent_index=parent_index,
+                            branch_index=branch_index,
+                        )
+                    )
+                    branch_index += 1
         self._coverage_templates = tuple(jobs)
         self._coverage_queue = deque(jobs)
+        self._frontier_queue.clear()
         self._coverage_total = len(jobs)
         self._coverage_completed = 0
         self._overflow_cursor = 0
+        self._frontier_cursor = 0
+        self._frontier_best_return = max(
+            (candidate.incomplete_return for candidate in self._parents),
+            default=float("-inf"),
+        )
 
-    def _enable_improvement(self) -> None:
+    def _queue_frontier(self, parent: BeamCandidate) -> None:
+        parent_index = len(self._parents) + self._frontier_cursor
+        self._frontier_cursor += 1
+        jobs = [
+            _ExpansionJob(
+                parent=parent,
+                replay_limit_runs=len(parent.runs),
+                branch=branch,
+                generation=self.generation,
+                parent_index=parent_index,
+                branch_index=branch_index,
+                required=False,
+            )
+            for branch_index, branch in enumerate(self._branches)
+        ]
+        self._frontier_queue.extend(jobs)
+
+    def _enable_improvement(self, *, start_depth: int = 1) -> None:
         self._improvement_mode = True
-        self._cut_depth = 1
+        self._cut_depth = max(int(start_depth), 1)
+        self._deepening_frontier = self._cut_depth
         self._refresh_beam()
 
     def _advance_improvement_generation(self) -> None:
@@ -573,10 +624,39 @@ class BeamSearch:
             ),
             default=1,
         )
-        self._cut_depth = (
-            1 if self._cut_depth >= max(maximum_mutable, 1) else self._cut_depth + 1
-        )
+        maximum_mutable = max(maximum_mutable, 1)
+        local_depth = 1 if self._best_success is not None else self.mutation_runs
+        local_depth = min(max(local_depth, 1), maximum_mutable)
+        if self._cut_depth != local_depth:
+            self._cut_depth = local_depth
+        else:
+            self._deepening_frontier = min(
+                maximum_mutable,
+                max(
+                    self._deepening_frontier + 1,
+                    self._deepening_frontier * 2,
+                ),
+            )
+            self._cut_depth = self._deepening_frontier
         self._refresh_beam()
+
+    def seed_program(self, runs: Sequence[ActionRun]) -> None:
+        """Warm-start from one compatible program without assigning it a score."""
+        canonical = canonicalize_runs(runs)
+        if not canonical:
+            raise ValueError("beam warm-start program must not be empty")
+        if any(run.action >= len(self.action_names) for run in canonical):
+            raise ValueError("beam warm-start action is outside the action table")
+        parent = BeamCandidate(runs=canonical)
+        self._beam = {canonical: parent}
+        self._parents = (parent,)
+        for lane in range(self.n_envs):
+            self._start_lane(lane)
+        self._lanes[0] = _BeamLaneState(
+            mode="replay",
+            parent=parent,
+            replay_limit_runs=len(canonical),
+        )
 
     def take_completion_events(self) -> tuple[CompletionEvent, ...]:
         events = tuple(self._completion_events)
@@ -607,6 +687,7 @@ class BeamSearch:
         if progress_array.shape != (self.n_envs,):
             raise ValueError("beam progresses must contain one value per environment")
         records_by_lane = records_by_lane or {}
+        had_success = self._best_success is not None
         self.global_step += self.n_envs
         done_lanes: list[int] = []
         for lane, state in enumerate(self._lanes):
@@ -634,7 +715,7 @@ class BeamSearch:
         if (
             self.improve_after_completion
             and self._best_success is not None
-            and not self._improvement_mode
+            and (not self._improvement_mode or not had_success)
         ):
             self._enable_improvement()
         elif (
@@ -647,6 +728,12 @@ class BeamSearch:
             while self.completed_episodes >= self._next_refresh_episode:
                 self._refresh_beam()
                 self._next_refresh_episode += self.refresh_episodes
+                if (
+                    self._best_success is None
+                    and self.generation >= self.deepening_after_generations
+                ):
+                    self._enable_improvement(start_depth=self.mutation_runs)
+                    break
 
         for lane in done_lanes:
             self._start_lane(lane)

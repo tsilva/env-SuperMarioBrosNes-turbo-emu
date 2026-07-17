@@ -59,10 +59,16 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     assert args.algorithm == "beam"
     assert args.transitions == 100
     assert args.lanes == 4
+    assert args.action_set == "simple"
     assert args.continue_after_completion
     assert args.overwrite
     with pytest.raises(SystemExit):
         parser.parse_args(["Level1-1", "--timesteps", "100"])
+
+    with_down = parser.parse_args(
+        ["Level8-4", "--action-set", "simple-down"]
+    )
+    assert with_down.action_set == "simple-down"
 
 
 def test_algorithm_specific_options_are_rejected() -> None:
@@ -77,7 +83,9 @@ def test_algorithm_specific_options_are_rejected() -> None:
 
 def test_play_parser_owns_modes_and_playback_options() -> None:
     parser = state_playback.build_parser()
-    assert parser.parse_args([]).state == "Level1-1"
+    defaults = parser.parse_args([])
+    assert defaults.state == "Level1-1"
+    assert defaults.action_set is None
     args = parser.parse_args(
         ["Level1-1", "--policy", "policy.zip", "--backend", "native"]
     )
@@ -89,6 +97,23 @@ def test_play_parser_owns_modes_and_playback_options() -> None:
         parser.parse_args(["Level1-1", "--manual", "--policy", "policy.zip"])
     with pytest.raises(SystemExit):
         parser.parse_args(["Level1-1", "--rom-path", "mario.nes"])
+
+
+@pytest.mark.parametrize("option", ["--fps", "--fpx"])
+def test_play_parser_accepts_uncapped_fps(option: str) -> None:
+    args = state_playback.build_parser().parse_args([option, "max"])
+
+    assert args.fps is None
+
+
+def test_play_parser_accepts_only_positive_numeric_fps() -> None:
+    parser = state_playback.build_parser()
+
+    assert parser.parse_args(["--fps", "120"]).fps == 120
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--fps", "0"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--fps", "fast"])
 
 
 def test_play_without_state_starts_from_level_1_1(monkeypatch) -> None:

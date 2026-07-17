@@ -7,7 +7,12 @@ from pathlib import Path
 
 from . import ACTION_SETS
 from .jerk import find_policy_path_for_state, policy_path_for_state, resolve_state_name
-from .manual_playback import DEFAULT_ROM, SdlExternalVecPlayer, SdlUnavailableError
+from .manual_playback import (
+    DEFAULT_ROM,
+    SdlExternalVecPlayer,
+    SdlUnavailableError,
+    parse_fps,
+)
 from .policy_playback import DEFAULT_GAME, SdlPolicyPlayer
 
 
@@ -48,8 +53,20 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument(
         "--backend", choices=("auto", "native", "stable-retro"), default="auto"
     )
-    parser.add_argument("--view", choices=("raw", "preprocessed"), default="raw")
-    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument(
+        "--view",
+        choices=("raw", "preprocessed"),
+        default="raw",
+        help="raw displays direct RGB; preprocessed displays the policy observation",
+    )
+    parser.add_argument(
+        "--fps",
+        "--fpx",
+        type=parse_fps,
+        default=30,
+        metavar="FPS|max",
+        help="playback frame-rate limit, or 'max' for uncapped playback",
+    )
     parser.add_argument("--scale", type=int, default=2)
     parser.add_argument("--episodes", type=int, default=0, help="0 means play forever")
     parser.add_argument("--seed", type=int, default=10007)
@@ -63,7 +80,12 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--crop-mode", choices=("remove", "mask"), default=None)
     parser.add_argument("--resize-width", type=int, default=84)
     parser.add_argument("--resize-height", type=int, default=84)
-    parser.add_argument("--action-set", choices=tuple(ACTION_SETS), default="simple")
+    parser.add_argument(
+        "--action-set",
+        choices=tuple(ACTION_SETS),
+        default=None,
+        help="require one action set; defaults to each policy checkpoint's action set",
+    )
     parser.add_argument("--hold-done-frames", type=int, default=0)
     parser.add_argument("--auto-close-frames", type=int, default=None)
     parser.add_argument(

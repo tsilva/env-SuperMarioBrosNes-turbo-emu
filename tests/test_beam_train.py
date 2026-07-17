@@ -120,6 +120,8 @@ def test_beam_cli_defaults_to_canonical_output_and_shared_action_contract() -> N
     assert args.beam_width == 16
     assert args.protected_prefix_runs == 8
     assert args.improvement_protected_prefix_runs == 0
+    assert args.action_set == "simple"
+    assert args.initial_policy is None
     assert args.continue_after_completion is False
     assert run_directory_for_state("Level1-1") == Path("runs/Level1-1")
     assert beam_training._overwrite_existing(args)
@@ -187,9 +189,11 @@ def test_improvement_mode_promotes_success_and_mutates_from_root() -> None:
 
     assert search.improvement_mode
     assert search.best_success_return == 1.0
-    assert search.coverage_total == 1
+    assert search.coverage_total == 2
     assert search._lanes[0].parent is search.best_candidate()
-    assert search._lanes[0].replay_limit_runs == 0
+    assert {
+        job.replay_limit_runs for job in search._coverage_templates
+    } == {0, 1}
 
     search.next_actions()
     search.observe(
@@ -226,3 +230,86 @@ def test_beam_reserves_incomplete_parent_capacity_after_success() -> None:
     assert sum(candidate.completed for candidate in retained) == 2
     assert sum(not candidate.completed for candidate in retained) == 2
     assert isinstance(search.best_candidate(), BeamCandidate)
+
+
+def test_unsolved_beam_switches_to_systematic_deepening() -> None:
+    search = BeamSearch(
+        n_envs=1,
+        seed=7,
+        action_names=("noop", "right"),
+        fallback_action="noop",
+        beam_width=1,
+        refresh_episodes=1,
+        protected_prefix_runs=0,
+        mutation_runs=1,
+        branch_durations=(1,),
+        run_duration_mean=1.0,
+        run_duration_max=1,
+        deepening_after_generations=1,
+    )
+    search.next_actions()
+
+    search.observe(
+        [1.0],
+        [True],
+        {0: SimpleNamespace(completed=False, progress=10.0)},
+    )
+
+    assert search.improvement_mode
+    assert search.best_success_return is None
+    assert search.cut_depth == 1
+    assert search.coverage_total == 4
+
+
+def test_deepening_alternates_earlier_cuts_with_local_refinement() -> None:
+    search = _search(beam_width=1)
+    parent = BeamCandidate(
+        runs=_runs(*((index % 2 + 1, 1) for index in range(8))),
+        incomplete_return=1.0,
+    )
+    search._beam = {parent.runs: parent}
+    search._parents = (parent,)
+    search._improvement_mode = True
+    search._cut_depth = 1
+    search._deepening_frontier = 1
+
+    search._advance_improvement_generation()
+    assert search.cut_depth == 2
+    search._advance_improvement_generation()
+    assert search.cut_depth == 1
+    search._advance_improvement_generation()
+    assert search.cut_depth == 4
+
+
+def test_beam_warm_start_replays_the_seed_program_exactly_on_one_lane() -> None:
+    search = _search(n_envs=2)
+    runs = _runs((1, 2), (2, 1))
+
+    search.seed_program(runs)
+    actions = [int(search.next_actions()[0]) for _ in range(3)]
+
+    assert actions == [1, 1, 2]
+
+
+def test_strictly_better_unsolved_frontier_is_queued_for_immediate_extension() -> None:
+    search = _search(beam_width=1)
+    parent = BeamCandidate(
+        runs=_runs((1, 1)),
+        incomplete_return=1.0,
+    )
+    search._beam = {parent.runs: parent}
+    search._parents = (parent,)
+    search._improvement_mode = True
+    search._cut_depth = 1
+    search._prepare_coverage()
+
+    better = search._upsert_candidate(
+        _runs((1, 1), (2, 1)),
+        score_return=2.0,
+        completed=False,
+        progress=20.0,
+    )
+
+    assert search.frontier_pending == len(search._branches)
+    assert all(job.parent is better for job in search._frontier_queue)
+    assert not any(job.required for job in search._frontier_queue)

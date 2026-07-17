@@ -23,11 +23,40 @@ VISIBLE_WIDTH = 240
 VISIBLE_HEIGHT = 224
 NES_BUTTONS = ("B", None, "SELECT", "START", "UP", "DOWN", "LEFT", "RIGHT", "A")
 BUTTON_TO_INDEX = {name: index for index, name in enumerate(NES_BUTTONS) if name is not None}
-CORE_ACTION_MEANINGS = ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left", "start")
+CORE_ACTION_MEANINGS = (
+    "noop",
+    "right",
+    "right_b",
+    "right_a",
+    "right_a_b",
+    "a",
+    "left",
+    "start",
+    "down",
+)
 ACTION_SETS = {
     "simple": ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left"),
+    "simple-down": (
+        "noop",
+        "right",
+        "right_b",
+        "right_a",
+        "right_a_b",
+        "a",
+        "left",
+        "down",
+    ),
     "right": ("right", "right_b", "right_a", "right_a_b"),
-    "full": CORE_ACTION_MEANINGS,
+    "full": (
+        "noop",
+        "right",
+        "right_b",
+        "right_a",
+        "right_a_b",
+        "a",
+        "left",
+        "start",
+    ),
 }
 ACTION_MEANINGS = ACTION_SETS["simple"]
 ACTION_BUTTONS = {
@@ -39,6 +68,7 @@ ACTION_BUTTONS = {
     "a": ("A",),
     "left": ("LEFT",),
     "start": ("START",),
+    "down": ("DOWN",),
 }
 MASK_BIT_WEIGHTS = (1 << np.arange(len(NES_BUTTONS), dtype=np.uint16)).astype(np.uint16)
 STABLE_RETRO_BUTTON_COMBOS = ((0, 16, 32), (0, 64, 128), (0, 1, 256, 257))

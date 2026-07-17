@@ -63,6 +63,32 @@ SDL_SCANCODE_LSHIFT = 225
 SDL_SCANCODE_RSHIFT = 229
 
 
+def parse_fps(value: str) -> int | None:
+    """Parse a positive FPS limit, or ``max`` for uncapped playback."""
+    if value.casefold() == "max":
+        return None
+    try:
+        fps = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "FPS must be a positive integer or 'max'"
+        ) from exc
+    if fps <= 0:
+        raise argparse.ArgumentTypeError("FPS must be a positive integer or 'max'")
+    return fps
+
+
+def frame_delay_for_fps(fps: int | None) -> float | None:
+    return None if fps is None else 1.0 / fps
+
+
+def renderer_flags_for_fps(fps: int | None) -> int:
+    flags = SDL_RENDERER_ACCELERATED
+    if fps is not None:
+        flags |= SDL_RENDERER_PRESENTVSYNC
+    return flags
+
+
 class SdlUnavailableError(RuntimeError):
     pass
 
@@ -102,7 +128,7 @@ class SdlTextureWindow:
         self.renderer = self.sdl.SDL_CreateRenderer(
             self.window,
             -1,
-            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC,
+            renderer_flags_for_fps(owner.fps),
         )
         if not self.renderer:
             error = owner.sdl_error()
@@ -189,7 +215,8 @@ class SdlExternalVecPlayer:
         )
         self.scale = args.scale
         self.stack_scale = args.stack_scale
-        self.frame_delay_s = 1.0 / max(1, args.fps)
+        self.fps = args.fps
+        self.frame_delay_s = frame_delay_for_fps(self.fps)
         self.stack_obs = self.reset_one()
         self.reward = 0.0
         self.terminated = False
@@ -235,7 +262,11 @@ class SdlExternalVecPlayer:
         self.pressed_keys: set[int] = set()
         self.pressed_scancodes: set[int] = set()
         self.running = True
-        self.next_tick = time.perf_counter() + self.frame_delay_s
+        self.next_tick = (
+            None
+            if self.frame_delay_s is None
+            else time.perf_counter() + self.frame_delay_s
+        )
         self.fps_window_start = time.perf_counter()
         self.fps_window_frames = 0
         self.display_fps = 0.0
@@ -270,15 +301,21 @@ class SdlExternalVecPlayer:
                 ):
                     break
 
-                self.next_tick += self.frame_delay_s
-                delay_s = self.next_tick - time.perf_counter()
-                if delay_s < -self.frame_delay_s:
-                    self.next_tick = time.perf_counter() + self.frame_delay_s
-                    delay_s = self.frame_delay_s
-                if delay_s > 0:
-                    self.sdl.SDL_Delay(max(1, round(delay_s * 1000)))
+                self.sleep_until_next_frame()
         finally:
             self.close()
+
+    def sleep_until_next_frame(self) -> None:
+        if self.frame_delay_s is None:
+            return
+        assert self.next_tick is not None
+        self.next_tick += self.frame_delay_s
+        delay_s = self.next_tick - time.perf_counter()
+        if delay_s < -self.frame_delay_s:
+            self.next_tick = time.perf_counter() + self.frame_delay_s
+            delay_s = self.frame_delay_s
+        if delay_s > 0:
+            self.sdl.SDL_Delay(max(1, round(delay_s * 1000)))
 
     def poll_events(self) -> None:
         event = ctypes.create_string_buffer(64)
@@ -598,7 +635,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_ROM,
         help="Path to the SMB NES ROM. Defaults to Stable Retro-compatible discovery.",
     )
-    parser.add_argument("--fps", type=int, default=60)
+    parser.add_argument(
+        "--fps",
+        "--fpx",
+        type=parse_fps,
+        default=60,
+        metavar="FPS|max",
+        help="playback frame-rate limit, or 'max' for uncapped playback",
+    )
     parser.add_argument(
         "--scale", type=int, default=2, help="Scale for the main RGB gameplay window."
     )

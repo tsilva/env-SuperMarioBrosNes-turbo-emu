@@ -57,6 +57,8 @@ RETAINED_LIMIT = 256
 FALLBACK_ACTION = "noop"
 STEP_COST = 0.1
 INVALID_XSCROLL_MIN = 0xFF00
+SCROLL_TRANSITION_MIN_DROP = 128
+SCROLL_TRANSITION_BUCKET = 64
 OBSERVATION_FREE_CROP = (0, VISIBLE_HEIGHT - 1, 0, VISIBLE_WIDTH - 1)
 
 
@@ -108,6 +110,27 @@ def sanitize_progress_x(current_x: np.ndarray, previous_x: np.ndarray) -> np.nda
     return np.where(current_x >= INVALID_XSCROLL_MIN, previous_x, current_x)
 
 
+def mark_new_scroll_transitions(
+    previous_x: np.ndarray,
+    current_x: np.ndarray,
+    blocked: np.ndarray,
+    seen: list[set[tuple[int, int]]],
+) -> np.ndarray:
+    """Mark each non-terminal scroll discontinuity once per episode."""
+    transitions = (previous_x - current_x >= SCROLL_TRANSITION_MIN_DROP) & ~blocked
+    novel = np.zeros_like(transitions, dtype=np.bool_)
+    for lane in np.flatnonzero(transitions):
+        index = int(lane)
+        signature = (
+            int(previous_x[index]) // SCROLL_TRANSITION_BUCKET,
+            int(current_x[index]) // SCROLL_TRANSITION_BUCKET,
+        )
+        if signature not in seen[index]:
+            seen[index].add(signature)
+            novel[index] = True
+    return novel
+
+
 def shape_step_rewards(
     progress_delta: np.ndarray,
     score_delta: np.ndarray,
@@ -138,6 +161,7 @@ class MarioJerkTask:
         max_episode_steps: int,
         stall_steps: int,
         step_cost: float,
+        action_set: str = ACTION_SET,
     ) -> None:
         self.n_envs = int(n_envs)
         self.state = state
@@ -155,7 +179,7 @@ class MarioJerkTask:
             num_threads=self.n_envs,
             rom_path=rom_path,
             render_mode=None,
-            action_set=ACTION_SET,
+            action_set=action_set,
             obs_copy="unsafe_view",
             obs_crop=OBSERVATION_FREE_CROP,
             obs_grayscale=True,
@@ -178,6 +202,8 @@ class MarioJerkTask:
         self.level_max_x = np.zeros(self.n_envs, dtype=np.int64)
         self.completed_base = np.zeros(self.n_envs, dtype=np.int64)
         self.max_global_x = np.zeros(self.n_envs, dtype=np.int64)
+        self.previous_x = np.zeros(self.n_envs, dtype=np.int64)
+        self.seen_scroll_transitions = [set() for _ in range(self.n_envs)]
 
     def _initialize_lanes(self, mask: np.ndarray) -> None:
         current_x = self.native.xscroll_hi.astype(
@@ -194,6 +220,9 @@ class MarioJerkTask:
         self.level_max_x[mask] = current_x[mask]
         self.completed_base[mask] = 0
         self.max_global_x[mask] = current_x[mask]
+        self.previous_x[mask] = current_x[mask]
+        for lane in np.flatnonzero(mask):
+            self.seen_scroll_transitions[int(lane)].clear()
 
     def reset(self) -> np.ndarray:
         observations, _infos = self.native.reset(seed=self.seed)
@@ -230,9 +259,16 @@ class MarioJerkTask:
             current_level_lo != self.previous_level_lo
         )
         completed = level_changed & ~life_loss
+        scroll_transition = mark_new_scroll_transitions(
+            self.previous_x,
+            current_x,
+            life_loss | level_changed,
+            self.seen_scroll_transitions,
+        )
 
-        self.completed_base[completed] += self.level_max_x[completed]
-        self.level_max_x[completed] = 0
+        segment_changed = completed | scroll_transition
+        self.completed_base[segment_changed] += self.level_max_x[segment_changed]
+        self.level_max_x[segment_changed] = 0
         effective_x = np.where(level_changed, 0, current_x)
         self.level_max_x = np.maximum(self.level_max_x, effective_x)
         global_max = self.completed_base + self.level_max_x
@@ -278,6 +314,7 @@ class MarioJerkTask:
         self.previous_level_hi[:] = current_level_hi
         self.previous_level_lo[:] = current_level_lo
         self.previous_score[:] = current_score
+        self.previous_x[:] = current_x
         return observations, shaped_rewards, failures, records, completed
 
     def close(self) -> None:
@@ -363,12 +400,15 @@ def _play_command(
     *,
     default_output: bool,
     rom_path: Path | None,
+    action_set: str = ACTION_SET,
 ) -> str:
     argv = ["smb-turbo", "play", state]
     if not default_output:
         argv.extend(["--policy", str(policy_path)])
     if rom_path is not None:
         argv.extend(["--rom", str(rom_path)])
+    if action_set != ACTION_SET:
+        argv.extend(["--action-set", action_set])
     return shlex.join(argv)
 
 
@@ -397,6 +437,12 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         help="run directory; defaults to runs/<State>",
     )
     parser.add_argument("--seed", type=int, default=108)
+    parser.add_argument(
+        "--action-set",
+        choices=tuple(ACTION_SETS),
+        default=ACTION_SET,
+        help=f"named search action set (default: {ACTION_SET})",
+    )
     parser.add_argument("--transitions", type=int, default=TOTAL_TIMESTEPS)
     parser.add_argument("--lanes", type=int, default=N_ENVS)
     parser.add_argument("--max-episode-steps", type=int, default=MAX_EPISODE_STEPS)
@@ -436,7 +482,17 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     beam = parser.add_argument_group("beam search tuning")
     beam.add_argument("--beam-width", type=int, default=None)
     beam.add_argument("--beam-refresh-episodes", type=int, default=None)
+    beam.add_argument(
+        "--beam-deepen-after-generations",
+        type=int,
+        default=None,
+        help=(
+            "switch unsolved beams from tail mutation to systematic geometric "
+            "deepening after this many generations (default: 64)"
+        ),
+    )
     beam.add_argument("--mutation-runs", type=int, default=None)
+    beam.add_argument("--initial-policy", type=Path, default=None)
     beam.add_argument(
         "--improvement-protected-prefix-runs",
         type=int,
@@ -488,6 +544,7 @@ def _initial_snapshot(args: argparse.Namespace) -> TrainingSnapshot:
         ),
         output=target_policy_path,
         total_timesteps=args.transitions,
+        action_set=f"{args.action_set} ({len(ACTION_SETS[args.action_set])} actions)",
     )
 
 
@@ -503,7 +560,7 @@ def _run_training(
         else run_dir / f"{args.state}.zip"
     )
     metrics_path = run_dir / "episodes.jsonl"
-    action_names = tuple(ACTION_SETS[ACTION_SET])
+    action_names = tuple(ACTION_SETS[args.action_set])
     search = JerkSearch(
         n_envs=args.lanes,
         seed=args.seed,
@@ -528,6 +585,7 @@ def _run_training(
         max_episode_steps=args.max_episode_steps,
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
+        action_set=args.action_set,
     )
     started_at = time.perf_counter()
     next_log = args.log_every
@@ -714,6 +772,7 @@ def _run_training(
             final_path,
             default_output=args.output is None,
             rom_path=args.rom,
+            action_set=args.action_set,
         )
     )
     result = TrainingResult(
@@ -797,6 +856,7 @@ def _apply_algorithm_defaults(
     }
     from .beam_training import (
         BEAM_REFRESH_EPISODES,
+        BEAM_DEEPEN_AFTER_GENERATIONS,
         BEAM_WIDTH,
         BRANCH_DURATIONS,
         MUTATION_RUNS,
@@ -805,7 +865,9 @@ def _apply_algorithm_defaults(
     beam_defaults = {
         "beam_width": BEAM_WIDTH,
         "beam_refresh_episodes": BEAM_REFRESH_EPISODES,
+        "beam_deepen_after_generations": BEAM_DEEPEN_AFTER_GENERATIONS,
         "mutation_runs": MUTATION_RUNS,
+        "initial_policy": None,
         "improvement_protected_prefix_runs": 0,
         "branch_durations": list(BRANCH_DURATIONS),
     }

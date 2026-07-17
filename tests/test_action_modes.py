@@ -161,6 +161,16 @@ def test_named_simple_and_right_sets_keep_their_controller_mappings() -> None:
         64,
         8,
     ]
+    assert _named_action_controller_bytes(ACTION_SETS["simple-down"]).tolist() == [
+        0,
+        128,
+        130,
+        129,
+        131,
+        1,
+        64,
+        32,
+    ]
     assert _named_action_controller_bytes(("start", "a", "right_b")).tolist() == [
         8,
         1,

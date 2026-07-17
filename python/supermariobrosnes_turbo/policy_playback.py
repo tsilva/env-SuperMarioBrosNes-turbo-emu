@@ -14,38 +14,36 @@ import numpy as np
 try:
     from .manual_playback import (
         DEFAULT_ROM,
-        NES_HEIGHT,
-        NES_WIDTH,
         SDL_INIT_VIDEO,
         SDL_PIXELFORMAT_RGB24,
         SDL_QUIT,
-        SDL_RENDERER_ACCELERATED,
-        SDL_RENDERER_PRESENTVSYNC,
         SDL_TEXTUREACCESS_STREAMING,
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOW_SHOWN,
         SdlUnavailableError,
         configure_sdl,
         display_frame_from_obs,
+        frame_delay_for_fps,
         load_sdl2,
+        parse_fps,
+        renderer_flags_for_fps,
     )
 except ImportError:
     from .manual_playback import (
         DEFAULT_ROM,
-        NES_HEIGHT,
-        NES_WIDTH,
         SDL_INIT_VIDEO,
         SDL_PIXELFORMAT_RGB24,
         SDL_QUIT,
-        SDL_RENDERER_ACCELERATED,
-        SDL_RENDERER_PRESENTVSYNC,
         SDL_TEXTUREACCESS_STREAMING,
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOW_SHOWN,
         SdlUnavailableError,
         configure_sdl,
         display_frame_from_obs,
+        frame_delay_for_fps,
         load_sdl2,
+        parse_fps,
+        renderer_flags_for_fps,
     )
 from . import (
     ACTION_SETS,
@@ -54,15 +52,14 @@ from . import (
     action_mask,
     resolve_required_rom_path,
 )
-from .jerk import load_jerk_checkpoint
-from .jerk import find_policy_path_for_state
-
 from .benchmark_sps import (
     PreprocessingConfig,
     create_stable_retro_vector_env,
     named_action_mask,
     stable_retro_buttons,
 )
+from .env import VISIBLE_HEIGHT, VISIBLE_WIDTH
+from .jerk import find_policy_path_for_state, load_jerk_checkpoint
 
 
 DEFAULT_HF_FILENAME = "final_model.zip"
@@ -300,7 +297,7 @@ def level_name_from_counters(level: tuple[int, int]) -> str:
 class SdlPolicyPlayer:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.action_names = ACTION_SETS[args.action_set]
+        self.requested_action_set = args.action_set
         self.model_path = resolve_model_path(args.model, args.filename, args.cache_dir)
         apply_checkpoint_defaults(args, self.model_path)
         self.model = load_jerk_checkpoint(self.model_path)
@@ -311,25 +308,14 @@ class SdlPolicyPlayer:
         self.current_state = args.state
 
         self.rom_path = resolve_required_rom_path(args.rom_path)
-        if args.backend == "native":
-            self.action_masks = np.stack(
-                [action_mask(name) for name in self.action_names]
-            ).astype(np.uint8)
-        else:
-            self.action_masks = stable_action_masks(self.action_names, self.rom_path)
+        self._configure_model_actions(self.model)
         self.env = self.make_env()
         self.obs, infos = self.env.reset()
         self.model.reset()
-        self.display_env = self.make_display_env() if args.view == "raw" else None
-        if self.display_env is not None:
-            self.display_obs, _display_infos = self.display_env.reset()
-        else:
-            self.display_obs = self.obs
-        self.display_info: dict[str, object] = {}
         initial_frame = self.current_display_frame()
         self.display_height, self.display_width = initial_frame.shape[:2]
         self.scale = args.scale
-        self.frame_delay_s = 1.0 / max(1, args.fps)
+        self.frame_delay_s = frame_delay_for_fps(args.fps)
         self.episode = 1
         self.step = 0
         self.reward = 0.0
@@ -344,7 +330,11 @@ class SdlPolicyPlayer:
         self.action = 0
         self.frames_rendered = 0
         self.running = True
-        self.next_tick = time.perf_counter() + self.frame_delay_s
+        self.next_tick = (
+            None
+            if self.frame_delay_s is None
+            else time.perf_counter() + self.frame_delay_s
+        )
         self.fps_window_start = time.perf_counter()
         self.fps_window_frames = 0
         self.display_fps = 0.0
@@ -368,7 +358,7 @@ class SdlPolicyPlayer:
         self.renderer = self.sdl.SDL_CreateRenderer(
             self.window,
             -1,
-            SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC,
+            renderer_flags_for_fps(args.fps),
         )
         if not self.renderer:
             error = self.sdl_error()
@@ -390,17 +380,31 @@ class SdlPolicyPlayer:
             raise SdlUnavailableError(error)
 
     def _validate_model(self, model) -> None:
-        if model.action_set != self.args.action_set:
+        model_action_set = model.action_set
+        if (
+            self.requested_action_set is not None
+            and model_action_set != self.requested_action_set
+        ):
             raise ValueError(
-                f"checkpoint action_set={model.action_set!r} does not match "
-                f"--action-set={self.args.action_set!r}"
+                f"checkpoint action_set={model_action_set!r} does not match "
+                f"--action-set={self.requested_action_set!r}"
             )
-        if model.action_count != len(self.action_names):
+        expected_action_count = len(ACTION_SETS[model_action_set])
+        if model.action_count != expected_action_count:
             raise ValueError(
                 f"model action count {model.action_count} does not match "
-                f"action_set={self.args.action_set!r} with "
-                f"{len(self.action_names)} actions",
+                f"action_set={model_action_set!r} with "
+                f"{expected_action_count} actions",
             )
+
+    def _configure_model_actions(self, model) -> None:
+        self.action_names = model.action_names
+        if self.args.backend == "native":
+            self.action_masks = np.stack(
+                [action_mask(name) for name in self.action_names]
+            ).astype(np.uint8)
+        else:
+            self.action_masks = stable_action_masks(self.action_names, self.rom_path)
 
     def activate_named_level_policy(self, level_name: str) -> bool:
         if self.args.level_policy_root is None:
@@ -413,6 +417,7 @@ class SdlPolicyPlayer:
         model = load_jerk_checkpoint(model_path)
         self._validate_model(model)
         model.reset()
+        self._configure_model_actions(model)
         self.model = model
         self.model_path = model_path
         self.current_policy_level = level_name
@@ -427,36 +432,20 @@ class SdlPolicyPlayer:
             return False
 
         new_env = self.make_env(level_name)
-        new_display_env = None
         try:
             new_obs, new_infos = new_env.reset()
-            new_display_env = (
-                self.make_display_env(level_name) if self.args.view == "raw" else None
-            )
-            if new_display_env is not None:
-                new_display_obs, _display_infos = new_display_env.reset()
-            else:
-                new_display_obs = new_obs
         except Exception:
-            if new_display_env is not None:
-                new_display_env.close()
             new_env.close()
             raise
 
         old_env = self.env
-        old_display_env = self.display_env
         self.env = new_env
-        self.display_env = new_display_env
         self.obs = new_obs
-        self.display_obs = new_display_obs
-        self.display_info = {}
         self.info = lane_info(new_infos, 0)
         self.last_lives = int(self.info.get("lives", 0))
         self.last_level = level
         self.current_state = level_name
         old_env.close()
-        if old_display_env is not None:
-            old_display_env.close()
         return True
 
     def reset_current_policy(self) -> None:
@@ -466,9 +455,11 @@ class SdlPolicyPlayer:
         self.model_path = self.initial_model_path
         self.current_policy_level = self.args.state
         self.model.reset()
+        self._configure_model_actions(self.model)
 
     def make_env(self, state: str | None = None):
         state = state or self.current_state
+        raw_view = self.args.view == "raw"
         if self.args.backend == "native":
             env = SuperMarioBrosNesTurboVecEnv(
                 self.args.game,
@@ -479,13 +470,21 @@ class SdlPolicyPlayer:
                 render_mode="rgb_array",
                 use_restricted_actions=Actions.ALL,
                 frame_skip=self.args.frame_skip,
-                obs_grayscale=True,
-                frame_stack=self.args.frame_stack,
-                maxpool_last_two=self.args.max_pool_frames,
-                obs_crop=(self.args.crop_top, self.args.crop_bottom, 0, 0),
+                obs_grayscale=not raw_view,
+                frame_stack=1 if raw_view else self.args.frame_stack,
+                maxpool_last_two=False if raw_view else self.args.max_pool_frames,
+                obs_crop=(
+                    None
+                    if raw_view
+                    else (self.args.crop_top, self.args.crop_bottom, 0, 0)
+                ),
                 obs_crop_mode=self.args.crop_mode,
                 obs_crop_fill=0,
-                obs_resize=(self.args.resize_height, self.args.resize_width),
+                obs_resize=(
+                    None
+                    if raw_view
+                    else (self.args.resize_height, self.args.resize_width)
+                ),
                 obs_resize_algorithm="area",
                 obs_layout="chw",
                 obs_copy="safe_view",
@@ -501,60 +500,14 @@ class SdlPolicyPlayer:
             state_dir=self.args.state_dir,
             preprocessing=PreprocessingConfig(
                 frame_skip=self.args.frame_skip,
-                frame_stack=self.args.frame_stack,
-                grayscale=True,
-                crop_top=self.args.crop_top,
-                crop_bottom=self.args.crop_bottom,
-                crop_mode=self.args.crop_mode,
-                resize_width=self.args.resize_width,
-                resize_height=self.args.resize_height,
-                maxpool_last_two=self.args.max_pool_frames,
-            ),
-            asynchronous=False,
-        )
-        env.seed(self.args.seed)
-        return env
-
-    def make_display_env(self, state: str | None = None):
-        state = state or self.current_state
-        if self.args.backend == "native":
-            env = SuperMarioBrosNesTurboVecEnv(
-                self.args.game,
-                state=state,
-                rom_path=self.rom_path,
-                num_envs=1,
-                num_threads=1,
-                render_mode="rgb_array",
-                use_restricted_actions=Actions.ALL,
-                frame_skip=self.args.frame_skip,
-                obs_grayscale=False,
-                frame_stack=1,
-                maxpool_last_two=False,
-                obs_crop=None,
-                obs_resize=(NES_HEIGHT, NES_WIDTH),
-                obs_resize_algorithm="area",
-                obs_layout="chw",
-                obs_copy="safe_view",
-                reward_clip=False,
-                info_filter="all",
-            )
-            env.seed(self.args.seed)
-            return env
-
-        env = create_stable_retro_vector_env(
-            rom_path=self.rom_path,
-            lane_state_names=[state],
-            state_dir=self.args.state_dir,
-            preprocessing=PreprocessingConfig(
-                frame_skip=self.args.frame_skip,
-                frame_stack=1,
-                grayscale=False,
-                crop_top=0,
-                crop_bottom=0,
-                crop_mode="remove",
-                resize_width=NES_WIDTH,
-                resize_height=NES_HEIGHT,
-                maxpool_last_two=False,
+                frame_stack=1 if raw_view else self.args.frame_stack,
+                grayscale=not raw_view,
+                crop_top=0 if raw_view else self.args.crop_top,
+                crop_bottom=0 if raw_view else self.args.crop_bottom,
+                crop_mode="remove" if raw_view else self.args.crop_mode,
+                resize_width=VISIBLE_WIDTH if raw_view else self.args.resize_width,
+                resize_height=VISIBLE_HEIGHT if raw_view else self.args.resize_height,
+                maxpool_last_two=(False if raw_view else self.args.max_pool_frames),
             ),
             asynchronous=False,
         )
@@ -594,7 +547,6 @@ class SdlPolicyPlayer:
         terminated_value = bool(terminations[0])
         truncated_value = bool(truncations[0])
         self.obs = obs
-        self.step_display_env()
         self.reward += float(rewards[0])
         step_info = lane_info(infos, 0)
         self.info = dict(step_info)
@@ -631,32 +583,6 @@ class SdlPolicyPlayer:
                 int(self.info.get("levelLo", 0)),
             )
             self.level_changes = 0
-            if self.display_env is not None:
-                self.display_obs, _display_infos = self.display_env.reset()
-            else:
-                self.display_obs = self.obs
-            self.display_info = {}
-
-    def step_display_env(self) -> None:
-        if self.display_env is None:
-            self.display_obs = self.obs
-            self.display_info = self.info
-            return
-        (
-            display_obs,
-            _rewards,
-            display_terminations,
-            display_truncations,
-            display_infos,
-        ) = self.display_env.step(
-            self.action_masks[[self.action]],
-        )
-        self.display_obs = display_obs
-        step_info = lane_info(display_infos, 0)
-        if bool(display_terminations[0] or display_truncations[0]):
-            self.display_info = dict(step_info)
-        else:
-            self.display_info = step_info
 
     def hold_terminal_frame(self) -> None:
         hold_frames = self.args.hold_done_frames
@@ -717,10 +643,12 @@ class SdlPolicyPlayer:
         self.sdl.SDL_RenderPresent(self.renderer)
 
     def current_display_frame(self) -> np.ndarray:
-        obs = self.display_obs if self.args.view == "raw" else self.obs
-        return display_frame_from_obs(obs[0], grayscale=self.args.view != "raw")
+        return display_frame_from_obs(self.obs[0], grayscale=self.args.view != "raw")
 
     def sleep_until_next_frame(self) -> None:
+        if self.frame_delay_s is None:
+            return
+        assert self.next_tick is not None
         self.next_tick += self.frame_delay_s
         delay_s = self.next_tick - time.perf_counter()
         if delay_s < -self.frame_delay_s:
@@ -731,8 +659,6 @@ class SdlPolicyPlayer:
 
     def close(self) -> None:
         self.env.close()
-        if self.display_env is not None:
-            self.display_env.close()
         if getattr(self, "texture", None):
             self.sdl.SDL_DestroyTexture(self.texture)
             self.texture = None
@@ -782,8 +708,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Load a matching runs/<Level>/<Level>.zip after level changes",
     )
-    parser.add_argument("--view", choices=("raw", "preprocessed"), default="raw")
-    parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument(
+        "--view",
+        choices=("raw", "preprocessed"),
+        default="raw",
+        help="raw displays direct RGB; preprocessed displays the policy observation",
+    )
+    parser.add_argument(
+        "--fps",
+        "--fpx",
+        type=parse_fps,
+        default=30,
+        metavar="FPS|max",
+        help="playback frame-rate limit, or 'max' for uncapped playback",
+    )
     parser.add_argument("--scale", type=int, default=2)
     parser.add_argument("--episodes", type=int, default=0, help="0 means play forever")
     parser.add_argument("--seed", type=int, default=10007)
@@ -797,7 +735,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--crop-mode", choices=("remove", "mask"), default=None)
     parser.add_argument("--resize-width", type=int, default=84)
     parser.add_argument("--resize-height", type=int, default=84)
-    parser.add_argument("--action-set", choices=tuple(ACTION_SETS), default="simple")
+    parser.add_argument(
+        "--action-set",
+        choices=tuple(ACTION_SETS),
+        default=None,
+        help="require one action set; defaults to each policy checkpoint's action set",
+    )
     parser.add_argument("--hold-done-frames", type=int, default=0)
     parser.add_argument("--auto-close-frames", type=int, default=None)
     return parser.parse_args(argv)
