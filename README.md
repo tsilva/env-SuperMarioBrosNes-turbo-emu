@@ -120,11 +120,12 @@ smb-turbo train Level1-1
 smb-turbo play
 ```
 
-**Training** searches observation-free `(action, duration)` programs and retains
-useful prefixes. It stops on the first level completion by default; pass
-`--continue-after-completion` to continue through the transition budget. Existing
-policies are protected unless `--overwrite` is passed. `Level1-1` writes
-`runs/Level1-1-jerk/Level1-1.zip`; playback uses the matching trained policy when
+**Training** searches observation-free `(action, duration)` programs with beam
+search by default. It stops on the first level completion; pass
+`--continue-after-completion` to continue through the transition budget. A new
+default beam run replaces the existing canonical run; custom outputs and explicit
+JERK runs remain protected unless `--overwrite` is passed. `Level1-1` writes
+`runs/Level1-1/Level1-1.zip`; playback uses the matching trained policy when
 available and switches policies as levels change. Running `smb-turbo play`
 without a state starts from `Level1-1`; pass an exact state identifier to start
 elsewhere. Run either command with `--help` for configuration options.
@@ -144,23 +145,23 @@ policy is saved when a candidate exists.
 The checkout-compatible `uv run python train.py Level1-1` and
 `uv run python play.py` entry points remain available.
 
-To compare the retained-knowledge search with a fixed-width beam while keeping
-the same action-run representation, reward, episode boundary, and playback
-format, run:
+To use JERK instead of the default fixed-width beam while keeping the same
+action-run representation, reward, episode boundary, and playback format, run:
 
 ```bash
-smb-turbo train Level1-1 --algorithm beam
-smb-turbo play Level1-1 --policy runs/Level1-1-beam/Level1-1.zip
+smb-turbo train Level1-1 --algorithm jerk --overwrite
+smb-turbo play Level1-1
 ```
 
-Beam runs use a separate `runs/<State>-beam/` directory and do not replace the
-default JERK policy selected by `play.py`.
+New default runs use `runs/<State>/` regardless of algorithm. For compatibility,
+playback still discovers historical algorithm-specific directories, preferring
+`runs/<State>-beam/` over `runs/<State>-jerk/`.
 
 ## 🧰 Commands
 
 ```bash
 smb-turbo import /path/to/roms        # import the supported ROM
-smb-turbo train Level1-1              # train a state-keyed JERK policy
+smb-turbo train Level1-1              # train a state-keyed beam policy
 smb-turbo play                        # play Level1-1 manually or with its policy
 uv sync --frozen --extra dev --group dev  # install development dependencies
 uv run maturin develop --release      # build the optimized Rust extension

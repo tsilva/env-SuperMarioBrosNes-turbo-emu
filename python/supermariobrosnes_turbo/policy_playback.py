@@ -55,7 +55,7 @@ from . import (
     resolve_required_rom_path,
 )
 from .jerk import load_jerk_checkpoint
-from .jerk import policy_path_for_state
+from .jerk import find_policy_path_for_state
 
 from .benchmark_sps import (
     PreprocessingConfig,
@@ -405,10 +405,10 @@ class SdlPolicyPlayer:
     def activate_named_level_policy(self, level_name: str) -> bool:
         if self.args.level_policy_root is None:
             return False
-        model_path = policy_path_for_state(
+        model_path = find_policy_path_for_state(
             level_name, runs_root=self.args.level_policy_root
         )
-        if not model_path.is_file():
+        if model_path is None:
             return False
         model = load_jerk_checkpoint(model_path)
         self._validate_model(model)
@@ -780,7 +780,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--level-policy-root",
         type=Path,
         default=None,
-        help="Load a matching runs/<Level>-jerk/<Level>.zip after level changes",
+        help="Load a matching runs/<Level>/<Level>.zip after level changes",
     )
     parser.add_argument("--view", choices=("raw", "preprocessed"), default="raw")
     parser.add_argument("--fps", type=int, default=30)

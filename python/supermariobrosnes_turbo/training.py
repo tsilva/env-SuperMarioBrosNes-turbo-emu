@@ -376,8 +376,8 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument(
         "--algorithm",
         choices=("jerk", "beam"),
-        default="jerk",
-        help="training search algorithm (default: jerk)",
+        default="beam",
+        help="training search algorithm (default: beam)",
     )
     parser.add_argument(
         "--rom", type=Path, help="ROM path; defaults to Stable Retro-compatible discovery"
@@ -392,7 +392,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         "--output",
         type=Path,
         default=None,
-        help="run directory; defaults to runs/<State>-<Algorithm>",
+        help="run directory; defaults to runs/<State>",
     )
     parser.add_argument("--seed", type=int, default=108)
     parser.add_argument("--transitions", type=int, default=TOTAL_TIMESTEPS)
@@ -446,7 +446,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="allow existing policies in the run directory to be replaced",
+        help="replace policies in custom or non-default run directories",
     )
     parser.add_argument(
         "--ui",
@@ -824,7 +824,7 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    run_dir = args.output or run_directory_for_state(args.state, algorithm="jerk")
+    run_dir = args.output or run_directory_for_state(args.state)
     _protect_existing_policies(run_dir, force=args.overwrite)
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")

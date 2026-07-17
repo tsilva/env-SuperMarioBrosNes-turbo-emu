@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from . import ACTION_SETS
-from .jerk import policy_path_for_state, resolve_state_name
+from .jerk import find_policy_path_for_state, policy_path_for_state, resolve_state_name
 from .manual_playback import DEFAULT_ROM, SdlExternalVecPlayer, SdlUnavailableError
 from .policy_playback import DEFAULT_GAME, SdlPolicyPlayer
 
@@ -19,8 +19,7 @@ def resolve_state_policy(
     *,
     runs_dir: str | Path = "runs",
 ) -> Path | None:
-    path = policy_path_for_state(state, runs_root=runs_dir)
-    return path if path.is_file() else None
+    return find_policy_path_for_state(state, runs_root=runs_dir)
 
 
 def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:

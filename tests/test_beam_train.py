@@ -3,8 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from supermariobrosnes_turbo import beam_training as train_beam
-from supermariobrosnes_turbo import training
+from supermariobrosnes_turbo import beam_training, training
 from supermariobrosnes_turbo.beam import BeamSearch
 from supermariobrosnes_turbo.jerk import (
     ActionRun,
@@ -112,7 +111,7 @@ def test_beam_active_best_candidate_carries_observed_progress() -> None:
     assert retained.progress == 654.0
 
 
-def test_beam_cli_defaults_to_separate_output_and_shared_action_contract() -> None:
+def test_beam_cli_defaults_to_canonical_output_and_shared_action_contract() -> None:
     parser = training.build_parser()
     args = parser.parse_args(["Level1-1", "--algorithm", "beam"])
     training._apply_algorithm_defaults(parser, args)
@@ -120,6 +119,25 @@ def test_beam_cli_defaults_to_separate_output_and_shared_action_contract() -> No
     assert args.lanes == 64
     assert args.beam_width == 16
     assert args.continue_after_completion is False
-    assert run_directory_for_state("Level1-1", algorithm="beam") == Path(
-        "runs/Level1-1-beam"
+    assert run_directory_for_state("Level1-1") == Path("runs/Level1-1")
+    assert beam_training._overwrite_existing(args)
+
+
+def test_beam_custom_output_requires_explicit_overwrite() -> None:
+    parser = training.build_parser()
+    custom = parser.parse_args(
+        ["Level1-1", "--algorithm", "beam", "--output", "runs/comparison"]
     )
+    forced = parser.parse_args(
+        [
+            "Level1-1",
+            "--algorithm",
+            "beam",
+            "--output",
+            "runs/comparison",
+            "--overwrite",
+        ]
+    )
+
+    assert not beam_training._overwrite_existing(custom)
+    assert beam_training._overwrite_existing(forced)
