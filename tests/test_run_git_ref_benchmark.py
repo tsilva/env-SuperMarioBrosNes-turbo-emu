@@ -197,6 +197,7 @@ def test_parse_args_rejects_invalid_benchmark_limits(
 def test_parse_load1_extracts_unix_load_average() -> None:
     assert parse_load1("load average: 1.23, 4.56, 7.89") == 1.23
     assert parse_load1(" 15:41 up 10 days,  load average: 0.42, 0.50, 0.60") == 0.42
+    assert parse_load1("14:56 up 15 days, 3 users, load averages: 4.21 5.14 5.81") == 4.21
     assert parse_load1("no load here") is None
 
 

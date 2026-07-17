@@ -331,10 +331,15 @@ def target_exists(args: argparse.Namespace, plan: BenchmarkPlan, path: str) -> b
 
 
 def parse_load1(uptime_text: str) -> float | None:
-    if "load average:" not in uptime_text:
+    marker = next(
+        (candidate for candidate in ("load average:", "load averages:") if candidate in uptime_text),
+        None,
+    )
+    if marker is None:
         return None
     try:
-        return float(uptime_text.split("load average:", 1)[1].split(",", 1)[0].strip())
+        first_value = uptime_text.split(marker, 1)[1].strip().split(maxsplit=1)[0].rstrip(",")
+        return float(first_value)
     except ValueError:
         return None
 
