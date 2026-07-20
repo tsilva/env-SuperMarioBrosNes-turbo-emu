@@ -60,7 +60,7 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     assert args.algorithm == "beam"
     assert args.transitions == 100
     assert args.lanes == 4
-    assert args.action_set == "simple"
+    assert args.action_set == "simple-down"
     assert args.continue_after_completion
     assert args.overwrite
     with pytest.raises(SystemExit):
@@ -96,6 +96,7 @@ def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
 
     assert args.go_explore_cell_size == 16
     assert args.go_explore_explore_steps == 128
+    assert args.action_set == "simple-down"
     assert args.beam_width is None
     assert args.retained_limit is None
 

@@ -76,6 +76,7 @@ python-source = "python"
 features = ["pyo3/extension-module"]
 include = [
   "python/supermariobrosnes_turbo/data/**/*.state",
+  "python/supermariobrosnes_turbo/data/**/metadata.json",
   "python/supermariobrosnes_turbo/py.typed",
   "scripts/__init__.py",
   "scripts/benchmark_rom.py",

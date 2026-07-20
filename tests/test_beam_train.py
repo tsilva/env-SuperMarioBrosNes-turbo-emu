@@ -120,7 +120,7 @@ def test_beam_cli_defaults_to_canonical_output_and_shared_action_contract() -> N
     assert args.beam_width == 16
     assert args.protected_prefix_runs == 8
     assert args.improvement_protected_prefix_runs == 0
-    assert args.action_set == "simple"
+    assert args.action_set == "simple-down"
     assert args.initial_policy is None
     assert args.continue_after_completion is False
     assert run_directory_for_state("Level1-1") == Path("runs/Level1-1")

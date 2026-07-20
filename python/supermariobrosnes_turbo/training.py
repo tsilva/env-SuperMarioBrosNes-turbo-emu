@@ -41,7 +41,7 @@ from .training_ui import (
 
 
 LOGGER = logging.getLogger("jerk_train")
-ACTION_SET = "simple"
+ACTION_SET = "simple-down"
 TOTAL_TIMESTEPS = 10_000_000
 N_ENVS = 64
 MAX_EPISODE_STEPS = 4_500
@@ -200,7 +200,7 @@ class MarioJerkTask:
             num_threads=self.n_envs,
             rom_path=rom_path,
             render_mode=None,
-            action_set=action_set,
+            use_restricted_actions=action_set,
             obs_copy="unsafe_view",
             obs_crop=OBSERVATION_FREE_CROP,
             obs_grayscale=True,
@@ -521,21 +521,6 @@ def _play_command(
     return shlex.join(argv)
 
 
-class _StoreActionSet(argparse.Action):
-    """Record whether the campaign-wide action set was explicitly selected."""
-
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: str,
-        option_string: str | None = None,
-    ) -> None:
-        del parser, option_string
-        setattr(namespace, self.dest, values)
-        namespace.action_set_explicit = True
-
-
 def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description=__doc__)
     parser.add_argument(
@@ -572,13 +557,8 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         "--action-set",
         choices=tuple(ACTION_SETS),
         default=ACTION_SET,
-        action=_StoreActionSet,
-        help=(
-            f"named search action set (default: {ACTION_SET} for one level, "
-            "simple-down for all levels)"
-        ),
+        help=f"named search action set (default: {ACTION_SET})",
     )
-    parser.set_defaults(action_set_explicit=False)
     parser.add_argument("--transitions", type=int, default=TOTAL_TIMESTEPS)
     parser.add_argument("--lanes", type=int, default=N_ENVS)
     parser.add_argument("--max-episode-steps", type=int, default=MAX_EPISODE_STEPS)
@@ -1055,8 +1035,6 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = build_parser(prog=prog)
     args = parser.parse_args(argv)
-    if args.state is None and not args.action_set_explicit:
-        args.action_set = "simple-down"
     _apply_algorithm_defaults(parser, args)
     if args.state is None:
         from .training_campaign import CANONICAL_LEVEL_STATES, run

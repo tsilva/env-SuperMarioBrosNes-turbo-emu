@@ -1,6 +1,9 @@
 from importlib.metadata import PackageNotFoundError, version
 
+from .action_tables import ActionTable
+
 from .env import (
+    ACTION_TABLES,
     ACTION_SETS,
     ACTION_MEANINGS,
     ACTION_BUTTONS,
@@ -27,6 +30,7 @@ except PackageNotFoundError:  # Source tree imported without an installed distri
 
 __all__ = [
     "__version__",
+    "ACTION_TABLES",
     "ACTION_SETS",
     "ACTION_MEANINGS",
     "ACTION_BUTTONS",
@@ -35,6 +39,7 @@ __all__ = [
     "INFO_KEYS",
     "NES_BUTTONS",
     "Actions",
+    "ActionTable",
     "Integrations",
     "Observations",
     "RETRO_DATA_PATH_ENV_VAR",

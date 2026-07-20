@@ -181,14 +181,14 @@ def test_named_simple_action_set_is_discrete_and_maps_indices() -> None:
         state="Level1-1",
         rom_path=require_rom(),
         num_envs=2,
-        action_set="simple",
+        use_restricted_actions="simple",
         frame_skip=1,
         frame_stack=1,
         obs_grayscale=True,
         obs_resize=(1, 1),
     )
     try:
-        assert env.action_set == "simple"
+        assert env.action_preset == "simple"
         assert env.action_meanings == (
             "noop",
             "right",
@@ -202,10 +202,18 @@ def test_named_simple_action_set_is_discrete_and_maps_indices() -> None:
         assert env.action_space == spaces.MultiDiscrete([7, 7])
         env.reset(seed=0)
         env.step(np.asarray([0, 6], dtype=np.int64))
-        with pytest.raises(ValueError, match="action_set='simple'"):
+        with pytest.raises(ValueError, match="action_preset='simple'"):
             env.step(np.asarray([0, 7], dtype=np.int64))
     finally:
         env.close()
+
+
+def test_removed_constructor_action_set_is_rejected() -> None:
+    with pytest.raises(TypeError, match="action_set"):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            action_set="simple",
+        )
 
 
 def test_constructor_state_forms_and_packaged_inventory() -> None:

@@ -16,6 +16,11 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
 from ._supermariobrosnes_turbo import _RetroVecEnv as _CoreRetroVecEnv
+from .action_tables import (
+    ActionTable,
+    load_action_tables,
+    resolve_custom_action,
+)
 from .roms import game_data_path, resolve_required_rom_path
 
 
@@ -23,53 +28,9 @@ VISIBLE_WIDTH = 240
 VISIBLE_HEIGHT = 224
 NES_BUTTONS = ("B", None, "SELECT", "START", "UP", "DOWN", "LEFT", "RIGHT", "A")
 BUTTON_TO_INDEX = {name: index for index, name in enumerate(NES_BUTTONS) if name is not None}
-CORE_ACTION_MEANINGS = (
-    "noop",
-    "right",
-    "right_b",
-    "right_a",
-    "right_a_b",
-    "a",
-    "left",
-    "start",
-    "down",
-)
-ACTION_SETS = {
-    "simple": ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left"),
-    "simple-down": (
-        "noop",
-        "right",
-        "right_b",
-        "right_a",
-        "right_a_b",
-        "a",
-        "left",
-        "down",
-    ),
-    "right": ("right", "right_b", "right_a", "right_a_b"),
-    "full": (
-        "noop",
-        "right",
-        "right_b",
-        "right_a",
-        "right_a_b",
-        "a",
-        "left",
-        "start",
-    ),
-}
+ACTION_TABLES, ACTION_SETS, ACTION_BUTTONS = load_action_tables(NES_BUTTONS)
 ACTION_MEANINGS = ACTION_SETS["simple"]
-ACTION_BUTTONS = {
-    "noop": (),
-    "right": ("RIGHT",),
-    "right_b": ("RIGHT", "B"),
-    "right_a": ("RIGHT", "A"),
-    "right_a_b": ("RIGHT", "A", "B"),
-    "a": ("A",),
-    "left": ("LEFT",),
-    "start": ("START",),
-    "down": ("DOWN",),
-}
+CORE_ACTION_MEANINGS = tuple(ACTION_BUTTONS)
 MASK_BIT_WEIGHTS = (1 << np.arange(len(NES_BUTTONS), dtype=np.uint16)).astype(np.uint16)
 STABLE_RETRO_BUTTON_COMBOS = ((0, 16, 32), (0, 64, 128), (0, 1, 256, 257))
 DEFAULT_STABLE_RETRO_GAME = "SuperMarioBros-Nes-v0"
@@ -271,24 +232,6 @@ def _normalize_state_config(
     return [_load_initial_state(state_value, state_dir) for state_value in states], labels
 
 
-def _resolve_action_set(action_set: str | Sequence[str]) -> tuple[str, ...]:
-    if isinstance(action_set, str):
-        try:
-            return ACTION_SETS[action_set]
-        except KeyError as exc:
-            valid = ", ".join(sorted(ACTION_SETS))
-            raise ValueError(f"unknown action_set {action_set!r}; valid values: {valid}") from exc
-
-    actions = tuple(str(action) for action in action_set)
-    if not actions:
-        raise ValueError("action_set must contain at least one action")
-    unknown = [action for action in actions if action not in CORE_ACTION_MEANINGS]
-    if unknown:
-        valid = ", ".join(CORE_ACTION_MEANINGS)
-        raise ValueError(f"unknown action(s) {unknown!r}; valid actions: {valid}")
-    return actions
-
-
 def _public_action_bits_to_controller_byte(action_bits: int) -> int:
     """Translate Stable Retro's nine public NES slots to the hardware byte."""
     return ((action_bits & 1) << 1) | ((action_bits >> 8) & 1) | (action_bits & 0xFC)
@@ -320,11 +263,12 @@ def _discrete_action_to_public_bits(action: int) -> int:
     return action_bits
 
 
-def _named_action_controller_bytes(action_meanings: tuple[str, ...]) -> np.ndarray:
-    controller_bytes = np.empty((len(action_meanings),), dtype=np.uint8)
-    for action_index, action_name in enumerate(action_meanings):
+def _named_action_controller_bytes(actions: Sequence[Any]) -> np.ndarray:
+    controller_bytes = np.empty((len(actions),), dtype=np.uint8)
+    for action_index, action in enumerate(actions):
+        buttons = ACTION_BUTTONS[action] if isinstance(action, str) else action
         public_bits = 0
-        for button in ACTION_BUTTONS[action_name]:
+        for button in buttons:
             public_bits |= 1 << BUTTON_TO_INDEX[button]
         controller_bytes[action_index] = _public_action_bits_to_controller_byte(public_bits)
     return controller_bytes
@@ -339,10 +283,11 @@ DISCRETE_CONTROLLER_BYTES = np.asarray(
 )
 
 
-def _action_masks(action_meanings: tuple[str, ...]) -> np.ndarray:
-    masks = np.zeros((len(action_meanings), len(NES_BUTTONS)), dtype=np.uint8)
-    for action_index, action_name in enumerate(action_meanings):
-        for button in ACTION_BUTTONS[action_name]:
+def _action_masks(actions: Sequence[Any]) -> np.ndarray:
+    masks = np.zeros((len(actions), len(NES_BUTTONS)), dtype=np.uint8)
+    for action_index, action in enumerate(actions):
+        buttons = ACTION_BUTTONS[action] if isinstance(action, str) else action
+        for button in buttons:
             masks[action_index, BUTTON_TO_INDEX[button]] = 1
     return masks
 
@@ -380,8 +325,11 @@ def action_batch(actions: str | Sequence[str], num_envs: int) -> np.ndarray:
 def _normalize_action_mode(value: Any) -> str:
     name = getattr(value, "name", value)
     text = str(name).split(".")[-1].upper()
-    if text not in {"ALL", "FILTERED", "DISCRETE"}:
-        raise ValueError("use_restricted_actions must be Actions.ALL, Actions.FILTERED, or Actions.DISCRETE")
+    if text not in {"ALL", "FILTERED", "DISCRETE", "MULTI_DISCRETE"}:
+        raise ValueError(
+            "use_restricted_actions must be a built-in action mode, metadata preset, "
+            "or inline action table"
+        )
     return text
 
 
@@ -525,7 +473,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         state: Any = _STATE_UNSET,
         scenario: str | Path | None = None,
         info: str | Path | None = None,
-        use_restricted_actions: Any = Actions.FILTERED,
+        use_restricted_actions: Actions | str | ActionTable = Actions.FILTERED,
         record: bool = False,
         players: int = 1,
         inttype: Any = Integrations.STABLE,
@@ -536,7 +484,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         num_threads: int | None = None,
         rom_path: str | Path | None = None,
         state_dir: str | Path | None = None,
-        action_set: str | Sequence[str] | None = None,
         obs_copy: str = "copy",
         obs_resize: Sequence[int] | None = None,
         obs_crop: Sequence[int] | None = None,
@@ -587,20 +534,45 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         source_width = VISIBLE_WIDTH if mask_crop else VISIBLE_WIDTH - crop_left - crop_right
         source_height = VISIBLE_HEIGHT if mask_crop else VISIBLE_HEIGHT - crop_top - crop_bottom
         resize_width, resize_height = _normalize_retro_resize(obs_resize, source_width, source_height)
-        if action_set is None:
+        builtin_name = getattr(use_restricted_actions, "name", use_restricted_actions)
+        builtin_text = str(builtin_name).split(".")[-1].casefold()
+        if builtin_text in {"all", "filtered", "discrete", "multi_discrete"}:
             action_mode = _normalize_action_mode(use_restricted_actions)
-            action_meanings = ACTION_SETS["full"]
-            action_set_name = "full"
+            action_preset = None
+            action_table = None
+            action_meanings = None
+            action_table_hash = None
+            custom_masks = None
+            normalized_restricted_actions = Actions[action_mode]
         else:
-            action_mode = "ACTION_SET"
-            action_meanings = _resolve_action_set(action_set)
-            action_set_name = action_set if isinstance(action_set, str) else "custom"
+            custom = resolve_custom_action(
+                use_restricted_actions,
+                buttons=NES_BUTTONS,
+                tables=ACTION_TABLES,
+            )
+            action_mode = "CUSTOM_DISCRETE"
+            action_preset = custom.preset
+            action_table = custom.table
+            action_meanings = custom.meanings
+            action_table_hash = custom.table_hash
+            custom_masks = custom.masks
+            normalized_restricted_actions = use_restricted_actions
         self.autoreset_mode = AutoresetMode.DISABLED
         self.game = str(game)
         self.action_meanings = action_meanings
-        self.action_set = action_set_name
-        self._named_action_controller_bytes = _named_action_controller_bytes(self.action_meanings)
-        self._action_masks = _action_masks(self.action_meanings)
+        self.action_preset = action_preset
+        self.action_table = action_table
+        self.action_table_hash = action_table_hash
+        self.action_mode = action_mode.lower()
+        self._custom_action_masks = custom_masks
+        self._named_action_controller_bytes = (
+            _named_action_controller_bytes(self.action_table)
+            if self.action_table is not None
+            else None
+        )
+        self._action_masks = (
+            _action_masks(self.action_table) if self.action_table is not None else None
+        )
         initial_states, state_names = _normalize_state_config(
             state,
             state_catalog,
@@ -651,7 +623,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._action_mode = action_mode
         self._mask_to_controller_bytes = self._build_mask_to_controller_bytes()
         self.button_combos = [list(combo) for combo in self._BUTTON_COMBOS]
-        self.use_restricted_actions = use_restricted_actions
+        self.use_restricted_actions = normalized_restricted_actions
         self.frame_skip = self._core.frame_skip
         self.obs_grayscale = self._core.grayscale
         self.frame_stack = self._core.frame_stack
@@ -662,7 +634,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.crop_bottom = crop_bottom
         self.resize_width = self._output_resize_width
         self.resize_height = self._output_resize_height
-        if action_mode == "ACTION_SET":
+        if action_mode == "CUSTOM_DISCRETE":
             self.single_action_space = spaces.Discrete(len(self.action_meanings))
             self.action_space = spaces.MultiDiscrete(
                 [len(self.action_meanings)] * self.num_envs
@@ -670,6 +642,11 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         elif action_mode == "DISCRETE":
             self.single_action_space = spaces.Discrete(36)
             self.action_space = spaces.MultiDiscrete([36] * self.num_envs)
+        elif action_mode == "MULTI_DISCRETE":
+            self.single_action_space = spaces.MultiDiscrete(
+                [len(combo) for combo in self._BUTTON_COMBOS]
+            )
+            self.action_space = batch_space(self.single_action_space, self.num_envs)
         else:
             self.single_action_space = spaces.MultiBinary(self.num_buttons)
             self.action_space = spaces.MultiBinary((self.num_envs, self.num_buttons))
@@ -901,7 +878,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._step_pending = True
 
     def _actions_to_controller_bytes(self, actions: Any) -> np.ndarray:
-        if self._action_mode == "ACTION_SET":
+        if self._action_mode == "CUSTOM_DISCRETE":
             values = np.asarray(actions, dtype=np.int64).reshape(-1)
             if values.shape != (self.num_envs,):
                 raise ValueError(
@@ -912,7 +889,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             ):
                 raise ValueError(
                     f"actions must be in [0, {len(self.action_meanings) - 1}] "
-                    f"for action_set={self.action_set!r}"
+                    f"for action_preset={self.action_preset!r}"
                 )
             return self._named_action_controller_bytes[values]
         if self._action_mode == "DISCRETE":
@@ -922,6 +899,28 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             if values.size and (int(values.min()) < 0 or int(values.max()) >= 36):
                 raise ValueError("DISCRETE actions must be in [0, 35]")
             return DISCRETE_CONTROLLER_BYTES[values]
+        if self._action_mode == "MULTI_DISCRETE":
+            values = np.asarray(actions, dtype=np.int64)
+            expected = (self.num_envs, len(self._BUTTON_COMBOS))
+            if values.shape == (len(self._BUTTON_COMBOS),) and self.num_envs == 1:
+                values = values.reshape(expected)
+            if values.shape != expected:
+                raise ValueError(f"actions must have shape {expected}, got {values.shape}")
+            controller_bytes = np.zeros((self.num_envs,), dtype=np.uint8)
+            for env_index, action in enumerate(values):
+                public_bits = 0
+                for combo_index, combo_value in enumerate(action):
+                    combo = self._BUTTON_COMBOS[combo_index]
+                    if int(combo_value) < 0 or int(combo_value) >= len(combo):
+                        raise ValueError(
+                            f"MULTI_DISCRETE action component {combo_index} must be in "
+                            f"[0, {len(combo) - 1}]"
+                        )
+                    public_bits |= combo[int(combo_value)]
+                controller_bytes[env_index] = _public_action_bits_to_controller_byte(
+                    public_bits
+                )
+            return controller_bytes
         masks = np.asarray(actions, dtype=np.uint8)
         if masks.shape == (self.num_buttons,):
             masks = masks.reshape(1, self.num_buttons)

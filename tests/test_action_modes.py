@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from importlib import resources
 import os
 from pathlib import Path
 import subprocess
@@ -29,6 +30,24 @@ PUBLIC_TO_CONTROLLER_BITS = (
     (8, 0),
 )
 FILTER_GROUPS = ((0, 16, 32), (0, 64, 128), (0, 1, 256, 257))
+
+
+def test_packaged_action_tables_match_stable_retro_integration_metadata() -> None:
+    pytest.importorskip("stable_retro")
+    stable_metadata = json.loads(
+        resources.files("stable_retro")
+        .joinpath("data", "stable", "SuperMarioBros-Nes-v0", "metadata.json")
+        .read_text(encoding="utf-8")
+    )
+    turbo_metadata = json.loads(
+        resources.files("supermariobrosnes_turbo")
+        .joinpath("data", "SuperMarioBros-Nes-v0", "metadata.json")
+        .read_text(encoding="utf-8")
+    )
+    if "action_sets" not in stable_metadata:
+        pytest.skip("installed stable-retro-turbo predates action-table metadata")
+
+    assert turbo_metadata["action_sets"] == stable_metadata["action_sets"]
 
 
 def expected_controller_byte(public_bits: int) -> int:
@@ -63,6 +82,15 @@ def action_lookup(mode: str) -> np.ndarray:
         (Actions.ALL, spaces.MultiBinary(9), spaces.MultiBinary((2, 9))),
         (Actions.FILTERED, spaces.MultiBinary(9), spaces.MultiBinary((2, 9))),
         (Actions.DISCRETE, spaces.Discrete(36), spaces.MultiDiscrete([36, 36])),
+        (
+            Actions.MULTI_DISCRETE,
+            spaces.MultiDiscrete([3, 3, 4]),
+            spaces.Box(
+                low=np.zeros((2, 3), dtype=np.int64),
+                high=np.asarray([[2, 2, 3], [2, 2, 3]], dtype=np.int64),
+                dtype=np.int64,
+            ),
+        ),
     ],
 )
 def test_supported_modes_expose_stable_retro_action_spaces(
@@ -84,16 +112,15 @@ def test_supported_modes_expose_stable_retro_action_spaces(
         env.close()
 
 
-def test_multi_discrete_remains_clearly_unsupported() -> None:
-    with pytest.raises(
-        ValueError,
-        match="Actions.ALL, Actions.FILTERED, or Actions.DISCRETE",
-    ):
-        SuperMarioBrosNesTurboVecEnv(
-            "SuperMarioBros-Nes-v0",
-            rom_path="/definitely/missing/SuperMarioBros.nes",
-            use_restricted_actions=Actions.MULTI_DISCRETE,
-        )
+def test_multi_discrete_components_map_like_stable_retro() -> None:
+    env = object.__new__(SuperMarioBrosNesTurboVecEnv)
+    env._action_mode = "MULTI_DISCRETE"
+    env._BUTTON_COMBOS = FILTER_GROUPS
+    env.num_envs = 2
+
+    result = env._actions_to_controller_bytes(np.asarray([[0, 0, 0], [2, 1, 3]]))
+
+    assert result.tolist() == [0, expected_controller_byte(32 | 64 | 257)]
 
 
 def test_all_preserves_every_public_mask_except_the_unused_slot() -> None:
@@ -176,6 +203,38 @@ def test_named_simple_and_right_sets_keep_their_controller_mappings() -> None:
         1,
         130,
     ]
+
+
+def test_named_preset_and_inline_table_have_the_same_contract() -> None:
+    rom = require_rom()
+    named = SuperMarioBrosNesTurboVecEnv(
+        "SuperMarioBros-Nes-v0",
+        state="Level1-1",
+        rom_path=rom,
+        num_envs=1,
+        use_restricted_actions="right",
+    )
+    inline = SuperMarioBrosNesTurboVecEnv(
+        "SuperMarioBros-Nes-v0",
+        state="Level1-1",
+        rom_path=rom,
+        num_envs=1,
+        use_restricted_actions=[
+            ["RIGHT"],
+            ["RIGHT", "B"],
+            ["RIGHT", "A"],
+            ["RIGHT", "A", "B"],
+        ],
+    )
+    try:
+        assert named.action_preset == "right"
+        assert inline.action_preset is None
+        assert named.action_table == inline.action_table
+        assert named.action_meanings == inline.action_meanings
+        assert named.action_table_hash == inline.action_table_hash
+    finally:
+        named.close()
+        inline.close()
 
 
 def test_all_filtered_and_discrete_step_the_same_36_native_states() -> None:

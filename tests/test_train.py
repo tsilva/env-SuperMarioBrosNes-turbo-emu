@@ -35,15 +35,15 @@ from supermariobrosnes_turbo.training import (
 ACTIONS = ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left")
 
 
-def test_jerk_task_uses_minimal_native_observation_and_simple_action_set(
+def test_jerk_task_uses_minimal_native_observation_and_default_action_set(
     monkeypatch,
 ) -> None:
     class FakeNative:
         def __init__(self, *args, **kwargs) -> None:
             del args
             self.config = kwargs
-            self.action_set = kwargs["action_set"]
-            self.action_meanings = ACTION_SETS[self.action_set]
+            self.action_preset = kwargs["use_restricted_actions"]
+            self.action_meanings = ACTION_SETS[self.action_preset]
             self.single_action_space = spaces.Discrete(len(self.action_meanings))
 
     monkeypatch.setattr(train_module, "SuperMarioBrosNesTurboVecEnv", FakeNative)
@@ -59,9 +59,9 @@ def test_jerk_task_uses_minimal_native_observation_and_simple_action_set(
         step_cost=0.1,
     )
 
-    assert task.native.action_set == "simple"
-    assert task.native.single_action_space.n == 7
-    assert task.action_names == ACTION_SETS["simple"]
+    assert task.native.action_preset == "simple-down"
+    assert task.native.single_action_space.n == 8
+    assert task.action_names == ACTION_SETS["simple-down"]
     assert task.native.config["render_mode"] is None
     assert task.native.config["obs_crop"] == (0, 223, 0, 239)
     assert "obs_resize" not in task.native.config
@@ -76,8 +76,8 @@ def test_jerk_task_accepts_a_state_general_down_action_set(monkeypatch) -> None:
     class FakeNative:
         def __init__(self, *args, **kwargs) -> None:
             del args
-            self.action_set = kwargs["action_set"]
-            self.action_meanings = ACTION_SETS[self.action_set]
+            self.action_preset = kwargs["use_restricted_actions"]
+            self.action_meanings = ACTION_SETS[self.action_preset]
 
     monkeypatch.setattr(train_module, "SuperMarioBrosNesTurboVecEnv", FakeNative)
 

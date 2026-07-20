@@ -85,7 +85,7 @@ env = SuperMarioBrosNesTurboVecEnv(
     "SuperMarioBros-Nes-v0",
     state="Level1-1",
     num_envs=16,
-    use_restricted_actions=Actions.ALL,
+    use_restricted_actions="simple",
     frame_skip=4,
     obs_grayscale=True,
     obs_crop=(32, 0, 0, 0),
@@ -141,13 +141,13 @@ smb-turbo play
 ```
 
 **Training** searches observation-free `(action, duration)` programs with beam
-search by default. It stops on the first level completion; pass
-`--continue-after-completion` to turn the remaining transition budget into an
-anytime improvement search. Continued runs keep the best completed path locked,
-reserve beam capacity for incomplete alternatives, and systematically move
-mutations from the tail toward the root. The published policy is replaced only
-when completed shaped return improves, while every completion is appended to
-`successes.jsonl`.
+search and the `simple-down` action set by default. It stops on the first level
+completion; pass `--continue-after-completion` to turn the remaining transition
+budget into an anytime improvement search. Continued runs keep the best completed
+path locked, reserve beam capacity for incomplete alternatives, and systematically
+move mutations from the tail toward the root. The published policy is replaced
+only when completed shaped return improves, while every completion is appended
+to `successes.jsonl`.
 
 A new default beam run replaces the existing canonical run; custom outputs and
 explicit JERK or Go-Explore runs remain protected unless `--overwrite` is passed.
@@ -207,8 +207,8 @@ level instead uses `<Directory>/<State>/`. Interactive campaigns keep one TUI
 open and show separate progress bars for the current level's transitions and the
 overall 32-level campaign. A level that exhausts its budget is reported and the
 campaign continues to the next level; a safe stop ends the current level and
-does not start another. Campaigns default to the `simple-down` action set so
-pipe-dependent levels remain searchable; an explicit `--action-set` is respected.
+does not start another. The default `simple-down` action set keeps pipe-dependent
+levels searchable; an explicit `--action-set` is respected.
 
 New default runs use `runs/<State>/` regardless of algorithm. For compatibility,
 playback still discovers historical algorithm-specific directories, preferring
@@ -244,7 +244,11 @@ The chart records the published `0.3.0` comparison. See
   additional variants. `state=` accepts one name, path, or byte payload;
   `state_catalog=` preloads an ordered selection for explicit per-lane resets.
 - **Actions:** `Actions.ALL` and `Actions.FILTERED` accept per-button masks;
-  `Actions.DISCRETE` provides Stable Retro-compatible 36-way actions.
+  `Actions.DISCRETE` provides Stable Retro-compatible 36-way actions and
+  `Actions.MULTI_DISCRETE` exposes the three restricted button groups. Named
+  metadata presets (`simple`, `simple-down`, `right`, `full`) and inline button
+  tables such as `[[], ["RIGHT"], ["RIGHT", "A"]]` produce exact discrete
+  spaces through `use_restricted_actions`.
 - **Playback:** Play commands require a discoverable native SDL2 library and
   open local gameplay windows.
 - **Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) and follow the
