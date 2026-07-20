@@ -1,6 +1,6 @@
 [package]
 name = "supermariobrosnes-turbo"
-version = "0.3.4"
+version = "0.3.5"
 edition = "2021"
 license = "MIT"
 description = "High-throughput vectorized Super Mario Bros NES environment for reinforcement learning"
