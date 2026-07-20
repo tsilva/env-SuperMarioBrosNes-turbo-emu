@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Use `stable-retro-turbo==1.0.1.post33` for optional oracle and benchmark
+  compatibility tooling on Python 3.14.
 
 ## 0.3.4 - 2026-07-20
 

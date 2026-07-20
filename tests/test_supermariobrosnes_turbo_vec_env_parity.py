@@ -28,8 +28,8 @@ from supermariobrosnes_turbo import _supermariobrosnes_turbo as native
 
 
 @pytest.mark.retro_oracle
-def test_oracle_is_upstream_stable_retro() -> None:
-    assert importlib.metadata.version("stable-retro") == "1.0.1"
+def test_oracle_is_stable_retro_turbo() -> None:
+    assert importlib.metadata.version("stable-retro-turbo") == "1.0.1.post33"
 
 
 def test_native_binding_removed_lifecycle_and_policy_mutators() -> None:

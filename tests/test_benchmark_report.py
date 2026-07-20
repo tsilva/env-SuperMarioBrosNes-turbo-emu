@@ -29,7 +29,9 @@ def payload(backend: str, shape: int, *, sps: float = 1000.0) -> dict[str, objec
     return {
         "backend": backend,
         "package": {
-            "name": "supermariobrosnes-turbo" if backend == "turbo" else "stable-retro",
+            "name": (
+                "supermariobrosnes-turbo" if backend == "turbo" else "stable-retro-turbo"
+            ),
             "version": "test",
             "import": "supermariobrosnes_turbo" if backend == "turbo" else "stable_retro",
         },
@@ -238,7 +240,10 @@ def test_report_renders_result_and_validity() -> None:
         "settings": {"minimum_speedup": 2.0},
         "packages": {
             "turbo": {"name": "supermariobrosnes-turbo", "version": "0.3.0"},
-            "stable-retro": {"name": "stable-retro", "version": "1.0.1"},
+            "stable-retro": {
+                "name": "stable-retro-turbo",
+                "version": "1.0.1.post33",
+            },
         },
         "results": [shape_result],
         "source": {

@@ -41,7 +41,7 @@ DEFAULT_PARITY_TEST = (
     / "tests"
     / "test_supermariobrosnes_turbo_vec_env_parity.py"
 )
-PROTOCOL = "paired_alternating_turbo_vs_upstream_stable_retro_v1"
+PROTOCOL = "paired_alternating_turbo_vs_stable_retro_turbo_v1"
 BACKENDS = ("turbo", "stable-retro")
 MATCHED_CONFIG_KEYS = (
     "rom_sha256",
@@ -346,7 +346,9 @@ def validate_backend_payload(
     if payload.get("backend") != backend:
         raise ValueError(f"{path} backend={payload.get('backend')!r}, expected {backend!r}")
     package = payload.get("package")
-    expected_package = "supermariobrosnes-turbo" if backend == "turbo" else "stable-retro"
+    expected_package = (
+        "supermariobrosnes-turbo" if backend == "turbo" else "stable-retro-turbo"
+    )
     if not isinstance(package, dict) or package.get("name") != expected_package:
         raise ValueError(f"{path} package metadata does not identify {expected_package}")
     config = payload.get("config")

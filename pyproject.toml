@@ -58,7 +58,7 @@ playback = [
   "huggingface-hub>=1.8.0",
 ]
 oracle = [
-  "stable-retro==1.0.1; python_version >= '3.10'",
+  "stable-retro-turbo==1.0.1.post33; python_version == '3.14'",
 ]
 test = [
   "pytest>=8",
@@ -67,7 +67,7 @@ dev = [
   "huggingface-hub>=1.8.0",
   "maturin>=1.9.3,<2",
   "pytest>=8",
-  "stable-retro==1.0.1; python_version >= '3.10'",
+  "stable-retro-turbo==1.0.1.post33; python_version == '3.14'",
 ]
 
 [tool.maturin]
@@ -86,6 +86,7 @@ exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]
 
 [tool.uv]
 exclude-newer = "7 days"
+exclude-newer-package = { stable-retro-turbo = false }
 constraint-dependencies = [
   "mistralai!=2.4.6",
   "guardrails-ai!=0.10.1",
@@ -95,7 +96,7 @@ constraint-dependencies = [
 pythonpath = [".", "python"]
 addopts = "--basetemp=.pytest-tmp -m 'not retro_oracle'"
 markers = [
-  "retro_oracle: manual acceptance tests that compare against upstream stable-retro and require the local ROM",
+  "retro_oracle: manual acceptance tests that compare against stable-retro-turbo and require the local ROM",
 ]
 
 [dependency-groups]

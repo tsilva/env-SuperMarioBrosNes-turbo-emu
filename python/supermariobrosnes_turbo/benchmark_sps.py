@@ -62,7 +62,7 @@ DEFAULT_MIN_START_LOAD_LIMIT = 4.0
 DEFAULT_START_LOAD_CPU_FRACTION = 0.5
 TURBO_PACKAGE = "supermariobrosnes-turbo"
 TURBO_IMPORT = "supermariobrosnes_turbo"
-STABLE_RETRO_PACKAGE = "stable-retro"
+STABLE_RETRO_PACKAGE = "stable-retro-turbo"
 STABLE_RETRO_IMPORT = "stable_retro"
 CORE_ACTION_MEANINGS = (
     "noop",
@@ -229,7 +229,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--stable-retro-baseline",
         action="store_true",
-        help="Benchmark upstream stable-retro RetroEnv workers instead of this repository.",
+        help="Benchmark stable-retro-turbo RetroEnv workers instead of this repository.",
     )
     parser.add_argument(
         "--rom-path",
@@ -484,14 +484,14 @@ def rayon_num_threads() -> int | str | None:
 
 
 def stable_retro_module() -> Any:
-    if sys.version_info < (3, 10):
-        raise SystemExit("Stable Retro baseline mode requires Python 3.10 or newer")
+    if sys.version_info[:2] != (3, 14):
+        raise SystemExit("Stable Retro baseline mode requires Python 3.14")
     try:
         return importlib.import_module(STABLE_RETRO_IMPORT)
     except ImportError as exc:
         raise SystemExit(
             "Stable Retro baseline mode requires the optional development dependency "
-            "stable-retro==1.0.1; run `uv sync --extra dev`."
+            "stable-retro-turbo==1.0.1.post33; run `uv sync --extra dev`."
         ) from exc
 
 

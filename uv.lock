@@ -16,8 +16,8 @@ exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
 supermariobrosnes-turbo = "2026-07-17T15:00:00Z"
-breakout-turbo-env = "2026-07-20T13:03:46.469473Z"
-stable-retro-turbo = "2026-07-17T19:52:14Z"
+breakout-turbo-env = "2026-07-20T15:19:48.030194Z"
+stable-retro-turbo = false
 
 [manifest]
 constraints = [
@@ -1729,26 +1729,17 @@ wheels = [
 ]
 
 [[package]]
-name = "stable-retro"
-version = "1.0.1"
+name = "stable-retro-turbo"
+version = "1.0.1.post33"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "farama-notifications", marker = "python_full_version >= '3.10'" },
-    { name = "gymnasium", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "pyglet", marker = "python_full_version >= '3.10'" },
+    { name = "farama-notifications", marker = "python_full_version == '3.14.*'" },
+    { name = "gymnasium", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.14.*'" },
+    { name = "pyglet", marker = "python_full_version == '3.14.*'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/70/44a58c6fe81aec4d83d85b9ed3d774aebc6e9fb8d81ea3542ea320ecebbb/stable_retro-1.0.1.tar.gz", hash = "sha256:68c43f2211f6314dc0727c2ad6cdefcc1c8621b7a38516c5afe15b523f3efcac", size = 152994540, upload-time = "2026-06-25T16:56:48.412Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/8d/802b91ba8ac4a62eec88887d74449a303aefdbddaa38cffb09cc43dbb439/stable_retro-1.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:2f717550e97c6d7aa06ff14883734337f6da4daeb9cebfd643f898e7c0e006ce", size = 88639916, upload-time = "2026-06-25T16:55:39.992Z" },
-    { url = "https://files.pythonhosted.org/packages/4f/5a/998054c4976ec38919a69eb41e96256961e804e0352dd58d21c187d93f28/stable_retro-1.0.1-cp310-cp310-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:0c4fd6ae72a6c5304f770582b4a12e2192f983ad618948a03c17195fa931942c", size = 123169772, upload-time = "2026-06-25T16:55:46.48Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/53/10bbd25c3a74b3f89f5714e982c839f0e70bc1a48bc3d83fc40848e2eda5/stable_retro-1.0.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:bb562472bd44a61465676137b45f2e435d2e13593ed88c8b38e1e973bea809cc", size = 88641341, upload-time = "2026-06-25T16:55:52.673Z" },
-    { url = "https://files.pythonhosted.org/packages/b1/45/982c2c0e0dc4e7297002a096ee8570381e5063f5c376ed1352ca34185735/stable_retro-1.0.1-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4ddabe781fb9bc2d1011ccd04f2684a59d69ce270da82bb5ae6e9a17e9ef4518", size = 123192466, upload-time = "2026-06-25T16:56:00.315Z" },
-    { url = "https://files.pythonhosted.org/packages/68/fa/281c7370d176f98979fb7ab0739c8eb88fb1a0086237983f13d741f880af/stable_retro-1.0.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:07e62a3a1a6733bbf39540fb7ffbcf3c5bcf488f59d588a39d3febc9fb4d19dc", size = 88644174, upload-time = "2026-06-25T16:56:06.801Z" },
-    { url = "https://files.pythonhosted.org/packages/67/3d/5016f99a3c48ed0d25e3faae63651f811ea8abc9efa3e8a6905896969416/stable_retro-1.0.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:53c180f930b7bafed248064b8467773b980a37bb5b6555f0717c8555143c9d6f", size = 123169757, upload-time = "2026-06-25T16:56:14.219Z" },
-    { url = "https://files.pythonhosted.org/packages/ab/7a/86359bef7042d8d50fdf0a2b1c6d36ae389222098bd9e75059caadac82c5/stable_retro-1.0.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:8a06e8158a82dd4df35b1a5bdcbb6164bad645572b1a10a701a76e6e9700e0fa", size = 88644133, upload-time = "2026-06-25T16:56:20.748Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/6c/24d714948c79602dd0b6c11bfc1a7ce336c98cb0d7d709954499471876a6/stable_retro-1.0.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e3c21bc31c5ad623d9700d56b9dd688f39592bc21c66f24cf59dfdf07b03b466", size = 123169478, upload-time = "2026-06-25T16:56:27.16Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/94/7e18511874dcc02d2e79cabc17b71e7b7ac673de1d4e072973421790c6b4/stable_retro-1.0.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:8e6dabfff055a29a3d92142f8d417cc18811c6aa03de5af3fdbe743c30f94e0e", size = 88642986, upload-time = "2026-06-25T16:56:33.668Z" },
-    { url = "https://files.pythonhosted.org/packages/9c/d6/4237309bb37190669e533fd0f1f00cb46acd7862aa054243d0392e772208/stable_retro-1.0.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4451c5f8209dbdbf343d29ab028ec7d40d28b9c7459ac4e632be990bc2f1eac3", size = 123166102, upload-time = "2026-06-25T16:56:40.64Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/f0/8416081abf0bd4691a75edc0138c3329be80e40244ddcd646bb57c08177e/stable_retro_turbo-1.0.1.post33-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:51ac704ba29d0124234a18d5db07414d6f99840674a3750ccefa3f8c940daf7d", size = 85899146, upload-time = "2026-07-20T15:21:21.14Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/51/907f144f7ee94c17ddc37672b524e450eb46add348f28a360ef247b5dd8f/stable_retro_turbo-1.0.1.post33-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:337745072e86e3b3ca77db7e20c651abcd390cd3da2608bf17668c94b4b2ecd8", size = 91574205, upload-time = "2026-07-20T15:21:26.271Z" },
 ]
 
 [[package]]
@@ -1772,10 +1763,10 @@ dev = [
     { name = "maturin" },
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "pytest", version = "9.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "stable-retro", marker = "python_full_version >= '3.10'" },
+    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*'" },
 ]
 oracle = [
-    { name = "stable-retro", marker = "python_full_version >= '3.10'" },
+    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*'" },
 ]
 playback = [
     { name = "huggingface-hub", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -1808,8 +1799,8 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
-    { name = "stable-retro", marker = "python_full_version >= '3.10' and extra == 'dev'", specifier = "==1.0.1" },
-    { name = "stable-retro", marker = "python_full_version >= '3.10' and extra == 'oracle'", specifier = "==1.0.1" },
+    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'dev'", specifier = "==1.0.1.post33" },
+    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'oracle'", specifier = "==1.0.1.post33" },
     { name = "textual", specifier = ">=8.2.8,<9" },
 ]
 provides-extras = ["playback", "oracle", "test", "dev"]

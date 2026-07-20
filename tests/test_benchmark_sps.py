@@ -91,10 +91,10 @@ def test_canonical_cli_contains_only_supported_termination_flags() -> None:
 def test_package_metadata_tracks_selected_backend() -> None:
     assert benchmark_sps.package_metadata("turbo")["name"] == "supermariobrosnes-turbo"
     baseline = benchmark_sps.package_metadata("stable-retro")
-    assert baseline["name"] == "stable-retro"
+    assert baseline["name"] == "stable-retro-turbo"
     assert baseline["import"] == "stable_retro"
-    if sys.version_info >= (3, 10):
-        assert baseline["version"] == "1.0.1"
+    if sys.version_info[:2] == (3, 14):
+        assert baseline["version"] == "1.0.1.post33"
 
 
 def test_benchmark_module_does_not_eagerly_import_candidate_runtime() -> None:
@@ -113,15 +113,15 @@ def test_benchmark_module_does_not_eagerly_import_candidate_runtime() -> None:
     )
 
 
-def test_dependency_is_owned_by_upstream_stable_retro() -> None:
+def test_dependency_uses_stable_retro_turbo_release() -> None:
     root = Path(__file__).resolve().parents[1]
     pyproject = (root / "pyproject.toml").read_text()
     lockfile = (root / "uv.lock").read_text()
 
-    assert '"stable-retro==1.0.1; python_version >= \'3.10\'"' in pyproject
-    obsolete_package = "stable-retro" + "-turbo"
-    assert obsolete_package not in pyproject
-    assert f'\nname = "{obsolete_package}"\n' not in lockfile
+    dependency = "stable-retro-turbo==1.0.1.post33; python_version == '3.14'"
+    assert f'"{dependency}"' in pyproject
+    assert '\nname = "stable-retro-turbo"\n' in lockfile
+    assert '\nname = "stable-retro"\n' not in lockfile
 
 
 def test_mask_grayscale_integer_area_resize_and_chw() -> None:
