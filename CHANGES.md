@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.4.0 - 2026-07-20
+
 - Unify built-in, game-owned preset, and inline exact action tables under
   `use_restricted_actions`, with Mario presets loaded from packaged
   `metadata.json` and `MULTI_DISCRETE` parity with Stable Retro Turbo

@@ -1744,7 +1744,7 @@ wheels = [
 
 [[package]]
 name = "supermariobrosnes-turbo"
-version = "0.3.5"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "gymnasium", version = "1.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
