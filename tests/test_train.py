@@ -100,6 +100,51 @@ def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:
     return tuple(ActionRun(action, duration) for action, duration in values)
 
 
+def test_task_snapshots_restore_emulator_and_reward_accounting() -> None:
+    class FakeNative:
+        def __init__(self) -> None:
+            self.reset_options = None
+
+        def capture_snapshots(self, mask):
+            return tuple(
+                f"native-{lane}" if selected else None
+                for lane, selected in enumerate(mask)
+            )
+
+        def reset(self, *, options):
+            self.reset_options = options
+
+    task = MarioJerkTask.__new__(MarioJerkTask)
+    task.n_envs = 2
+    task.native = FakeNative()
+    task.episode_steps = np.asarray([3, 4], dtype=np.int64)
+    task.last_progress_step = np.asarray([2, 3], dtype=np.int64)
+    task.episode_returns = np.asarray([10.0, 20.0])
+    task.previous_lives = np.asarray([2, 1], dtype=np.int16)
+    task.previous_level_hi = np.asarray([0, 1], dtype=np.int16)
+    task.previous_level_lo = np.asarray([0, 2], dtype=np.int16)
+    task.previous_score = np.asarray([100, 200], dtype=np.int64)
+    task.level_max_x = np.asarray([80, 90], dtype=np.int64)
+    task.completed_base = np.asarray([256, 512], dtype=np.int64)
+    task.max_global_x = np.asarray([336, 602], dtype=np.int64)
+    task.previous_x = np.asarray([75, 85], dtype=np.int64)
+    task.seen_scroll_transitions = [{(1, 2)}, {(3, 4)}]
+    mask = np.asarray([True, False], dtype=np.bool_)
+
+    snapshots = task.capture_snapshots(mask)
+    task.episode_steps[0] = 99
+    task.episode_returns[0] = -1.0
+    task.previous_x[0] = 0
+    task.seen_scroll_transitions[0].clear()
+    task.restore_lanes(mask, snapshots)
+
+    assert task.native.reset_options["snapshots"] == ["native-0", None]
+    assert task.episode_steps.tolist() == [3, 4]
+    assert task.episode_returns.tolist() == [10.0, 20.0]
+    assert task.previous_x.tolist() == [75, 85]
+    assert task.seen_scroll_transitions == [{(1, 2)}, {(3, 4)}]
+
+
 def _search(
     *,
     seed: int = 7,

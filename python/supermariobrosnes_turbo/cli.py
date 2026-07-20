@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     commands: tuple[tuple[str, str, Command], ...] = (
         ("import", "import the supported ROM", _import_command),
-        ("train", "train an action-run policy from an exact state", _train_command),
+        ("train", "train action-run policies for one or all levels", _train_command),
         ("play", "play an exact state manually or with a policy", _play_command),
     )
     for name, help_text, handler in commands:

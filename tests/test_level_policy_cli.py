@@ -43,6 +43,7 @@ def test_state_resolution_is_exact_and_supports_custom_names(tmp_path: Path) -> 
 
 def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     parser = training.build_parser()
+    assert parser.parse_args([]).state is None
     args = parser.parse_args(
         [
             "Level1-1",
@@ -79,6 +80,24 @@ def test_algorithm_specific_options_are_rejected() -> None:
 
     with pytest.raises(SystemExit):
         training._apply_algorithm_defaults(parser, args)
+
+    go_explore_args = parser.parse_args(
+        ["Level1-1", "--algorithm", "go-explore", "--beam-width", "3"]
+    )
+    with pytest.raises(SystemExit):
+        training._apply_algorithm_defaults(parser, go_explore_args)
+
+
+def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
+    parser = training.build_parser()
+    args = parser.parse_args(["Level1-1", "--algorithm", "go-explore"])
+
+    training._apply_algorithm_defaults(parser, args)
+
+    assert args.go_explore_cell_size == 16
+    assert args.go_explore_explore_steps == 128
+    assert args.beam_width is None
+    assert args.retained_limit is None
 
 
 def test_play_parser_owns_modes_and_playback_options() -> None:
@@ -193,3 +212,56 @@ def test_train_main_dispatches_beam(monkeypatch) -> None:
     monkeypatch.setattr(beam_training, "run", lambda args, _parser: int(args.algorithm == "beam"))
 
     assert training.main(["Level1-1", "--algorithm", "beam"]) == 1
+
+
+def test_train_main_dispatches_go_explore(monkeypatch) -> None:
+    from supermariobrosnes_turbo import go_explore_training
+
+    monkeypatch.setattr(training, "resolve_state_name", lambda state, **_kwargs: state)
+    monkeypatch.setattr(
+        go_explore_training,
+        "run",
+        lambda args, _parser: int(args.algorithm == "go-explore"),
+    )
+
+    assert training.main(["Level1-1", "--algorithm", "go-explore"]) == 1
+
+
+def test_train_without_state_dispatches_all_canonical_levels(monkeypatch) -> None:
+    from supermariobrosnes_turbo import training_campaign
+
+    monkeypatch.setattr(
+        training,
+        "list_available_states",
+        lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
+    )
+    selected_action_sets: list[str] = []
+    monkeypatch.setattr(
+        training_campaign,
+        "run",
+        lambda args, _parser: (
+            selected_action_sets.append(args.action_set) or int(args.state is None)
+        ),
+    )
+
+    assert training.main([]) == 1
+    assert selected_action_sets == ["simple-down"]
+
+
+def test_all_level_training_preserves_an_explicit_action_set(monkeypatch) -> None:
+    from supermariobrosnes_turbo import training_campaign
+
+    monkeypatch.setattr(
+        training,
+        "list_available_states",
+        lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
+    )
+    selected_action_sets: list[str] = []
+    monkeypatch.setattr(
+        training_campaign,
+        "run",
+        lambda args, _parser: selected_action_sets.append(args.action_set) or 0,
+    )
+
+    assert training.main(["--action-set", "simple"]) == 0
+    assert selected_action_sets == ["simple"]

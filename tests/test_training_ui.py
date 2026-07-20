@@ -170,6 +170,29 @@ def test_dashboard_renders_updates_and_orders_events(size: tuple[int, int]) -> N
     asyncio.run(exercise())
 
 
+def test_dashboard_shows_level_progress_only_for_campaigns() -> None:
+    async def exercise() -> None:
+        app = TrainingApp(
+            _snapshot(
+                state="Level2-1",
+                campaign_index=5,
+                campaign_total=32,
+                campaign_completed=4,
+            ),
+            None,
+        )
+        async with app.run_test(size=(100, 36)) as pilot:
+            await pilot.pause()
+
+            progress = app.query_one("#level-progress")
+            details = app.query_one("#level-progress-details")
+            assert progress.progress == 4
+            assert "4 / 32 processed" in str(details.content)
+            assert "Level2-1" in str(details.content)
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("key", ["q", "ctrl+c"])
 def test_dashboard_stop_keys_set_the_shared_event(key: str) -> None:
     async def exercise() -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import logging
 import os
 from pathlib import Path
@@ -60,6 +60,9 @@ class TrainingSnapshot:
     refresh_completed: int | None = None
     refresh_total: int | None = None
     status: str = "Running"
+    campaign_index: int = 1
+    campaign_total: int = 1
+    campaign_completed: int = 0
 
     @property
     def eta_seconds(self) -> float | None:
@@ -280,6 +283,13 @@ class PlainReporter:
             ("Action set", snapshot.action_set),
             ("Parallel lanes", f"{snapshot.lanes:,}"),
         ]
+        if snapshot.campaign_total > 1:
+            rows.append(
+                (
+                    "Level",
+                    f"{snapshot.campaign_index:,} / {snapshot.campaign_total:,}",
+                )
+            )
         if snapshot.beam_width is not None:
             rows.append(("Beam width", f"{snapshot.beam_width:,}"))
         rows.extend(
@@ -401,6 +411,8 @@ class TrainingApp(App[Optional[TrainingResult]]):
     #run-header { height: 3; padding: 0 1; background: $primary-darken-2; }
     #progress-panel { height: 5; padding: 0 1; border: round $primary; }
     #progress-details { height: 1; }
+    #level-progress-panel { display: none; height: 5; padding: 0 1; border: round $secondary; }
+    #level-progress-details { height: 1; }
     #panels { height: 1fr; min-height: 8; }
     .panel { width: 1fr; padding: 0 1; border: round $accent; }
     .panel-title { height: 1; text-style: bold; color: $accent; }
@@ -435,6 +447,14 @@ class TrainingApp(App[Optional[TrainingResult]]):
                 id="transition-progress",
             )
             yield Static(id="progress-details")
+        with Vertical(id="level-progress-panel"):
+            yield Static("Level campaign", classes="panel-title")
+            yield ProgressBar(
+                total=max(self.initial.campaign_total, 1),
+                show_eta=False,
+                id="level-progress",
+            )
+            yield Static(id="level-progress-details")
         with Horizontal(id="panels"):
             with Vertical(classes="panel", id="search-panel"):
                 yield Static("Search", classes="panel-title")
@@ -507,6 +527,19 @@ class TrainingApp(App[Optional[TrainingResult]]):
             f"elapsed {format_elapsed(snapshot.elapsed)}  ·  ETA {eta}  ·  "
             f"{snapshot.loop_fps:,.0f} steps/s  ·  {snapshot.status}"
         )
+        level_panel = self.query_one("#level-progress-panel", Vertical)
+        if snapshot.campaign_total > 1:
+            level_panel.styles.display = "block"
+            self.query_one("#level-progress", ProgressBar).update(
+                total=snapshot.campaign_total,
+                progress=min(snapshot.campaign_completed, snapshot.campaign_total),
+            )
+            self.query_one("#level-progress-details", Static).update(
+                f"{snapshot.campaign_completed:,} / {snapshot.campaign_total:,} processed  ·  "
+                f"current {snapshot.campaign_index:,}: {snapshot.state}"
+            )
+        else:
+            level_panel.styles.display = "none"
         if snapshot.generation is not None:
             refresh = (
                 "—"

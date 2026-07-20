@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from dataclasses import dataclass
 import json
 import logging
@@ -19,6 +20,7 @@ import numpy as np
 from . import (
     ACTION_SETS,
     SuperMarioBrosNesTurboVecEnv,
+    list_available_states,
 )
 from .env import VISIBLE_HEIGHT, VISIBLE_WIDTH
 from .jerk import (
@@ -104,6 +106,25 @@ class EpisodeRecord:
     life_loss: bool
     stalled: bool
     truncated: bool
+
+
+@dataclass(frozen=True)
+class MarioTaskSnapshot:
+    """One restorable emulator lane plus its reward-tracking state."""
+
+    native: Any
+    episode_steps: int
+    last_progress_step: int
+    episode_return: float
+    previous_lives: int
+    previous_level_hi: int
+    previous_level_lo: int
+    previous_score: int
+    level_max_x: int
+    completed_base: int
+    max_global_x: int
+    previous_x: int
+    seen_scroll_transitions: frozenset[tuple[int, int]]
 
 
 def sanitize_progress_x(current_x: np.ndarray, previous_x: np.ndarray) -> np.ndarray:
@@ -235,6 +256,94 @@ class MarioJerkTask:
             return
         self.native.reset(options={"reset_mask": reset_mask})
         self._initialize_lanes(reset_mask)
+
+    def capture_snapshots(
+        self, mask: np.ndarray
+    ) -> tuple[MarioTaskSnapshot | None, ...]:
+        """Capture selected live lanes together with task-local accounting."""
+        capture_mask = np.asarray(mask, dtype=np.bool_)
+        native_snapshots = self.native.capture_snapshots(capture_mask)
+        snapshots: list[MarioTaskSnapshot | None] = []
+        for lane, native_snapshot in enumerate(native_snapshots):
+            if native_snapshot is None:
+                snapshots.append(None)
+                continue
+            snapshots.append(
+                MarioTaskSnapshot(
+                    native=native_snapshot,
+                    episode_steps=int(self.episode_steps[lane]),
+                    last_progress_step=int(self.last_progress_step[lane]),
+                    episode_return=float(self.episode_returns[lane]),
+                    previous_lives=int(self.previous_lives[lane]),
+                    previous_level_hi=int(self.previous_level_hi[lane]),
+                    previous_level_lo=int(self.previous_level_lo[lane]),
+                    previous_score=int(self.previous_score[lane]),
+                    level_max_x=int(self.level_max_x[lane]),
+                    completed_base=int(self.completed_base[lane]),
+                    max_global_x=int(self.max_global_x[lane]),
+                    previous_x=int(self.previous_x[lane]),
+                    seen_scroll_transitions=frozenset(
+                        self.seen_scroll_transitions[lane]
+                    ),
+                )
+            )
+        return tuple(snapshots)
+
+    def restore_lanes(
+        self,
+        mask: np.ndarray,
+        snapshots: Sequence[MarioTaskSnapshot | None],
+    ) -> None:
+        """Restore selected lanes without discarding archived task accounting."""
+        restore_mask = np.asarray(mask, dtype=np.bool_)
+        if not np.any(restore_mask):
+            return
+        if len(snapshots) != self.n_envs:
+            raise ValueError("task snapshots must contain one value per lane")
+        selected = [int(lane) for lane in np.flatnonzero(restore_mask)]
+        if any(snapshots[lane] is None for lane in selected):
+            raise ValueError("every restored lane requires a task snapshot")
+        self.native.reset(
+            options={
+                "reset_mask": restore_mask,
+                "snapshots": [
+                    None if snapshot is None else snapshot.native
+                    for snapshot in snapshots
+                ],
+            }
+        )
+        for lane in selected:
+            snapshot = snapshots[lane]
+            assert snapshot is not None
+            self.episode_steps[lane] = snapshot.episode_steps
+            self.last_progress_step[lane] = snapshot.last_progress_step
+            self.episode_returns[lane] = snapshot.episode_return
+            self.previous_lives[lane] = snapshot.previous_lives
+            self.previous_level_hi[lane] = snapshot.previous_level_hi
+            self.previous_level_lo[lane] = snapshot.previous_level_lo
+            self.previous_score[lane] = snapshot.previous_score
+            self.level_max_x[lane] = snapshot.level_max_x
+            self.completed_base[lane] = snapshot.completed_base
+            self.max_global_x[lane] = snapshot.max_global_x
+            self.previous_x[lane] = snapshot.previous_x
+            self.seen_scroll_transitions[lane] = set(
+                snapshot.seen_scroll_transitions
+            )
+
+    def go_explore_cell_keys(self, bucket_size: int) -> tuple[tuple[int, int, int], ...]:
+        """Return task-general level/progress cells for the live lanes."""
+        width = int(bucket_size)
+        if width < 1:
+            raise ValueError("Go-Explore cell bucket size must be positive")
+        current_global_x = self.completed_base + self.previous_x
+        return tuple(
+            (
+                int(self.previous_level_hi[lane]),
+                int(self.previous_level_lo[lane]),
+                int(current_global_x[lane]) // width,
+            )
+            for lane in range(self.n_envs)
+        )
 
     def step(
         self, actions: np.ndarray
@@ -412,12 +521,34 @@ def _play_command(
     return shlex.join(argv)
 
 
+class _StoreActionSet(argparse.Action):
+    """Record whether the campaign-wide action set was explicitly selected."""
+
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: str,
+        option_string: str | None = None,
+    ) -> None:
+        del parser, option_string
+        setattr(namespace, self.dest, values)
+        namespace.action_set_explicit = True
+
+
 def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog=prog, description=__doc__)
-    parser.add_argument("state", help="Exact state identifier, for example Level1-1")
+    parser.add_argument(
+        "state",
+        nargs="?",
+        help=(
+            "exact state identifier, for example Level1-1; omit to train all "
+            "32 canonical levels in order"
+        ),
+    )
     parser.add_argument(
         "--algorithm",
-        choices=("jerk", "beam"),
+        choices=("jerk", "beam", "go-explore"),
         default="beam",
         help="training search algorithm (default: beam)",
     )
@@ -441,8 +572,13 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         "--action-set",
         choices=tuple(ACTION_SETS),
         default=ACTION_SET,
-        help=f"named search action set (default: {ACTION_SET})",
+        action=_StoreActionSet,
+        help=(
+            f"named search action set (default: {ACTION_SET} for one level, "
+            "simple-down for all levels)"
+        ),
     )
+    parser.set_defaults(action_set_explicit=False)
     parser.add_argument("--transitions", type=int, default=TOTAL_TIMESTEPS)
     parser.add_argument("--lanes", type=int, default=N_ENVS)
     parser.add_argument("--max-episode-steps", type=int, default=MAX_EPISODE_STEPS)
@@ -504,6 +640,21 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     )
     beam.add_argument(
         "--branch-durations", type=int, nargs="+", default=None, metavar="STEPS"
+    )
+    go_explore = parser.add_argument_group("Go-Explore tuning")
+    go_explore.add_argument(
+        "--go-explore-cell-size",
+        type=int,
+        default=None,
+        metavar="PIXELS",
+        help="horizontal progress bucket width (default: 16)",
+    )
+    go_explore.add_argument(
+        "--go-explore-explore-steps",
+        type=int,
+        default=None,
+        metavar="STEPS",
+        help="random exploration horizon after each archived restore (default: 128)",
     )
     parser.add_argument(
         "--continue-after-completion",
@@ -861,6 +1012,10 @@ def _apply_algorithm_defaults(
         BRANCH_DURATIONS,
         MUTATION_RUNS,
     )
+    from .go_explore_training import (
+        GO_EXPLORE_CELL_SIZE,
+        GO_EXPLORE_EXPLORE_STEPS,
+    )
 
     beam_defaults = {
         "beam_width": BEAM_WIDTH,
@@ -871,8 +1026,22 @@ def _apply_algorithm_defaults(
         "improvement_protected_prefix_runs": 0,
         "branch_durations": list(BRANCH_DURATIONS),
     }
-    selected = jerk_defaults if args.algorithm == "jerk" else beam_defaults
-    rejected = beam_defaults if args.algorithm == "jerk" else jerk_defaults
+    go_explore_defaults = {
+        "go_explore_cell_size": GO_EXPLORE_CELL_SIZE,
+        "go_explore_explore_steps": GO_EXPLORE_EXPLORE_STEPS,
+    }
+    defaults_by_algorithm = {
+        "jerk": jerk_defaults,
+        "beam": beam_defaults,
+        "go-explore": go_explore_defaults,
+    }
+    selected = defaults_by_algorithm[args.algorithm]
+    rejected = {
+        name: value
+        for algorithm, defaults in defaults_by_algorithm.items()
+        if algorithm != args.algorithm
+        for name, value in defaults.items()
+    }
     invalid = [name for name in rejected if getattr(args, name) is not None]
     if invalid:
         flags = ", ".join(f"--{name.replace('_', '-')}" for name in invalid)
@@ -886,13 +1055,32 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = build_parser(prog=prog)
     args = parser.parse_args(argv)
+    if args.state is None and not args.action_set_explicit:
+        args.action_set = "simple-down"
+    _apply_algorithm_defaults(parser, args)
+    if args.state is None:
+        from .training_campaign import CANONICAL_LEVEL_STATES, run
+
+        available = set(list_available_states(args.state_dir))
+        missing = [
+            state for state in CANONICAL_LEVEL_STATES if state not in available
+        ]
+        if missing:
+            raise SystemExit(
+                "all-level training requires every canonical state; missing: "
+                + ", ".join(missing)
+            )
+        return run(args, parser)
     try:
         args.state = resolve_state_name(args.state, state_dir=args.state_dir)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    _apply_algorithm_defaults(parser, args)
     if args.algorithm == "beam":
         from .beam_training import run
+
+        return run(args, parser)
+    if args.algorithm == "go-explore":
+        from .go_explore_training import run
 
         return run(args, parser)
     _validate_args(args)

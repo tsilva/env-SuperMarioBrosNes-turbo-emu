@@ -10,13 +10,16 @@ import pytest
 
 from supermariobrosnes_turbo import training as train
 from supermariobrosnes_turbo import beam_training as train_beam
+from supermariobrosnes_turbo import go_explore_training as train_go_explore
 from supermariobrosnes_turbo.jerk import JerkPolicy, policy_path_for_state
 
 
 class _FakeFailureTask:
-    def __init__(self, **_kwargs) -> None:
+    def __init__(self, **kwargs) -> None:
         self.steps = 0
         self.closed = False
+        self.n_envs = int(kwargs.get("n_envs", 1))
+        self.max_global_x = np.zeros(self.n_envs, dtype=np.float64)
 
     def reset(self) -> np.ndarray:
         return np.zeros((1, 1), dtype=np.uint8)
@@ -38,6 +41,21 @@ class _FakeFailureTask:
 
     def reset_lanes(self, _mask) -> None:
         return None
+
+    def capture_snapshots(self, mask):
+        return tuple(
+            f"snapshot-{lane}-{self.steps}" if selected else None
+            for lane, selected in enumerate(mask)
+        )
+
+    def restore_lanes(self, _mask, _snapshots) -> None:
+        return None
+
+    def go_explore_cell_keys(self, bucket_size: int):
+        return tuple(
+            (0, 0, int(self.max_global_x[lane]) // bucket_size)
+            for lane in range(self.n_envs)
+        )
 
     def close(self) -> None:
         self.closed = True
@@ -114,6 +132,17 @@ TRAINERS = [
             "--mutation-runs",
             "1",
             "--branch-durations",
+            "1",
+        ],
+    ),
+    (
+        train_go_explore,
+        [
+            "--algorithm",
+            "go-explore",
+            "--go-explore-cell-size",
+            "16",
+            "--go-explore-explore-steps",
             "1",
         ],
     ),

@@ -150,23 +150,23 @@ when completed shaped return improves, while every completion is appended to
 `successes.jsonl`.
 
 A new default beam run replaces the existing canonical run; custom outputs and
-explicit JERK runs remain protected unless `--overwrite` is passed. `Level1-1`
-writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained policy
-when available and switches policies as levels change. Running `smb-turbo play`
-without a state starts from `Level1-1`; pass an exact state identifier to start
-elsewhere. Playback defaults to 30 FPS; pass `--fps max` (or its `--fpx max`
-alias) to run without an explicit delay or renderer-vsync cap. Run either command
-with `--help` for configuration options. Policy playback defaults to `--view raw`,
-which displays RGB directly from its sole emulator without grayscale conversion,
-cropping, resizing, max-pooling, or frame stacking; `--view preprocessed` instead
-shows the transformed policy observation.
+explicit JERK or Go-Explore runs remain protected unless `--overwrite` is passed.
+`Level1-1` writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained
+policy when available and switches policies as levels change. Running
+`smb-turbo play` without a state starts from `Level1-1`; pass an exact state
+identifier to start elsewhere. Playback defaults to 30 FPS; pass `--fps max` (or
+its `--fpx max` alias) to run without an explicit delay or renderer-vsync cap.
+Run either command with `--help` for configuration options. Policy playback
+defaults to `--view raw`, which displays RGB directly from its sole emulator
+without grayscale conversion, cropping, resizing, max-pooling, or frame stacking;
+`--view preprocessed` instead shows the transformed policy observation.
 
 State names are exact identifiers from the configured state catalog. This
 includes canonical names such as `Level1-1`, packaged variants such as
 `Level2-1-clouds-easy`, and imported names such as `Custom`; shorthand and case
 normalization are intentionally unsupported.
 
-In an interactive terminal, both trainers automatically open a full-screen
+In an interactive terminal, all trainers automatically open a full-screen
 dashboard with live transition, throughput, search, best-path, and event stats.
 Redirected output and CI use the existing plain logs; pass `--ui plain` to
 select them explicitly. Press `q` or `Ctrl-C` in the dashboard for a safe stop:
@@ -184,6 +184,32 @@ smb-turbo train Level1-1 --algorithm jerk --overwrite
 smb-turbo play Level1-1
 ```
 
+To run only the trajectory-finding phase of Go-Explore, with exact archived
+state restoration and no robustification phase, run:
+
+```bash
+smb-turbo train Level1-1 --algorithm go-explore --overwrite
+smb-turbo play Level1-1
+```
+
+Go-Explore policies use the same canonical `(action, duration)` ZIP format as
+beam policies, so the regular playback command needs no algorithm-specific mode.
+
+Omit the training state to process all 32 canonical levels in game order:
+
+```bash
+smb-turbo train
+```
+
+The transition budget applies independently to each level. Every policy and its
+artifacts are written under `runs/<State>/`; with `--output <Directory>`, each
+level instead uses `<Directory>/<State>/`. Interactive campaigns keep one TUI
+open and show separate progress bars for the current level's transitions and the
+overall 32-level campaign. A level that exhausts its budget is reported and the
+campaign continues to the next level; a safe stop ends the current level and
+does not start another. Campaigns default to the `simple-down` action set so
+pipe-dependent levels remain searchable; an explicit `--action-set` is respected.
+
 New default runs use `runs/<State>/` regardless of algorithm. For compatibility,
 playback still discovers historical algorithm-specific directories, preferring
 `runs/<State>-beam/` over `runs/<State>-jerk/`.
@@ -192,7 +218,8 @@ playback still discovers historical algorithm-specific directories, preferring
 
 ```bash
 smb-turbo import /path/to/roms        # import the supported ROM
-smb-turbo train Level1-1              # train a state-keyed beam policy
+smb-turbo train Level1-1              # train one state-keyed beam policy
+smb-turbo train                       # train all 32 canonical levels in order
 smb-turbo play                        # play Level1-1 manually or with its policy
 uv sync --frozen --extra dev --group dev  # install development dependencies
 uv run maturin develop --release      # build the optimized Rust extension

@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Add Go-Explore trajectory discovery with exact archived-state restoration,
+  without robustification, and save discovered trajectories in the same
+  action-run policy format used by beam search.
+- Allow training without a state to process all 32 canonical levels in order,
+  with isolated per-level outputs and an overall level-progress bar in the TUI.
 
 ## 0.3.5 - 2026-07-20
 
