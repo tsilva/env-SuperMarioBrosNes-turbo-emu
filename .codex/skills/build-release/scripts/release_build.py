@@ -732,7 +732,7 @@ else:
         )
         env.reset(options=reset_options)
         second = env.step(replay_actions)
-        for expected, actual in zip(first, second[:4], strict=True):
+        for expected, actual in zip(first, second[:4]):
             np.testing.assert_array_equal(expected, actual)
     finally:
         env.close()

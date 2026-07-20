@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
-from typing import Any, TypeAlias
+from typing import Any
 
 
 GAME_ID = "SuperMarioBros-Nes-v0"
@@ -15,7 +15,7 @@ RESERVED_ACTION_SET_NAMES = frozenset(
     {"all", "filtered", "discrete", "multi_discrete"}
 )
 
-ActionTable: TypeAlias = Sequence[Sequence[str]]
+ActionTable = Sequence[Sequence[str]]
 
 
 @dataclass(frozen=True)
@@ -129,7 +129,7 @@ def load_action_tables(
         tables[name] = normalized
         action_sets[name] = meanings
         folded_names.add(folded)
-        for meaning, labels in zip(meanings, normalized, strict=True):
+        for meaning, labels in zip(meanings, normalized):
             previous = buttons_by_meaning.setdefault(meaning, labels)
             if previous != labels:
                 raise RuntimeError(
