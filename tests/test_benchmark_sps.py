@@ -94,7 +94,7 @@ def test_package_metadata_tracks_selected_backend() -> None:
     assert baseline["name"] == "stable-retro-turbo"
     assert baseline["import"] == "stable_retro"
     if sys.version_info[:2] == (3, 14):
-        assert baseline["version"] == "1.0.1.post33"
+        assert baseline["version"] == "1.0.1.post34"
 
 
 def test_benchmark_module_does_not_eagerly_import_candidate_runtime() -> None:
@@ -118,7 +118,7 @@ def test_dependency_uses_stable_retro_turbo_release() -> None:
     pyproject = (root / "pyproject.toml").read_text()
     lockfile = (root / "uv.lock").read_text()
 
-    dependency = "stable-retro-turbo==1.0.1.post33; python_version == '3.14'"
+    dependency = "stable-retro-turbo==1.0.1.post34; python_version == '3.14'"
     assert f'"{dependency}"' in pyproject
     assert '\nname = "stable-retro-turbo"\n' in lockfile
     assert '\nname = "stable-retro"\n' not in lockfile

@@ -58,7 +58,7 @@ playback = [
   "huggingface-hub>=1.8.0",
 ]
 oracle = [
-  "stable-retro-turbo==1.0.1.post33; python_version == '3.14'",
+  "stable-retro-turbo==1.0.1.post34; python_version == '3.14'",
 ]
 test = [
   "pytest>=8",
@@ -67,7 +67,7 @@ dev = [
   "huggingface-hub>=1.8.0",
   "maturin>=1.9.3,<2",
   "pytest>=8",
-  "stable-retro-turbo==1.0.1.post33; python_version == '3.14'",
+  "stable-retro-turbo==1.0.1.post34; python_version == '3.14'",
 ]
 
 [tool.maturin]

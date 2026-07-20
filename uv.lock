@@ -1730,7 +1730,7 @@ wheels = [
 
 [[package]]
 name = "stable-retro-turbo"
-version = "1.0.1.post33"
+version = "1.0.1.post34"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "farama-notifications", marker = "python_full_version == '3.14.*'" },
@@ -1738,8 +1738,8 @@ dependencies = [
     { name = "pyglet", marker = "python_full_version == '3.14.*'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/f0/8416081abf0bd4691a75edc0138c3329be80e40244ddcd646bb57c08177e/stable_retro_turbo-1.0.1.post33-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:51ac704ba29d0124234a18d5db07414d6f99840674a3750ccefa3f8c940daf7d", size = 85899146, upload-time = "2026-07-20T15:21:21.14Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/51/907f144f7ee94c17ddc37672b524e450eb46add348f28a360ef247b5dd8f/stable_retro_turbo-1.0.1.post33-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:337745072e86e3b3ca77db7e20c651abcd390cd3da2608bf17668c94b4b2ecd8", size = 91574205, upload-time = "2026-07-20T15:21:26.271Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/03/0d6dc035121c3007cf17c152b6645d5bdc1b59c26988c0f1903c4eada8c9/stable_retro_turbo-1.0.1.post34-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:f81115a5326a619e7a80b37136463feb514e67d8f4488a34b6a8683c8cf00bbc", size = 85903336, upload-time = "2026-07-20T22:19:09.152Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/17/56da1d00bcb05d9c740ef1ea7b40695459683ceddea095b3bd1999cb5c66/stable_retro_turbo-1.0.1.post34-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5b47f81cdbde560d6a63342fcf59912dc27d1ee841ad1d6bc6ae9a3cae353259", size = 91578397, upload-time = "2026-07-20T22:19:13.399Z" },
 ]
 
 [[package]]
@@ -1799,8 +1799,8 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
-    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'dev'", specifier = "==1.0.1.post33" },
-    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'oracle'", specifier = "==1.0.1.post33" },
+    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'dev'", specifier = "==1.0.1.post34" },
+    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'oracle'", specifier = "==1.0.1.post34" },
     { name = "textual", specifier = ">=8.2.8,<9" },
 ]
 provides-extras = ["playback", "oracle", "test", "dev"]

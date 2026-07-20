@@ -5,7 +5,6 @@ from pathlib import Path
 import numpy as np
 
 from supermariobrosnes_turbo import (
-    ACTION_MEANINGS,
     Actions,
     SuperMarioBrosNesTurboVecEnv,
     action_batch,

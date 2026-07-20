@@ -4,7 +4,8 @@
 
 - Unify built-in, game-owned preset, and inline exact action tables under
   `use_restricted_actions`, with Mario presets loaded from packaged
-  `metadata.json` and `MULTI_DISCRETE` parity with Stable Retro.
+  `metadata.json` and `MULTI_DISCRETE` parity with Stable Retro Turbo
+  `1.0.1.post34`.
 - Add Go-Explore trajectory discovery with exact archived-state restoration,
   without robustification, and save discovered trajectories in the same
   action-run policy format used by beam search.
