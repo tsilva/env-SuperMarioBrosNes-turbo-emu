@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.3.4 - 2026-07-20
+
 - Add reusable, per-lane live snapshot handles through
   `capture_snapshots(mask)` and mixed snapshot/catalog restoration through
   masked `reset()`, including exact cross-lane fan-out without advancing
