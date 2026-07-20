@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import pickle
 import subprocess
 import sys
 
@@ -302,6 +303,116 @@ def test_masked_reset_isolates_unselected_lane_and_tracks_active_state() -> None
         assert not bool(infos["_lives"][0])
     finally:
         env.close()
+
+
+def test_live_snapshots_support_mixed_resets_cross_lane_fanout_and_exact_replay() -> None:
+    env = make_env(
+        state_catalog=("Level1-1", "Level1-2"),
+        num_envs=3,
+        frame_skip=1,
+        frame_stack=2,
+    )
+    try:
+        env.reset(
+            options={"state_indices": np.asarray([0, 1, 0], dtype=np.int32)}
+        )
+        env.step(noop(3))
+        handles = env.capture_snapshots(
+            np.asarray([True, False, False], dtype=np.bool_)
+        )
+        assert handles[0] is not None
+        assert handles[0].nbytes > 0
+        assert handles[1:] == (None, None)
+        with pytest.raises(TypeError, match="cannot be pickled"):
+            pickle.dumps(handles[0])
+
+        env.step(noop(3))
+        mask = np.asarray([True, True, True], dtype=np.bool_)
+        starts = np.asarray([-1, 1, -1], dtype=np.int32)
+        reset_obs, infos = env.reset(
+            options={
+                "reset_mask": mask,
+                "state_indices": starts,
+                "snapshots": [handles[0], None, handles[0]],
+            }
+        )
+        np.testing.assert_array_equal(reset_obs[0], reset_obs[2])
+        np.testing.assert_array_equal(env.active_state_indices(), [0, 1, 0])
+        assert infos["start_source"].tolist() == [
+            "snapshot",
+            "environment",
+            "snapshot",
+        ]
+        np.testing.assert_array_equal(infos["_start_source"], mask)
+
+        actions = noop(3)
+        actions[0, NES_BUTTONS.index("RIGHT")] = 1
+        actions[2, NES_BUTTONS.index("RIGHT")] = 1
+        first = env.step(actions)
+        np.testing.assert_array_equal(first[0][0], first[0][2])
+        assert first[1][0] == first[1][2]
+        assert first[2][0] == first[2][2]
+        assert first[3][0] == first[3][2]
+
+        env.reset(
+            options={
+                "reset_mask": mask,
+                "state_indices": starts,
+                "snapshots": [handles[0], None, handles[0]],
+            }
+        )
+        second = env.step(actions)
+        for first_value, second_value in zip(first[:4], second[:4], strict=True):
+            np.testing.assert_array_equal(first_value, second_value)
+    finally:
+        env.close()
+
+
+def test_live_snapshot_lifecycle_owner_and_async_validation_are_atomic() -> None:
+    env = make_env(num_envs=2, frame_skip=1)
+    mask = np.asarray([True, False], dtype=np.bool_)
+    with pytest.raises(RuntimeError, match="initial reset"):
+        env.capture_snapshots(mask)
+    env.reset()
+    handles = env.capture_snapshots(mask)
+    before_obs = env._obs.copy()
+    before_states = env.active_state_indices().copy()
+
+    with pytest.raises(ValueError, match="static state selector"):
+        env.reset(
+            options={
+                "reset_mask": mask,
+                "state_indices": np.asarray([0, -1], dtype=np.int32),
+                "snapshots": handles,
+            }
+        )
+    np.testing.assert_array_equal(env._obs, before_obs)
+    np.testing.assert_array_equal(env.active_state_indices(), before_states)
+
+    env.step_async(noop(2))
+    with pytest.raises(RuntimeError, match="asynchronous step"):
+        env.capture_snapshots(mask)
+    env.step_wait_gymnasium()
+
+    other = make_env(num_envs=2, frame_skip=1)
+    try:
+        other.reset()
+        other_before = other._obs.copy()
+        with pytest.raises(ValueError, match="different environment"):
+            other.reset(
+                options={
+                    "reset_mask": mask,
+                    "state_indices": np.asarray([-1, -1], dtype=np.int32),
+                    "snapshots": handles,
+                }
+            )
+        np.testing.assert_array_equal(other._obs, other_before)
+    finally:
+        other.close()
+
+    env.close()
+    with pytest.raises(RuntimeError, match="closed environment"):
+        env.capture_snapshots(mask)
 
 
 def test_reset_mask_validation() -> None:

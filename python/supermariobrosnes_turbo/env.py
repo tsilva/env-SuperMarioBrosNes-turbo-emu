@@ -516,6 +516,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     """
 
     metadata = {"render_modes": ["rgb_array"], "autoreset_mode": AutoresetMode.DISABLED}
+    supports_live_snapshots = True
     _BUTTON_COMBOS = STABLE_RETRO_BUTTON_COMBOS
 
     def __init__(
@@ -697,6 +698,8 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.closed = False
         self._pending_seed: int | Sequence[int | None] | None = None
         self._pending_options: dict[str, Any] | list[dict[str, Any]] | None = None
+        self._step_pending = False
+        self._initialized = np.zeros((self.num_envs,), dtype=np.bool_)
 
         self._actions = np.zeros((self.num_envs,), dtype=np.uint8)
         self._last_action_masks: np.ndarray | None = None
@@ -737,6 +740,10 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         seed: int | Sequence[int | None] | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[np.ndarray, dict[str, Any]]:
+        if self.closed:
+            raise RuntimeError("cannot reset a closed environment")
+        if self._step_pending:
+            raise RuntimeError("cannot reset while an asynchronous step is pending")
         if options is None and isinstance(self._pending_options, dict):
             reset_options = dict(self._pending_options)
         else:
@@ -753,6 +760,25 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         elif not np.any(reset_mask):
             raise ValueError("options['reset_mask'] must select at least one lane")
 
+        snapshots = reset_options.pop("snapshots", None)
+        if snapshots is None:
+            snapshot_values: list[Any | None] = [None] * self.num_envs
+        else:
+            if isinstance(snapshots, (str, bytes, bytearray)) or not isinstance(
+                snapshots, Sequence
+            ):
+                raise TypeError("options['snapshots'] must be a lane-aligned sequence")
+            if len(snapshots) != self.num_envs:
+                raise ValueError(
+                    f"options['snapshots'] must have length {self.num_envs}"
+                )
+            snapshot_values = list(snapshots)
+        snapshot_mask = np.asarray(
+            [value is not None for value in snapshot_values], dtype=np.bool_
+        )
+        if np.any(snapshot_mask & ~reset_mask):
+            raise ValueError("snapshots may only be supplied for selected reset lanes")
+
         state_indices = reset_options.pop("state_indices", None)
         if reset_options:
             names = ", ".join(sorted(reset_options))
@@ -760,26 +786,40 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         if state_indices is None:
             default_index = 0 if self.state_catalog else -1
             state_indices = np.full(self.num_envs, default_index, dtype=np.int32)
+            state_indices[snapshot_mask] = -1
         elif not isinstance(state_indices, np.ndarray):
             raise TypeError("options['state_indices'] must be a NumPy array")
         elif state_indices.shape != (self.num_envs,):
             raise ValueError(f"options['state_indices'] must have shape {(self.num_envs,)}")
         elif state_indices.dtype != np.int32:
             raise TypeError("options['state_indices'] must have dtype np.int32")
+        if np.any(state_indices[snapshot_mask] != -1):
+            raise ValueError(
+                "snapshot reset lanes must use -1 for the static state selector"
+            )
+        static_mask = reset_mask & ~snapshot_mask
         if self.state_catalog:
-            selected = state_indices[reset_mask]
+            selected = state_indices[static_mask]
             if np.any(selected < 0) or np.any(selected >= len(self.state_catalog)):
                 raise ValueError("selected state_indices entries must index state_catalog")
-        elif np.any(state_indices[reset_mask] != -1):
+        elif np.any(state_indices[static_mask] != -1):
             raise ValueError("state_indices require a non-empty state_catalog")
 
         seeds = self._normalize_reset_seed(seed)
+        if any(seeds[index] is not None for index in np.flatnonzero(snapshot_mask)):
+            raise ValueError("snapshot reset lanes cannot also specify a seed")
         if seed is not None and not isinstance(seed, Sequence):
             super().reset(seed=int(seed))
-        self._core.reset_masked_into(self._obs, reset_mask, state_indices, seeds)
+        if snapshots is None:
+            self._core.reset_masked_into(self._obs, reset_mask, state_indices, seeds)
+        else:
+            self._core.reset_mixed_into(
+                self._obs, reset_mask, state_indices, seeds, snapshot_values
+            )
         self._rewards[reset_mask] = 0
         self._terminated[reset_mask] = False
         self._truncated[reset_mask] = False
+        self._initialized[reset_mask] = True
         self._write_active_state_indices()
         self._write_info_arrays()
         lane_infos: list[dict[str, Any]] = []
@@ -788,6 +828,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
                 lane_infos.append({})
                 continue
             info = self._reset_info_dict(index)
+            info["start_source"] = (
+                "snapshot" if bool(snapshot_mask[index]) else "environment"
+            )
             if self._info_mode != "none":
                 raw_info = self._base_info_dict(index)
                 if self._info_keys is not None:
@@ -848,7 +891,14 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         return json.loads(self._core.profiler_snapshot(int(top_n)))
 
     def step_async(self, actions: np.ndarray) -> None:
+        if self.closed:
+            raise RuntimeError("cannot step a closed environment")
+        if self._step_pending:
+            raise RuntimeError("an asynchronous step is already pending")
+        if not np.all(self._initialized):
+            raise RuntimeError("all lanes must be reset before the first step")
         np.copyto(self._actions, self._actions_to_controller_bytes(actions))
+        self._step_pending = True
 
     def _actions_to_controller_bytes(self, actions: Any) -> np.ndarray:
         if self._action_mode == "ACTION_SET":
@@ -910,6 +960,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     def step_wait_gymnasium(
         self,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
+        if not self._step_pending:
+            raise RuntimeError("no asynchronous step is pending")
+        self._step_pending = False
         self._core.step_into(
             self._actions,
             self._obs,
@@ -1101,8 +1154,28 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         view.setflags(write=False)
         return view
 
+    def capture_snapshots(self, mask: np.ndarray) -> tuple[Any | None, ...]:
+        if self.closed:
+            raise RuntimeError("cannot capture snapshots from a closed environment")
+        if self._step_pending:
+            raise RuntimeError(
+                "cannot capture snapshots while an asynchronous step is pending"
+            )
+        if not isinstance(mask, np.ndarray):
+            raise TypeError("mask must be a NumPy array")
+        if mask.shape != (self.num_envs,):
+            raise ValueError(f"mask must have shape {(self.num_envs,)}")
+        if mask.dtype != np.bool_:
+            raise TypeError("mask must have dtype np.bool_")
+        if not np.any(mask):
+            raise ValueError("mask must select at least one lane")
+        if not np.all(self._initialized[mask]):
+            raise RuntimeError("cannot capture a lane before its initial reset")
+        return tuple(self._core.capture_snapshots(self._obs, mask))
+
     def close(self) -> None:
         self.closed = True
+        self._step_pending = False
 
     def get_images(self) -> Sequence[np.ndarray | None]:
         if self.render_mode != "rgb_array":

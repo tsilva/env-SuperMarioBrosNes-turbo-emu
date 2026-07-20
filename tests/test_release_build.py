@@ -137,3 +137,21 @@ def test_latest_non_yanked_pypi_version_accepts_release_with_any_non_yanked_file
     }
 
     assert release_build.latest_non_yanked_pypi_version(releases) == "0.2.5"
+
+
+def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_available():
+    root = Path(__file__).resolve().parents[1]
+    source = (
+        root / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
+    ).read_text(encoding="utf-8")
+
+    for required in (
+        "default_rom_path",
+        "supports_live_snapshots",
+        "capture_snapshots",
+        '"snapshots": [handles[0], handles[0]]',
+        'restored_infos["start_source"]',
+        "np.testing.assert_array_equal(expected, actual)",
+        "canonical SMB ROM is unavailable",
+    ):
+        assert required in source

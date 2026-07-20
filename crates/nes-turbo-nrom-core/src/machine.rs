@@ -228,6 +228,10 @@ pub struct Ppu {
 }
 
 impl Ppu {
+    fn heap_nbytes(&self) -> usize {
+        self.chr_rom.capacity() + self.chr_row_pixels.capacity() * std::mem::size_of::<u16>()
+    }
+
     pub(crate) fn new(
         chr_rom: Vec<u8>,
         vertical_mirroring: bool,
@@ -1768,6 +1772,10 @@ pub struct NromCore<T: PpuTiming> {
 }
 
 impl<T: PpuTiming> NromCore<T> {
+    pub fn heap_nbytes(&self) -> usize {
+        self.prg_rom.capacity() + self.ppu.heap_nbytes()
+    }
+
     pub fn new(cart: Cartridge) -> Self {
         let prg_addr_mask = cart.prg_rom.len() - 1;
         Self {

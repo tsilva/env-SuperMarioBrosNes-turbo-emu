@@ -675,12 +675,67 @@ def smoke_distribution(distribution: Path, python: Path) -> None:
             ]
         )
         code = f"""
+import numpy as np
 import {IMPORT_NAME}
 from {IMPORT_NAME} import {EXTENSION_NAME}
+from {IMPORT_NAME} import Actions, NES_BUTTONS, default_rom_path
 print({IMPORT_NAME}.__file__)
 print({EXTENSION_NAME}.__file__)
 assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
 assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
+assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.supports_live_snapshots is True
+
+rom_path = default_rom_path()
+if rom_path is None:
+    print("snapshot replay smoke skipped: canonical SMB ROM is unavailable")
+else:
+    env = {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv(
+        "SuperMarioBros-Nes-v0",
+        state="Level1-1",
+        rom_path=rom_path,
+        num_envs=2,
+        num_threads=1,
+        use_restricted_actions=Actions.ALL,
+        frame_skip=1,
+        frame_stack=1,
+        obs_grayscale=True,
+        obs_resize=(84, 84),
+        obs_layout="chw",
+    )
+    try:
+        env.reset()
+        warmup = np.zeros((2, len(NES_BUTTONS)), dtype=np.uint8)
+        env.step(warmup)
+        handles = env.capture_snapshots(
+            np.asarray([True, False], dtype=np.bool_)
+        )
+        assert handles[0] is not None
+        assert handles[0].nbytes > 0
+        assert handles[1] is None
+
+        reset_options = {{
+            "reset_mask": np.asarray([True, True], dtype=np.bool_),
+            "state_indices": np.asarray([-1, -1], dtype=np.int32),
+            "snapshots": [handles[0], handles[0]],
+        }}
+        restored, restored_infos = env.reset(options=reset_options)
+        np.testing.assert_array_equal(restored[0], restored[1])
+        assert restored_infos["start_source"].tolist() == [
+            "snapshot",
+            "snapshot",
+        ]
+
+        replay_actions = np.zeros_like(warmup)
+        replay_actions[:, NES_BUTTONS.index("RIGHT")] = 1
+        first = tuple(
+            np.asarray(value).copy() for value in env.step(replay_actions)[:4]
+        )
+        env.reset(options=reset_options)
+        second = env.step(replay_actions)
+        for expected, actual in zip(first, second[:4], strict=True):
+            np.testing.assert_array_equal(expected, actual)
+    finally:
+        env.close()
 """
         run([str(environment_python), "-c", code], cwd=target)
         command = scripts / ("smb-turbo.exe" if os.name == "nt" else "smb-turbo")

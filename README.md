@@ -106,12 +106,32 @@ if done.any():
     observations, reset_infos = env.reset(
         options={"reset_mask": done.copy(), "state_indices": state_indices},
     )
-
-env.close()
 ```
 
 **Important:** Autoreset is disabled. Selectively reset terminal lanes before
 stepping again.
+
+Live positions can be captured without advancing emulation and restored into
+any lane of the same environment:
+
+```python
+capture_mask = np.zeros(env.num_envs, dtype=np.bool_)
+capture_mask[0] = True
+captured = env.capture_snapshots(capture_mask)
+
+restore_mask = np.zeros(env.num_envs, dtype=np.bool_)
+restore_mask[3] = True
+starts = [None] * env.num_envs
+starts[3] = captured[0]
+observations, infos = env.reset(
+    options={"reset_mask": restore_mask, "snapshots": starts},
+)
+env.close()
+```
+
+Handles are reusable, session-local, and intentionally not pickleable. A
+single masked reset can mix snapshot starts with ordinary `state_indices`;
+`infos["start_source"]` distinguishes `"snapshot"` from `"environment"`.
 
 ## 🏁 Train and play
 

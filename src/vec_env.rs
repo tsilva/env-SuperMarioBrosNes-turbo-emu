@@ -135,6 +135,21 @@ pub struct MarioVecEnv {
     profile_shards: Vec<Profiler>,
 }
 
+#[derive(Clone)]
+pub struct LiveSnapshot {
+    env: NesEmulator,
+    active_state_index: i32,
+    last_action: u8,
+    rng: XorShift64,
+    observation: Vec<u8>,
+}
+
+impl LiveSnapshot {
+    pub fn nbytes(&self) -> usize {
+        std::mem::size_of::<Self>() + self.env.core.heap_nbytes() + self.observation.capacity()
+    }
+}
+
 impl MarioVecEnv {
     pub fn new(
         cart: Cartridge,
@@ -299,6 +314,119 @@ impl MarioVecEnv {
                     &mut self.scratch[env_idx],
                     &mut obs[start..end],
                 );
+            }
+        }
+        self.any_pending_reset = self.pending_reset.iter().any(|pending| *pending);
+        Ok(())
+    }
+
+    pub fn capture_snapshots(
+        &self,
+        obs: &[u8],
+        capture_mask: &[bool],
+    ) -> Result<Vec<Option<LiveSnapshot>>, String> {
+        let config = self.config;
+        let obs_stride = config.obs_len_per_env();
+        if capture_mask.len() != config.num_envs || obs.len() != config.num_envs * obs_stride {
+            return Err("snapshot capture buffers have incorrect shapes".to_string());
+        }
+        if !capture_mask.iter().any(|&selected| selected) {
+            return Err("capture_mask must select at least one lane".to_string());
+        }
+        if capture_mask
+            .iter()
+            .zip(&self.pending_reset)
+            .any(|(&selected, &pending)| selected && pending)
+        {
+            return Err("cannot capture a lane that is pending reset".to_string());
+        }
+
+        Ok((0..config.num_envs)
+            .map(|env_idx| {
+                capture_mask[env_idx].then(|| {
+                    let start = env_idx * obs_stride;
+                    LiveSnapshot {
+                        env: self.envs[env_idx].clone(),
+                        active_state_index: self.active_state_indices[env_idx],
+                        last_action: self.last_actions[env_idx],
+                        rng: self.rngs[env_idx].clone(),
+                        observation: obs[start..start + obs_stride].to_vec(),
+                    }
+                })
+            })
+            .collect())
+    }
+
+    pub fn reset_mixed_into(
+        &mut self,
+        obs: &mut [u8],
+        reset_mask: &[bool],
+        state_indices: &[i32],
+        seeds: &[Option<u64>],
+        snapshots: &[Option<LiveSnapshot>],
+    ) -> Result<(), StateLoadError> {
+        let config = self.config;
+        let obs_stride = config.obs_len_per_env();
+        debug_assert_eq!(reset_mask.len(), config.num_envs);
+        debug_assert_eq!(state_indices.len(), config.num_envs);
+        debug_assert_eq!(seeds.len(), config.num_envs);
+        debug_assert_eq!(snapshots.len(), config.num_envs);
+
+        let mut replacements = Vec::with_capacity(config.num_envs);
+        for env_idx in 0..config.num_envs {
+            if !reset_mask[env_idx] {
+                replacements.push(None);
+                continue;
+            }
+            if let Some(snapshot) = &snapshots[env_idx] {
+                replacements.push(Some(snapshot.clone()));
+                continue;
+            }
+
+            let mut env = self.envs[env_idx].clone();
+            let mut rng = seeds[env_idx]
+                .map(XorShift64::from_explicit_seed)
+                .unwrap_or_else(|| self.rngs[env_idx].clone());
+            let active_state_index = if self.state_catalog.is_empty() {
+                env.reset();
+                env.prime_cold_boot();
+                -1
+            } else {
+                let state_index = state_indices[env_idx] as usize;
+                env.load_fceu_state(&self.state_catalog[state_index].data)?;
+                state_index as i32
+            };
+            apply_noop_reset_to(config.noop_reset_max, &mut env, &mut rng);
+            replacements.push(Some(LiveSnapshot {
+                env,
+                active_state_index,
+                last_action: 0,
+                rng,
+                observation: Vec::new(),
+            }));
+        }
+
+        for (env_idx, replacement) in replacements.into_iter().enumerate() {
+            let Some(replacement) = replacement else {
+                continue;
+            };
+            self.envs[env_idx] = replacement.env;
+            self.active_state_indices[env_idx] = replacement.active_state_index;
+            self.last_actions[env_idx] = replacement.last_action;
+            self.rngs[env_idx] = replacement.rng;
+            self.pending_reset[env_idx] = false;
+            let start = env_idx * obs_stride;
+            let obs_chunk = &mut obs[start..start + obs_stride];
+            if replacement.observation.is_empty() {
+                write_reset_stack(
+                    config,
+                    &self.resize_plan,
+                    &self.envs[env_idx],
+                    &mut self.scratch[env_idx],
+                    obs_chunk,
+                );
+            } else {
+                obs_chunk.copy_from_slice(&replacement.observation);
             }
         }
         self.any_pending_reset = self.pending_reset.iter().any(|pending| *pending);
@@ -707,8 +835,22 @@ impl InitialState {
     }
 }
 
+#[derive(Clone)]
 struct XorShift64 {
     state: u64,
+}
+
+fn apply_noop_reset_to(noop_reset_max: usize, env: &mut NesEmulator, rng: &mut XorShift64) {
+    if noop_reset_max == 0 {
+        return;
+    }
+    let noop_count = rng.next_bounded_usize(noop_reset_max + 1);
+    for _ in 0..noop_count {
+        env.step_frame(0);
+        if env.is_done() {
+            break;
+        }
+    }
 }
 
 impl XorShift64 {

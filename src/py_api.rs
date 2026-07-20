@@ -2,18 +2,23 @@
 // useless-conversion warnings for PyResult methods.
 #![allow(clippy::useless_conversion)]
 
-use numpy::{PyReadonlyArray1, PyReadwriteArray1, PyReadwriteArray4, PyUntypedArrayMethods};
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use numpy::{
+    PyReadonlyArray1, PyReadonlyArray4, PyReadwriteArray1, PyReadwriteArray4, PyUntypedArrayMethods,
+};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use rayon::{ThreadPool, ThreadPoolBuilder};
+use std::sync::Arc;
 use std::thread;
 
 use crate::cartridge::Cartridge;
 use crate::emulator::{
     NES_HEIGHT, NES_WIDTH, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT, VISIBLE_FRAME_WIDTH,
 };
-use crate::vec_env::{CropMode, InitialState, MarioVecEnv, ResizeAlgorithm, VecEnvConfig};
+use crate::vec_env::{
+    CropMode, InitialState, LiveSnapshot, MarioVecEnv, ResizeAlgorithm, VecEnvConfig,
+};
 use smb_turbo_driver::EXPECTED_SMB_ROM_SHA256;
 
 #[pyclass(name = "_RetroVecEnv")]
@@ -21,6 +26,27 @@ pub struct RetroVecEnv {
     inner: MarioVecEnv,
     thread_pool: Option<ThreadPool>,
     num_threads: usize,
+    snapshot_owner: Arc<()>,
+}
+
+#[pyclass(frozen, module = "supermariobrosnes_turbo._supermariobrosnes_turbo")]
+pub struct MarioLiveSnapshot {
+    owner: Arc<()>,
+    snapshot: LiveSnapshot,
+}
+
+#[pymethods]
+impl MarioLiveSnapshot {
+    #[getter]
+    fn nbytes(&self) -> usize {
+        self.snapshot.nbytes()
+    }
+
+    fn __reduce__(&self) -> PyResult<()> {
+        Err(PyTypeError::new_err(
+            "live snapshot handles are session-local and cannot be pickled",
+        ))
+    }
 }
 
 // PyO3 exposes wide buffer-oriented methods directly to Python.
@@ -154,6 +180,7 @@ impl RetroVecEnv {
                 .map_err(|err| PyValueError::new_err(err.to_string()))?,
             thread_pool,
             num_threads: effective_num_threads,
+            snapshot_owner: Arc::new(()),
         })
     }
 
@@ -374,6 +401,143 @@ impl RetroVecEnv {
         py.allow_threads(|| {
             install_in_pool(pool, || {
                 inner.reset_masked_into(obs_slice, reset_mask_slice, state_indices_slice, &seeds)
+            })
+        })
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        Ok(())
+    }
+
+    pub fn capture_snapshots<'py>(
+        &self,
+        py: Python<'py>,
+        obs: PyReadonlyArray4<'py, u8>,
+        capture_mask: PyReadonlyArray1<'py, bool>,
+    ) -> PyResult<Vec<Option<Py<MarioLiveSnapshot>>>> {
+        let expected = self.obs_shape();
+        if obs.shape() != [expected.0, expected.1, expected.2, expected.3] {
+            return Err(PyValueError::new_err("obs has an incorrect shape"));
+        }
+        self.validate_vec_len(capture_mask.len(), "capture_mask")?;
+        let obs_ro = obs.as_array();
+        let obs_slice = obs_ro
+            .as_slice()
+            .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
+        let mask_ro = capture_mask.as_array();
+        let mask_slice = mask_ro
+            .as_slice()
+            .ok_or_else(|| PyValueError::new_err("capture_mask must be C-contiguous"))?;
+        let snapshots = self
+            .inner
+            .capture_snapshots(obs_slice, mask_slice)
+            .map_err(PyRuntimeError::new_err)?;
+        snapshots
+            .into_iter()
+            .map(|snapshot| {
+                snapshot
+                    .map(|snapshot| {
+                        Py::new(
+                            py,
+                            MarioLiveSnapshot {
+                                owner: Arc::clone(&self.snapshot_owner),
+                                snapshot,
+                            },
+                        )
+                    })
+                    .transpose()
+            })
+            .collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn reset_mixed_into<'py>(
+        &mut self,
+        py: Python<'py>,
+        mut obs: PyReadwriteArray4<'py, u8>,
+        reset_mask: PyReadonlyArray1<'py, bool>,
+        state_indices: PyReadonlyArray1<'py, i32>,
+        seeds: Vec<Option<u64>>,
+        snapshots: Vec<Option<Py<MarioLiveSnapshot>>>,
+    ) -> PyResult<()> {
+        self.validate_obs_shape(&obs)?;
+        self.validate_vec_len(reset_mask.len(), "reset_mask")?;
+        self.validate_vec_len(state_indices.len(), "state_indices")?;
+        self.validate_vec_len(seeds.len(), "seeds")?;
+        self.validate_vec_len(snapshots.len(), "snapshots")?;
+        let reset_mask_ro = reset_mask.as_array();
+        let reset_mask_slice = reset_mask_ro
+            .as_slice()
+            .ok_or_else(|| PyValueError::new_err("reset_mask must be C-contiguous"))?;
+        let state_indices_ro = state_indices.as_array();
+        let state_indices_slice = state_indices_ro
+            .as_slice()
+            .ok_or_else(|| PyValueError::new_err("state_indices must be C-contiguous"))?;
+        if !reset_mask_slice.iter().any(|&selected| selected) {
+            return Err(PyValueError::new_err(
+                "reset_mask must select at least one lane",
+            ));
+        }
+
+        let state_count = self.inner.state_catalog().len();
+        let mut native_snapshots = Vec::with_capacity(snapshots.len());
+        for env_idx in 0..snapshots.len() {
+            match (reset_mask_slice[env_idx], snapshots[env_idx].as_ref()) {
+                (false, Some(_)) => {
+                    return Err(PyValueError::new_err(
+                        "snapshots may only be supplied for selected reset lanes",
+                    ));
+                }
+                (false, None) => native_snapshots.push(None),
+                (true, Some(snapshot)) => {
+                    if state_indices_slice[env_idx] != -1 {
+                        return Err(PyValueError::new_err(
+                            "snapshot reset lanes must use the -1 state-index sentinel",
+                        ));
+                    }
+                    if seeds[env_idx].is_some() {
+                        return Err(PyValueError::new_err(
+                            "snapshot reset lanes cannot also specify a seed",
+                        ));
+                    }
+                    let snapshot = snapshot.bind(py).borrow();
+                    if !Arc::ptr_eq(&snapshot.owner, &self.snapshot_owner) {
+                        return Err(PyValueError::new_err(
+                            "snapshot belongs to a different environment instance",
+                        ));
+                    }
+                    native_snapshots.push(Some(snapshot.snapshot.clone()));
+                }
+                (true, None) => {
+                    let state_index = state_indices_slice[env_idx];
+                    let valid = if state_count == 0 {
+                        state_index == -1
+                    } else {
+                        state_index >= 0 && (state_index as usize) < state_count
+                    };
+                    if !valid {
+                        return Err(PyValueError::new_err(format!(
+                            "state_indices[{env_idx}] must index state_catalog",
+                        )));
+                    }
+                    native_snapshots.push(None);
+                }
+            }
+        }
+
+        let mut obs_rw = obs.as_array_mut();
+        let obs_slice = obs_rw
+            .as_slice_mut()
+            .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
+        let pool = self.thread_pool.as_ref();
+        let inner = &mut self.inner;
+        py.allow_threads(|| {
+            install_in_pool(pool, || {
+                inner.reset_mixed_into(
+                    obs_slice,
+                    reset_mask_slice,
+                    state_indices_slice,
+                    &seeds,
+                    &native_snapshots,
+                )
             })
         })
         .map_err(|err| PyValueError::new_err(err.to_string()))?;
@@ -732,6 +896,7 @@ fn build_resize_algorithm(algorithm: &str) -> PyResult<ResizeAlgorithm> {
 
 #[pymodule]
 fn _supermariobrosnes_turbo(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<MarioLiveSnapshot>()?;
     m.add_class::<RetroVecEnv>()?;
     m.add("NES_WIDTH", NES_WIDTH)?;
     m.add("NES_HEIGHT", NES_HEIGHT)?;
