@@ -51,6 +51,14 @@ class TrainingSnapshot:
     best_program_runs: int = 0
     retained_count: int = 0
     locked_count: int = 0
+    archive_count: int = 0
+    archive_selection_count: int = 0
+    archive_visit_count: int = 0
+    archive_update_count: int = 0
+    archive_memory_bytes: int = 0
+    archive_recent_new_cell_rate: float = 0.0
+    archive_recent_visit_window: int = 0
+    archive_visits_per_cell: float = 0.0
     archive_replay_probability: float | None = None
     archive_selected_prefix_return_mean: float | None = None
     generation: int | None = None
@@ -144,10 +152,32 @@ def format_elapsed(seconds: float) -> str:
     return f"{seconds}s"
 
 
+def format_byte_size(value: int) -> str:
+    """Format a non-negative byte count using compact binary units."""
+    byte_count = max(int(value), 0)
+    if byte_count < 1024:
+        return f"{byte_count:,} B"
+    amount = float(byte_count)
+    for unit in ("KiB", "MiB", "GiB"):
+        amount /= 1024.0
+        if amount < 1024.0:
+            return f"{amount:,.1f} {unit}"
+    return f"{amount / 1024.0:,.1f} TiB"
+
+
 def format_progress(row: Mapping[str, Any], total_timesteps: int) -> str:
     current = int(row["timesteps"])
     total = max(int(total_timesteps), 1)
     percent = min(100.0 * current / total, 100.0)
+    archive = (
+        f"archive {int(row.get('archive_count', 0)):,} cells  "
+        f"·  restores {int(row.get('archive_selection_count', 0)):,}"
+        if str(row.get("algorithm", "")).casefold() == "go-explore"
+        else (
+            f"archive {int(row['retained_count']):,} "
+            f"({int(row['locked_count']):,} locked)"
+        )
+    )
     return (
         f"  {percent:6.2f}%  {current:,} / {total:,} transitions  "
         f"·  {float(row['loop_fps']):,.0f} steps/s\n"
@@ -156,8 +186,7 @@ def format_progress(row: Mapping[str, Any], total_timesteps: int) -> str:
         f"·  progress {float(row['best_progress']):,.0f}\n"
         f"           policy {int(row['best_program_steps']):,} steps / "
         f"{int(row['best_program_runs']):,} runs  "
-        f"·  archive {int(row['retained_count']):,} "
-        f"({int(row['locked_count']):,} locked)"
+        f"·  {archive}"
     )
 
 
@@ -201,6 +230,18 @@ def snapshot_from_row(
         best_program_runs=int(row.get("best_program_runs", 0)),
         retained_count=int(row.get("retained_count", 0)),
         locked_count=int(row.get("locked_count", 0)),
+        archive_count=int(row.get("archive_count", 0)),
+        archive_selection_count=int(row.get("archive_selection_count", 0)),
+        archive_visit_count=int(row.get("archive_visit_count", 0)),
+        archive_update_count=int(row.get("archive_update_count", 0)),
+        archive_memory_bytes=int(row.get("archive_memory_bytes", 0)),
+        archive_recent_new_cell_rate=float(
+            row.get("archive_recent_new_cell_rate", 0.0)
+        ),
+        archive_recent_visit_window=int(
+            row.get("archive_recent_visit_window", 0)
+        ),
+        archive_visits_per_cell=float(row.get("archive_visits_per_cell", 0.0)),
         archive_replay_probability=row.get("archive_replay_probability"),
         archive_selected_prefix_return_mean=row.get(
             "archive_selected_prefix_return_mean"
@@ -554,6 +595,18 @@ class TrainingApp(App[Optional[TrainingResult]]):
                 f"Refresh cycle    {refresh}\n"
                 f"Episodes         {snapshot.episodes:,}"
             )
+        elif snapshot.algorithm.casefold() == "go-explore":
+            search = (
+                f"Archive cells    {snapshot.archive_count:,} · "
+                f"{format_byte_size(snapshot.archive_memory_bytes)}\n"
+                f"Cell restores   {snapshot.archive_selection_count:,}\n"
+                f"Cell visits     {snapshot.archive_visit_count:,} · "
+                f"{snapshot.archive_visits_per_cell:,.1f}/cell\n"
+                f"New-cell rate   {snapshot.archive_recent_new_cell_rate:.1%} / "
+                f"{snapshot.archive_recent_visit_window:,} visits\n"
+                f"Archive updates {snapshot.archive_update_count:,}\n"
+                f"Episodes         {snapshot.episodes:,}"
+            )
         else:
             replay = snapshot.archive_replay_probability
             prefix_return = snapshot.archive_selected_prefix_return_mean
@@ -566,10 +619,15 @@ class TrainingApp(App[Optional[TrainingResult]]):
             )
         self.query_one("#search-stats", Static).update(search)
         completion = "complete" if snapshot.best_completed else "not complete"
+        return_label = (
+            "Score-first return"
+            if snapshot.algorithm.casefold() == "go-explore"
+            else "Shaped return"
+        )
         self.query_one("#best-stats", Static).update(
             f"Status           {completion}  ·  {snapshot.successful_episodes:,} successes\n"
-            f"Shaped return    {snapshot.best_mean_reward:,.1f}\n"
-            f"X at best return {snapshot.best_progress:,.0f}\n"
+            f"{return_label:<20}{snapshot.best_mean_reward:,.1f}\n"
+            f"Best progress    {snapshot.best_progress:,.0f}\n"
             f"Program steps    {snapshot.best_program_steps:,}\n"
             f"Program runs     {snapshot.best_program_runs:,}"
         )

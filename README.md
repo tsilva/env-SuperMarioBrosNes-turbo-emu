@@ -194,6 +194,14 @@ smb-turbo play Level1-1
 
 Go-Explore policies use the same canonical `(action, duration)` ZIP format as
 beam policies, so the regular playback command needs no algorithm-specific mode.
+Go-Explore cells are keyed by level, sublevel, and the raw bytes of the native
+8x8 grayscale frame after HUD masking and 3-bit quantization; horizontal position
+is not part of the cell key. Keeping the 64-byte visual value directly avoids
+application-level hash collisions while remaining negligible beside a snapshot.
+Go-Explore ranks paths with raw game-score gains first and charges each step
+`1 / (max_episode_steps + 1)` by default, so the entire episode's time charge is
+less than one score point. Higher score therefore always wins, while fewer steps
+break ties; an explicit `--step-cost` overrides that default.
 
 Omit the training state to process all 32 canonical levels in game order:
 

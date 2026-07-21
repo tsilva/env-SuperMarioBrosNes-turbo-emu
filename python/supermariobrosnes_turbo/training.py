@@ -58,10 +58,34 @@ RUN_DURATION_MAX = 32
 RETAINED_LIMIT = 256
 FALLBACK_ACTION = "noop"
 STEP_COST = 0.1
+REWARD_MODE_PROGRESS_SCORE = "progress-score"
+REWARD_MODE_SCORE_FIRST = "score-first"
 INVALID_XSCROLL_MIN = 0xFF00
 SCROLL_TRANSITION_MIN_DROP = 128
 SCROLL_TRANSITION_BUCKET = 64
 OBSERVATION_FREE_CROP = (0, VISIBLE_HEIGHT - 1, 0, VISIBLE_WIDTH - 1)
+GO_EXPLORE_CELL_FRAME_SHAPE = (8, 8)
+GO_EXPLORE_CELL_HUD_MASK = (32, 0, 0, 0)
+GO_EXPLORE_CELL_QUANTIZATION_BITS = 3
+GO_EXPLORE_CELL_KEY_BYTES = 64
+GO_EXPLORE_CELL_REPRESENTATION = "level-sublevel-gray8x8-q3-bytes"
+
+
+def go_explore_frame_bytes(observations: np.ndarray) -> tuple[bytes, ...]:
+    """Encode native masked grayscale frames as deterministic quantized bytes."""
+    frames = np.asarray(observations)
+    expected_tail = (1, *GO_EXPLORE_CELL_FRAME_SHAPE)
+    if frames.ndim != 4 or frames.shape[1:] != expected_tail:
+        raise ValueError(
+            "Go-Explore cell observations must have shape "
+            f"(lanes, {expected_tail[0]}, {expected_tail[1]}, {expected_tail[2]})"
+        )
+    if frames.dtype != np.uint8:
+        raise TypeError("Go-Explore cell observations must have dtype uint8")
+
+    flattened = frames[:, 0].reshape(frames.shape[0], -1)
+    quantized = np.right_shift(flattened, 8 - GO_EXPLORE_CELL_QUANTIZATION_BITS)
+    return tuple(row.tobytes() for row in quantized)
 
 
 @dataclass(frozen=True)
@@ -158,14 +182,28 @@ def shape_step_rewards(
     life_loss: np.ndarray,
     *,
     step_cost: float,
+    reward_mode: str = REWARD_MODE_PROGRESS_SCORE,
 ) -> np.ndarray:
-    """Reward new progress and score while charging every elapsed env step."""
-    return (
-        np.asarray(progress_delta, dtype=np.float64)
-        + 0.01 * np.asarray(score_delta, dtype=np.float64)
-        - float(step_cost)
-        - 25.0 * np.asarray(life_loss, dtype=np.float64)
+    """Shape one step for navigation or score-primary trajectory search."""
+    progress = np.asarray(progress_delta, dtype=np.float64)
+    score = np.asarray(score_delta, dtype=np.float64)
+    if reward_mode == REWARD_MODE_PROGRESS_SCORE:
+        shaped = progress + 0.01 * score
+    elif reward_mode == REWARD_MODE_SCORE_FIRST:
+        shaped = score
+    else:
+        raise ValueError(f"unknown reward mode {reward_mode!r}")
+    return shaped - float(step_cost) - 25.0 * np.asarray(
+        life_loss, dtype=np.float64
     )
+
+
+def score_first_step_cost(max_episode_steps: int) -> float:
+    """Keep the total episode time charge below one raw score point."""
+    maximum = int(max_episode_steps)
+    if maximum < 1:
+        raise ValueError("max_episode_steps must be positive")
+    return 1.0 / (maximum + 1)
 
 
 class MarioJerkTask:
@@ -181,17 +219,42 @@ class MarioJerkTask:
         n_envs: int,
         max_episode_steps: int,
         stall_steps: int,
-        step_cost: float,
+        step_cost: float | None,
         action_set: str = ACTION_SET,
+        reward_mode: str = REWARD_MODE_PROGRESS_SCORE,
+        visual_cell_observations: bool = False,
     ) -> None:
         self.n_envs = int(n_envs)
         self.state = state
         self.seed = int(seed)
         self.max_episode_steps = int(max_episode_steps)
         self.stall_steps = int(stall_steps)
-        self.step_cost = float(step_cost)
+        self.reward_mode = str(reward_mode)
+        if self.reward_mode not in {
+            REWARD_MODE_PROGRESS_SCORE,
+            REWARD_MODE_SCORE_FIRST,
+        }:
+            raise ValueError(f"unknown reward mode {self.reward_mode!r}")
+        default_step_cost = (
+            score_first_step_cost(self.max_episode_steps)
+            if self.reward_mode == REWARD_MODE_SCORE_FIRST
+            else STEP_COST
+        )
+        self.step_cost = float(
+            default_step_cost if step_cost is None else step_cost
+        )
         if self.step_cost < 0.0:
             raise ValueError("JERK step_cost must be non-negative")
+        observation_options: dict[str, Any]
+        if visual_cell_observations:
+            observation_options = {
+                "obs_crop": GO_EXPLORE_CELL_HUD_MASK,
+                "obs_crop_mode": "mask",
+                "obs_resize": GO_EXPLORE_CELL_FRAME_SHAPE,
+                "obs_resize_algorithm": "area",
+            }
+        else:
+            observation_options = {"obs_crop": OBSERVATION_FREE_CROP}
         self.native = SuperMarioBrosNesTurboVecEnv(
             "SuperMarioBros-Nes-v0",
             state=self.state,
@@ -202,7 +265,6 @@ class MarioJerkTask:
             render_mode=None,
             use_restricted_actions=action_set,
             obs_copy="unsafe_view",
-            obs_crop=OBSERVATION_FREE_CROP,
             obs_grayscale=True,
             obs_layout="chw",
             frame_skip=4,
@@ -211,6 +273,7 @@ class MarioJerkTask:
             sticky_action_prob=0.0,
             reward_clip=False,
             info_filter="none",
+            **observation_options,
         )
         self.action_names = tuple(self.native.action_meanings)
         self.episode_steps = np.zeros(self.n_envs, dtype=np.int64)
@@ -330,17 +393,18 @@ class MarioJerkTask:
                 snapshot.seen_scroll_transitions
             )
 
-    def go_explore_cell_keys(self, bucket_size: int) -> tuple[tuple[int, int, int], ...]:
-        """Return task-general level/progress cells for the live lanes."""
-        width = int(bucket_size)
-        if width < 1:
-            raise ValueError("Go-Explore cell bucket size must be positive")
-        current_global_x = self.completed_base + self.previous_x
+    def go_explore_cell_keys(
+        self, observations: np.ndarray
+    ) -> tuple[tuple[int, int, bytes], ...]:
+        """Return level-scoped quantized native visual observations."""
+        frame_bytes = go_explore_frame_bytes(observations)
+        if len(frame_bytes) != self.n_envs:
+            raise ValueError("Go-Explore requires one cell observation per lane")
         return tuple(
             (
                 int(self.previous_level_hi[lane]),
                 int(self.previous_level_lo[lane]),
-                int(current_global_x[lane]) // width,
+                frame_bytes[lane],
             )
             for lane in range(self.n_envs)
         )
@@ -398,6 +462,7 @@ class MarioJerkTask:
             score_delta,
             life_loss,
             step_cost=self.step_cost,
+            reward_mode=self.reward_mode,
         )
         self.episode_returns += shaped_rewards
 
@@ -572,7 +637,15 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     shared.add_argument("--run-duration-mean", type=float, default=RUN_DURATION_MEAN)
     shared.add_argument("--run-duration-max", type=int, default=RUN_DURATION_MAX)
     shared.add_argument("--fallback-action", default=FALLBACK_ACTION)
-    shared.add_argument("--step-cost", type=float, default=STEP_COST)
+    shared.add_argument(
+        "--step-cost",
+        type=float,
+        default=None,
+        help=(
+            "per-step return charge; defaults to 0.1 for beam/JERK and "
+            "1 / (max episode steps + 1) for Go-Explore"
+        ),
+    )
 
     jerk = parser.add_argument_group("JERK search tuning")
     jerk.add_argument(
@@ -622,13 +695,6 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         "--branch-durations", type=int, nargs="+", default=None, metavar="STEPS"
     )
     go_explore = parser.add_argument_group("Go-Explore tuning")
-    go_explore.add_argument(
-        "--go-explore-cell-size",
-        type=int,
-        default=None,
-        metavar="PIXELS",
-        help="horizontal progress bucket width (default: 16)",
-    )
     go_explore.add_argument(
         "--go-explore-explore-steps",
         type=int,
@@ -965,7 +1031,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         args.stall_steps < 0
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
-        or args.step_cost < 0.0
+        or (args.step_cost is not None and args.step_cost < 0.0)
     ):
         raise SystemExit("JERK non-negative sizes must not be negative")
     if args.run_duration_mean < 1.0:
@@ -992,10 +1058,7 @@ def _apply_algorithm_defaults(
         BRANCH_DURATIONS,
         MUTATION_RUNS,
     )
-    from .go_explore_training import (
-        GO_EXPLORE_CELL_SIZE,
-        GO_EXPLORE_EXPLORE_STEPS,
-    )
+    from .go_explore_training import GO_EXPLORE_EXPLORE_STEPS
 
     beam_defaults = {
         "beam_width": BEAM_WIDTH,
@@ -1007,7 +1070,6 @@ def _apply_algorithm_defaults(
         "branch_durations": list(BRANCH_DURATIONS),
     }
     go_explore_defaults = {
-        "go_explore_cell_size": GO_EXPLORE_CELL_SIZE,
         "go_explore_explore_steps": GO_EXPLORE_EXPLORE_STEPS,
     }
     defaults_by_algorithm = {
@@ -1029,6 +1091,12 @@ def _apply_algorithm_defaults(
     for name, value in selected.items():
         if getattr(args, name) is None:
             setattr(args, name, value)
+    if args.step_cost is None:
+        args.step_cost = (
+            score_first_step_cost(args.max_episode_steps)
+            if args.algorithm == "go-explore"
+            else STEP_COST
+        )
 
 
 def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:

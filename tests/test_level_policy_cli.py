@@ -94,7 +94,6 @@ def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
 
     training._apply_algorithm_defaults(parser, args)
 
-    assert args.go_explore_cell_size == 16
     assert args.go_explore_explore_steps == 128
     assert args.action_set == "simple-down"
     assert args.beam_width is None

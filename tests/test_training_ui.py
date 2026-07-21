@@ -15,8 +15,10 @@ from supermariobrosnes_turbo.training_ui import (
     TrainingApp,
     TrainingEvent,
     TrainingSnapshot,
+    format_byte_size,
     resolve_ui_mode,
     safe_sigint,
+    snapshot_from_row,
 )
 
 
@@ -130,6 +132,14 @@ def test_plain_reporter_is_line_oriented_and_has_no_control_sequences() -> None:
     assert output.count("50.00%") == 1
 
 
+@pytest.mark.parametrize(
+    ("byte_count", "expected"),
+    [(0, "0 B"), (1_024, "1.0 KiB"), (12 * 1024**2, "12.0 MiB")],
+)
+def test_format_byte_size(byte_count: int, expected: str) -> None:
+    assert format_byte_size(byte_count) == expected
+
+
 @pytest.mark.parametrize("size", [(80, 24), (120, 36)])
 def test_dashboard_renders_updates_and_orders_events(size: tuple[int, int]) -> None:
     async def exercise() -> None:
@@ -189,6 +199,68 @@ def test_dashboard_shows_level_progress_only_for_campaigns() -> None:
             assert progress.progress == 4
             assert "4 / 32 processed" in str(details.content)
             assert "Level2-1" in str(details.content)
+
+    asyncio.run(exercise())
+
+
+def test_go_explore_dashboard_shows_cell_metrics_instead_of_replay_metrics() -> None:
+    row = {
+        "timesteps": 400,
+        "episodes": 763,
+        "successful_episodes": 125,
+        "best_completed": True,
+        "best_mean_reward": 2_289.8,
+        "best_progress": 3_112.0,
+        "best_program_steps": 759,
+        "best_program_runs": 224,
+        "archive_count": 236,
+        "archive_selection_count": 1_024,
+        "archive_visit_count": 8_192,
+        "archive_update_count": 73,
+        "archive_memory_bytes": 12 * 1024**2,
+        "archive_recent_new_cell_rate": 0.052,
+        "archive_recent_visit_window": 10_000,
+        "archive_visits_per_cell": 34.7,
+        "retained_count": 361,
+        "locked_count": 125,
+        "loop_fps": 4_372.0,
+    }
+    snapshot = snapshot_from_row(
+        algorithm="Go-Explore",
+        state="Level1-1",
+        seed=108,
+        lanes=64,
+        stop_rule="transition budget",
+        output=Path("runs/test/Level1-1.zip"),
+        total_timesteps=100_000_000,
+        row=row,
+    )
+
+    assert snapshot.archive_count == 236
+    assert snapshot.archive_selection_count == 1_024
+    assert snapshot.archive_visit_count == 8_192
+    assert snapshot.archive_update_count == 73
+    assert snapshot.archive_memory_bytes == 12 * 1024**2
+    assert snapshot.archive_recent_new_cell_rate == 0.052
+    assert snapshot.archive_recent_visit_window == 10_000
+    assert snapshot.archive_visits_per_cell == 34.7
+
+    async def exercise() -> None:
+        app = TrainingApp(snapshot, None)
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+
+            search = str(app.query_one("#search-stats").content)
+            best = str(app.query_one("#best-stats").content)
+            assert "Archive cells    236 · 12.0 MiB" in search
+            assert "Cell restores   1,024" in search
+            assert "Cell visits     8,192 · 34.7/cell" in search
+            assert "New-cell rate   5.2% / 10,000 visits" in search
+            assert "Archive updates 73" in search
+            assert "Replay chance" not in search
+            assert "Locked" not in search
+            assert "Score-first return" in best
+            assert "Best progress" in best
 
     asyncio.run(exercise())
 

@@ -13,7 +13,7 @@ import numpy as np
 
 from . import ACTION_SETS
 from .go_explore import GoExploreSearch
-from .jerk import run_directory_for_state
+from .jerk import JerkPolicy, run_directory_for_state
 from . import training_ui
 from .training_ui import (
     PlainReporter,
@@ -23,7 +23,13 @@ from .training_ui import (
     TrainingSnapshot,
 )
 from .training import (
+    GO_EXPLORE_CELL_FRAME_SHAPE,
+    GO_EXPLORE_CELL_HUD_MASK,
+    GO_EXPLORE_CELL_KEY_BYTES,
+    GO_EXPLORE_CELL_QUANTIZATION_BITS,
+    GO_EXPLORE_CELL_REPRESENTATION,
     MarioJerkTask,
+    REWARD_MODE_SCORE_FIRST,
     _play_command,
     _protect_existing_policies,
     _save_policy,
@@ -31,8 +37,34 @@ from .training import (
 
 
 LOGGER = logging.getLogger("go_explore_train")
-GO_EXPLORE_CELL_SIZE = 16
 GO_EXPLORE_EXPLORE_STEPS = 128
+ARCHIVE_GROWTH_EVENT_INTERVAL = 1_000
+
+
+def _policy(search: GoExploreSearch) -> JerkPolicy:
+    policy = search.policy()
+    policy.metadata.update(
+        {
+            "cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
+            "cell_frame_shape": list(GO_EXPLORE_CELL_FRAME_SHAPE),
+            "cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
+            "cell_encoding": "raw-bytes",
+            "cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
+        }
+    )
+    return policy
+
+
+def _run_config(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        **vars(args),
+        "go_explore_cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
+        "go_explore_cell_frame_shape": list(GO_EXPLORE_CELL_FRAME_SHAPE),
+        "go_explore_cell_hud_mask": list(GO_EXPLORE_CELL_HUD_MASK),
+        "go_explore_cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
+        "go_explore_cell_encoding": "raw-bytes",
+        "go_explore_cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
+    }
 
 
 def _metric_row(
@@ -41,9 +73,17 @@ def _metric_row(
     candidate = search.best_candidate()
     return {
         "algorithm": "go-explore",
+        "cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
         "timesteps": search.global_step,
         "episodes": search.completed_episodes,
         "archive_count": search.archive_count,
+        "archive_selection_count": search.archive_selection_count,
+        "archive_visit_count": search.archive_visit_count,
+        "archive_update_count": search.archive_update_count,
+        "archive_memory_bytes": search.archive_memory_bytes,
+        "archive_recent_new_cell_rate": search.archive_recent_new_cell_rate,
+        "archive_recent_visit_window": search.archive_recent_visit_window,
+        "archive_visits_per_cell": search.archive_visits_per_cell,
         "retained_count": search.retained_count,
         "locked_count": search.locked_count,
         "incomplete_retained_count": search.incomplete_retained_count,
@@ -108,6 +148,8 @@ def _run_training(
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
         action_set=args.action_set,
+        reward_mode=REWARD_MODE_SCORE_FIRST,
+        visual_cell_observations=True,
     )
     started_at = time.perf_counter()
     next_log = args.log_every
@@ -116,29 +158,29 @@ def _run_training(
     accepted_lane: int | None = None
     first_success_step: int | None = None
     stopped_on_completion = False
-    last_archive_count = 0
+    last_archive_event_count = 0
     last_best: tuple[bool, float, float] | None = None
     initial_snapshot = _initial_snapshot(args)
     last_ui_publish = float("-inf")
     reporter.start(initial_snapshot)
     try:
-        task.reset()
+        observations = task.reset()
         all_lanes = np.ones(args.lanes, dtype=np.bool_)
         search.initialize(
-            task.go_explore_cell_keys(args.go_explore_cell_size),
+            task.go_explore_cell_keys(observations),
             task.capture_snapshots(all_lanes),
         )
-        last_archive_count = search.archive_count
+        last_archive_event_count = search.archive_count
         while search.global_step < args.transitions and not stop_event.is_set():
             actions = search.next_actions()
-            _observations, rewards, failure_dones, records, successes = task.step(
+            observations, rewards, failure_dones, records, successes = task.step(
                 actions
             )
             search_dones = failure_dones | successes
             observation = search.observe(
                 rewards,
                 search_dones,
-                task.go_explore_cell_keys(args.go_explore_cell_size),
+                task.go_explore_cell_keys(observations),
                 records,
                 progresses=getattr(task, "max_global_x", None),
             )
@@ -160,7 +202,7 @@ def _run_training(
                 with successes_path.open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps(success_row, sort_keys=True) + "\n")
                 if completion.improved:
-                    _save_policy(search.policy(), policy_path, force=True)
+                    _save_policy(_policy(search), policy_path, force=True)
 
             if completion_events:
                 if not accepted:
@@ -168,7 +210,7 @@ def _run_training(
                     first_success_step = step
                     accepted_lane = int(np.flatnonzero(successes)[0])
                     accepted_path = run_dir / "checkpoints" / f"{args.state}-{step}.zip"
-                    _save_policy(search.policy(), accepted_path, force=args.overwrite)
+                    _save_policy(_policy(search), accepted_path, force=args.overwrite)
                     elapsed = time.perf_counter() - started_at
                     success_row = _metric_row(
                         search, elapsed=elapsed, accepted=accepted
@@ -221,7 +263,10 @@ def _run_training(
                                 elapsed,
                             )
                         )
-            if search.archive_count != last_archive_count:
+            if (
+                search.archive_count - last_archive_event_count
+                >= ARCHIVE_GROWTH_EVENT_INTERVAL
+            ):
                 events.append(
                     TrainingEvent(
                         "archive-growth",
@@ -229,7 +274,7 @@ def _run_training(
                         elapsed,
                     )
                 )
-                last_archive_count = search.archive_count
+                last_archive_event_count = search.archive_count
             if records:
                 candidate = search.best_candidate()
                 current_best = (
@@ -284,7 +329,7 @@ def _run_training(
             while next_checkpoint is not None and step >= next_checkpoint:
                 assert snapshot is not None
                 checkpoint_path = _save_policy(
-                    search.policy(),
+                    _policy(search),
                     run_dir / "checkpoints" / f"{args.state}-{step}.zip",
                     force=args.overwrite,
                 )
@@ -300,7 +345,7 @@ def _run_training(
                 next_checkpoint += args.checkpoint_every
 
         candidate = search.best_candidate()
-        final_policy = search.policy()
+        final_policy = _policy(search)
         user_stopped = stop_event.is_set()
         final_path = None
         if not user_stopped or candidate is not None:
@@ -356,7 +401,13 @@ def _run_training(
             else f"Go-Explore exhausted {args.transitions} transitions without "
             f"a {args.state} success event"
         ),
-        extra_summary_rows=(("Archive cells", f"{search.archive_count:,}"),),
+        extra_summary_rows=(
+            ("Archive cells", f"{search.archive_count:,}"),
+            (
+                "Archive memory",
+                training_ui.format_byte_size(search.archive_memory_bytes),
+            ),
+        ),
     )
     reporter.update(
         training_ui.snapshot_from_row(
@@ -388,7 +439,6 @@ def _validate_args(args: argparse.Namespace) -> None:
             args.max_episode_steps,
             args.log_every,
             args.run_duration_max,
-            args.go_explore_cell_size,
             args.go_explore_explore_steps,
         )
         <= 0
@@ -400,7 +450,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         args.stall_steps < 0
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
-        or args.step_cost < 0
+        or (args.step_cost is not None and args.step_cost < 0)
     ):
         raise SystemExit("Go-Explore non-negative sizes must not be negative")
     if args.run_duration_mean < 1.0:
@@ -420,7 +470,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")
     (run_dir / "successes.jsonl").write_text("", encoding="utf-8")
     (run_dir / "run_config.json").write_text(
-        json.dumps(vars(args), default=str, indent=2, sort_keys=True) + "\n",
+        json.dumps(_run_config(args), default=str, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
 

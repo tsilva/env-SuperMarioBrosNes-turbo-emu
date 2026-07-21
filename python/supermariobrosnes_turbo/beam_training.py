@@ -445,7 +445,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
         or args.improvement_protected_prefix_runs < 0
-        or args.step_cost < 0
+        or (args.step_cost is not None and args.step_cost < 0)
     ):
         raise SystemExit("beam non-negative sizes must not be negative")
     if args.run_duration_mean < 1.0:

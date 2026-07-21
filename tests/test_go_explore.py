@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from supermariobrosnes_turbo.go_explore import GoExploreSearch
-from supermariobrosnes_turbo.jerk import JerkPolicy
+from supermariobrosnes_turbo import go_explore as go_explore_module
+from supermariobrosnes_turbo.go_explore import GoExploreCandidate, GoExploreSearch
+from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy
 
 
 ACTIONS = ("noop", "right", "a")
@@ -22,6 +23,38 @@ def _search(*, n_envs: int = 1, explore_steps: int = 4) -> GoExploreSearch:
         run_duration_mean=1.0,
         run_duration_max=1,
     )
+
+
+def test_go_explore_candidate_canonicalizes_external_trajectories_once() -> None:
+    candidate = GoExploreCandidate(
+        runs=(ActionRun(1, 2), ActionRun(1, 3), ActionRun(2, 4)),
+        episode_return=1.0,
+        progress=2.0,
+    )
+
+    assert candidate.runs == (ActionRun(1, 5), ActionRun(2, 4))
+    assert candidate.step_count == 9
+
+
+def test_go_explore_observe_does_not_recanonicalize_lane_trajectories(
+    monkeypatch,
+) -> None:
+    search = _search()
+    search.initialize(("root",), ("root-snapshot",))
+
+    def unexpected_canonicalization(_runs):
+        raise AssertionError("canonical lane trajectory was rebuilt")
+
+    monkeypatch.setattr(
+        go_explore_module, "canonicalize_runs", unexpected_canonicalization
+    )
+    search.next_actions()
+    observation = search.observe([1.0], [False], ["new"], progresses=[16.0])
+    search.commit_archive(("new-snapshot",))
+
+    assert observation.archive_mask.tolist() == [True]
+    assert search.archive["new"].step_count == 1
+    assert search.best_candidate().step_count == 1
 
 
 def test_go_explore_archives_best_batch_trajectory_for_each_cell() -> None:
@@ -45,6 +78,28 @@ def test_go_explore_archives_best_batch_trajectory_for_each_cell() -> None:
     assert cell.visits == 2
 
 
+def test_go_explore_replaces_a_shorter_cell_path_with_higher_return() -> None:
+    search = _search(explore_steps=4)
+    search.initialize(("root",), ("root-snapshot",))
+
+    search.next_actions()
+    first = search.observe([1.0], [False], ["cell"], progresses=[10.0])
+    search.commit_archive(("shorter-snapshot",))
+    assert first.archive_mask.tolist() == [True]
+    assert search.archive["cell"].step_count == 1
+
+    search.next_actions()
+    second = search.observe([2.0], [False], ["cell"], progresses=[10.0])
+    search.commit_archive(("higher-return-snapshot",))
+
+    assert second.archive_mask.tolist() == [True]
+    cell = search.archive["cell"]
+    assert cell.snapshot == "higher-return-snapshot"
+    assert cell.episode_return == 3.0
+    assert cell.step_count == 2
+    assert search.archive_update_count == 1
+
+
 def test_go_explore_restores_archived_cells_after_exploration_horizon() -> None:
     search = _search(explore_steps=1)
     search.initialize(("root",), ("root-snapshot",))
@@ -62,6 +117,71 @@ def test_go_explore_restores_archived_cells_after_exploration_horizon() -> None:
         "root-snapshot",
         "new-snapshot",
     }
+    assert search.archive_count == 2
+    assert search.archive_selection_count == 1
+    assert search.archive_visit_count == 2
+    assert search.archive_update_count == 0
+
+
+def test_go_explore_reports_archive_memory_including_native_snapshots() -> None:
+    search = _search(explore_steps=1)
+    search.initialize(
+        ("root",),
+        (SimpleNamespace(native=SimpleNamespace(nbytes=4_096)),),
+    )
+    initial_bytes = search.archive_memory_bytes
+
+    assert initial_bytes >= 4_096
+
+    search.next_actions()
+    observation = search.observe([1.0], [False], ["new"], progresses=[16.0])
+    search.commit_archive(
+        (SimpleNamespace(native=SimpleNamespace(nbytes=8_192)),)
+    )
+
+    assert observation.archive_mask.tolist() == [True]
+    assert search.archive_memory_bytes >= initial_bytes + 8_192
+
+
+def test_go_explore_updates_archive_memory_without_rescanning_archive(
+    monkeypatch,
+) -> None:
+    search = _search(explore_steps=1)
+    search.initialize(("root",), ("root-snapshot",))
+    original_deep_sizeof = go_explore_module._deep_sizeof
+    scanned_archive = False
+
+    def tracked_deep_sizeof(value, seen=None):
+        nonlocal scanned_archive
+        scanned_archive |= value is search.archive
+        return original_deep_sizeof(value, seen)
+
+    monkeypatch.setattr(go_explore_module, "_deep_sizeof", tracked_deep_sizeof)
+    search.next_actions()
+    search.observe([1.0], [False], ["new"], progresses=[16.0])
+    search.commit_archive(("new-snapshot",))
+
+    assert not scanned_archive
+
+
+def test_go_explore_tracks_recent_new_cells_per_visit() -> None:
+    search = _search()
+    search.initialize(("root",), ("root-snapshot",))
+
+    search.next_actions()
+    search.observe([1.0], [False], ["new"], progresses=[16.0])
+    search.commit_archive(("new-snapshot",))
+
+    assert search.archive_recent_visit_window == 1
+    assert search.archive_recent_new_cell_rate == 1.0
+    assert search.archive_visits_per_cell == 1.0
+
+    search.next_actions()
+    search.observe([0.0], [False], ["new"], progresses=[16.0])
+
+    assert search.archive_recent_visit_window == 2
+    assert search.archive_recent_new_cell_rate == 0.5
+    assert search.archive_visits_per_cell == 1.5
 
 
 def test_go_explore_locks_successes_and_selects_them_only_by_return() -> None:

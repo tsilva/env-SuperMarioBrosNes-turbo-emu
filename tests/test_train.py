@@ -23,11 +23,16 @@ from supermariobrosnes_turbo.jerk import (
     truncate_runs,
 )
 from supermariobrosnes_turbo.training import (
+    GO_EXPLORE_CELL_FRAME_SHAPE,
+    GO_EXPLORE_CELL_KEY_BYTES,
     MarioJerkTask,
+    REWARD_MODE_SCORE_FIRST,
+    go_explore_frame_bytes,
     mark_new_scroll_transitions,
     episode_boundary,
     exploit_probability,
     sanitize_progress_x,
+    score_first_step_cost,
     shape_step_rewards,
 )
 
@@ -94,6 +99,70 @@ def test_jerk_task_accepts_a_state_general_down_action_set(monkeypatch) -> None:
     )
 
     assert task.action_names == ACTION_SETS["simple-down"]
+
+
+def test_go_explore_task_uses_native_masked_downscaled_observations(
+    monkeypatch,
+) -> None:
+    class FakeNative:
+        def __init__(self, *args, **kwargs) -> None:
+            del args
+            self.config = kwargs
+            self.action_meanings = ACTION_SETS[kwargs["use_restricted_actions"]]
+
+    monkeypatch.setattr(train_module, "SuperMarioBrosNesTurboVecEnv", FakeNative)
+
+    task = MarioJerkTask(
+        state="Level1-1",
+        state_dir=None,
+        rom_path=None,
+        seed=0,
+        n_envs=2,
+        max_episode_steps=100,
+        stall_steps=10,
+        step_cost=0.1,
+        visual_cell_observations=True,
+    )
+
+    assert task.native.config["obs_crop"] == (32, 0, 0, 0)
+    assert task.native.config["obs_crop_mode"] == "mask"
+    assert task.native.config["obs_resize"] == GO_EXPLORE_CELL_FRAME_SHAPE
+    assert task.native.config["obs_resize_algorithm"] == "area"
+    assert task.native.config["obs_grayscale"] is True
+    assert task.native.config["frame_stack"] == 1
+
+
+def test_go_explore_frame_bytes_quantize_each_lane_without_hashing() -> None:
+    observations = np.zeros((3, 1, *GO_EXPLORE_CELL_FRAME_SHAPE), dtype=np.uint8)
+    observations[1, 0, 3, 4] = 31
+    observations[2, 0, 3, 4] = 32
+
+    encoded = go_explore_frame_bytes(observations)
+
+    assert len(encoded) == 3
+    assert all(len(frame) == GO_EXPLORE_CELL_KEY_BYTES for frame in encoded)
+    assert encoded[0] == encoded[1]
+    assert encoded[0] != encoded[2]
+    quantized = np.frombuffer(encoded[2], dtype=np.uint8).reshape(
+        GO_EXPLORE_CELL_FRAME_SHAPE
+    )
+    assert quantized[3, 4] == 1
+
+
+def test_go_explore_cell_keys_use_only_level_sublevel_and_frame_bytes() -> None:
+    task = MarioJerkTask.__new__(MarioJerkTask)
+    task.n_envs = 2
+    task.previous_level_hi = np.asarray([1, 2], dtype=np.int16)
+    task.previous_level_lo = np.asarray([3, 4], dtype=np.int16)
+    task.previous_x = np.asarray([100, 2_000], dtype=np.int64)
+    observations = np.zeros((2, 1, *GO_EXPLORE_CELL_FRAME_SHAPE), dtype=np.uint8)
+
+    keys = task.go_explore_cell_keys(observations)
+
+    assert keys[0][:2] == (1, 3)
+    assert keys[1][:2] == (2, 4)
+    assert keys[0][2] == keys[1][2]
+    assert len(keys[0]) == 3
 
 
 def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:
@@ -233,6 +302,24 @@ def test_step_reward_charges_time_on_every_transition() -> None:
     np.testing.assert_allclose(rewards, [-0.1, 10.9, -25.1])
 
 
+def test_score_first_reward_makes_time_only_a_score_tiebreaker() -> None:
+    max_episode_steps = 4_500
+    step_cost = score_first_step_cost(max_episode_steps)
+    rewards = shape_step_rewards(
+        np.asarray([500, 0]),
+        np.asarray([1, 0]),
+        np.asarray([False, False]),
+        step_cost=step_cost,
+        reward_mode=REWARD_MODE_SCORE_FIRST,
+    )
+
+    np.testing.assert_allclose(rewards, [1.0 - step_cost, -step_cost])
+    slow_one_point = 1.0 - max_episode_steps * step_cost
+    fast_zero_points = -step_cost
+    assert slow_one_point > fast_zero_points
+    assert 1_000.0 - 1_000 * step_cost > 1_000.0 - 1_200 * step_cost
+
+
 def test_training_flags_stop_and_protect_policies_by_default() -> None:
     parser = train_module.build_parser()
 
@@ -246,6 +333,20 @@ def test_training_flags_stop_and_protect_policies_by_default() -> None:
     assert defaults.overwrite is False
     assert continuous.continue_after_completion is True
     assert continuous.overwrite is True
+
+
+def test_algorithm_defaults_make_go_explore_time_a_score_tiebreaker() -> None:
+    parser = train_module.build_parser()
+    beam = parser.parse_args(["Level1-1", "--algorithm", "beam"])
+    go_explore = parser.parse_args(["Level1-1", "--algorithm", "go-explore"])
+
+    train_module._apply_algorithm_defaults(parser, beam)
+    train_module._apply_algorithm_defaults(parser, go_explore)
+
+    assert beam.step_cost == train_module.STEP_COST
+    assert go_explore.step_cost == pytest.approx(
+        score_first_step_cost(go_explore.max_episode_steps)
+    )
 
 
 def test_active_best_candidate_carries_observed_progress() -> None:

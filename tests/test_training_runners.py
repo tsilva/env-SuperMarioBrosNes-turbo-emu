@@ -51,11 +51,9 @@ class _FakeFailureTask:
     def restore_lanes(self, _mask, _snapshots) -> None:
         return None
 
-    def go_explore_cell_keys(self, bucket_size: int):
-        return tuple(
-            (0, 0, int(self.max_global_x[lane]) // bucket_size)
-            for lane in range(self.n_envs)
-        )
+    def go_explore_cell_keys(self, observations):
+        del observations
+        return tuple((0, 0, b"visual-cell") for _lane in range(self.n_envs))
 
     def close(self) -> None:
         self.closed = True
@@ -140,8 +138,6 @@ TRAINERS = [
         [
             "--algorithm",
             "go-explore",
-            "--go-explore-cell-size",
-            "16",
             "--go-explore-explore-steps",
             "1",
         ],
@@ -279,6 +275,19 @@ def test_both_trainers_finish_success_and_budget_paths(
     assert result.policy_path is not None and result.policy_path.exists()
     final_row = json.loads(output.joinpath("episodes.jsonl").read_text())
     assert final_row["stop_reason"] == expected_reason
+    if module is train_go_explore:
+        policy = JerkPolicy.load(result.policy_path)
+        run_config = train_go_explore._run_config(args)
+        assert policy.metadata["cell_representation"] == (
+            "level-sublevel-gray8x8-q3-bytes"
+        )
+        assert policy.metadata["cell_encoding"] == "raw-bytes"
+        assert policy.metadata["cell_key_bytes"] == 64
+        assert run_config["go_explore_cell_frame_shape"] == [8, 8]
+        assert run_config["go_explore_cell_hud_mask"] == [32, 0, 0, 0]
+        assert run_config["go_explore_cell_quantization_bits"] == 3
+        assert run_config["go_explore_cell_encoding"] == "raw-bytes"
+        assert run_config["go_explore_cell_key_bytes"] == 64
 
 
 @pytest.mark.parametrize(("module", "extra_args"), TRAINERS)
