@@ -52,7 +52,7 @@ def payload(backend: str, shape: int, *, sps: float = 1000.0) -> dict[str, objec
             "resize_height": 84,
             "obs_resize_algorithm": "area",
             "obs_layout": "chw",
-            "action_set": "simple",
+            "action_set": "basic",
             "action": None,
             "actions": ["noop", "right", "right_b", "right_a"],
             "action_seed": 0,

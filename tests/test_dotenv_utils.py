@@ -119,7 +119,7 @@ def test_direct_benchmark_results_record_rom_identity(
         obs_crop_mode="mask",
         resize_width=84,
         resize_height=84,
-        action_set="simple",
+        action_set="basic",
         action=None,
         parsed_actions=DEFAULT_BENCHMARK_ACTIONS,
         action_seed=DEFAULT_ACTION_SEED,
@@ -849,7 +849,7 @@ def test_pypi_wrappers_capture_load_after_warmups(
         ):
             assert expected in measured_command
         for expected in (
-            "--action-set simple",
+            "--action-set basic",
             "--actions",
             "noop,right,right_b,right_a",
             "--action-seed 0",

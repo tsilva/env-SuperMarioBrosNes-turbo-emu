@@ -47,7 +47,13 @@ def test_packaged_action_tables_match_stable_retro_integration_metadata() -> Non
     if "action_sets" not in stable_metadata:
         pytest.skip("installed stable-retro-turbo predates action-table metadata")
 
-    assert turbo_metadata["action_sets"] == stable_metadata["action_sets"]
+    def tables(metadata: dict[str, object]) -> set[tuple[tuple[str, ...], ...]]:
+        return {
+            tuple(tuple(action) for action in table)
+            for table in metadata["action_sets"].values()
+        }
+
+    assert tables(turbo_metadata) == tables(stable_metadata)
 
 
 def expected_controller_byte(public_bits: int) -> int:

@@ -145,7 +145,7 @@ def test_beam_cli_defaults_to_canonical_output_and_shared_action_contract() -> N
     assert args.beam_width == 16
     assert args.protected_prefix_runs == 8
     assert args.improvement_protected_prefix_runs == 0
-    assert args.action_set == "simple-down"
+    assert args.action_set == "standard"
     assert args.initial_policy is None
     assert args.continue_after_completion is False
     assert run_directory_for_state("Level1-1") == Path("runs/Level1-1")
@@ -350,7 +350,7 @@ def test_beam_warm_start_replays_the_seed_program_exactly_on_one_lane() -> None:
     assert actions == [1, 1, 2]
 
 
-def test_beam_remaps_simple_warm_start_into_simple_down_by_action_name() -> None:
+def test_beam_remaps_basic_warm_start_into_standard_by_action_name() -> None:
     policy = JerkPolicy(
         action_names=ACTIONS,
         action_runs=_runs((1, 2), (6, 1)),
@@ -359,7 +359,7 @@ def test_beam_remaps_simple_warm_start_into_simple_down_by_action_name() -> None
 
     remapped = beam_training._remap_policy_runs(
         policy,
-        tuple(training.ACTION_SETS["simple-down"]),
+        tuple(training.ACTION_SETS["standard"]),
     )
 
     assert remapped == _runs((1, 2), (6, 1))

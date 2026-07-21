@@ -60,16 +60,16 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     assert args.algorithm == "beam"
     assert args.transitions == 100
     assert args.lanes == 4
-    assert args.action_set == "simple-down"
+    assert args.action_set == "standard"
     assert args.continue_after_completion
     assert args.overwrite
     with pytest.raises(SystemExit):
         parser.parse_args(["Level1-1", "--timesteps", "100"])
 
     with_down = parser.parse_args(
-        ["Level8-4", "--action-set", "simple-down"]
+        ["Level8-4", "--action-set", "standard"]
     )
-    assert with_down.action_set == "simple-down"
+    assert with_down.action_set == "standard"
 
 
 def test_algorithm_specific_options_are_rejected() -> None:
@@ -95,7 +95,7 @@ def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
     training._apply_algorithm_defaults(parser, args)
 
     assert args.go_explore_explore_steps == 128
-    assert args.action_set == "simple-down"
+    assert args.action_set == "standard"
     assert args.beam_width is None
     assert args.retained_limit is None
 
@@ -245,7 +245,7 @@ def test_train_without_state_dispatches_all_canonical_levels(monkeypatch) -> Non
     )
 
     assert training.main([]) == 1
-    assert selected_action_sets == ["simple-down"]
+    assert selected_action_sets == ["standard"]
 
 
 def test_all_level_training_preserves_an_explicit_action_set(monkeypatch) -> None:
@@ -263,5 +263,5 @@ def test_all_level_training_preserves_an_explicit_action_set(monkeypatch) -> Non
         lambda args, _parser: selected_action_sets.append(args.action_set) or 0,
     )
 
-    assert training.main(["--action-set", "simple"]) == 0
-    assert selected_action_sets == ["simple"]
+    assert training.main(["--action-set", "basic"]) == 0
+    assert selected_action_sets == ["basic"]

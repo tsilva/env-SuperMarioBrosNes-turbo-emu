@@ -64,9 +64,9 @@ def test_jerk_task_uses_minimal_native_observation_and_default_action_set(
         step_cost=0.1,
     )
 
-    assert task.native.action_preset == "simple-down"
+    assert task.native.action_preset == "standard"
     assert task.native.single_action_space.n == 8
-    assert task.action_names == ACTION_SETS["simple-down"]
+    assert task.action_names == ACTION_SETS["standard"]
     assert task.native.config["render_mode"] is None
     assert task.native.config["obs_crop"] == (0, 223, 0, 239)
     assert "obs_resize" not in task.native.config
@@ -95,10 +95,10 @@ def test_jerk_task_accepts_a_state_general_down_action_set(monkeypatch) -> None:
         max_episode_steps=100,
         stall_steps=10,
         step_cost=0.1,
-        action_set="simple-down",
+        action_set="standard",
     )
 
-    assert task.action_names == ACTION_SETS["simple-down"]
+    assert task.action_names == ACTION_SETS["standard"]
 
 
 def test_go_explore_task_uses_native_masked_downscaled_observations(
@@ -793,7 +793,7 @@ def test_named_run_checkpoint_round_trip(tmp_path) -> None:
     assert actions == [1, 1, 3, 0]
     assert policy.timesteps == 123
     assert policy.metadata["terminate_on_level_change"] is False
-    assert policy.action_set == "simple-down"
+    assert policy.action_set == "standard"
 
 
 def test_exploit_probability_matches_rlab_schedule() -> None:

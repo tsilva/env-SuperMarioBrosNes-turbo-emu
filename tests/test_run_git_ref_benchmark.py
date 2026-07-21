@@ -71,7 +71,7 @@ def benchmark_raw_config(
         "resize_height": 84,
         "obs_resize_algorithm": "area",
         "obs_layout": "chw",
-        "action_set": "simple",
+        "action_set": "basic",
         "action": None,
         "actions": list(ACTION_NAMES),
         "action_seed": ACTION_SEED,
@@ -424,7 +424,7 @@ def test_benchmark_command_pins_canonical_workload_flags(tmp_path: Path) -> None
         "--resize-width 84",
         "--resize-height 84",
         "--states Level1-1,Level1-2,Level1-3,Level1-4",
-        "--action-set simple --actions noop,right,right_b,right_a",
+        "--action-set basic --actions noop,right,right_b,right_a",
         "--action-seed 0",
         "--no-start-game",
     ):

@@ -163,19 +163,19 @@ def test_player_activates_policy_for_new_level(tmp_path: Path) -> None:
     target_path = policy_path_for_state("Level1-2", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
     JerkPolicy(
-        action_names=ACTION_SETS["simple"],
+        action_names=ACTION_SETS["basic"],
         action_runs=(ActionRun(2, 1), ActionRun(3, 1)),
         fallback_action=0,
     ).save(target_path)
 
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = SimpleNamespace(
-        action_set="simple",
+        action_set="basic",
         backend="native",
         level_policy_root=tmp_path,
     )
-    player.requested_action_set = "simple"
-    player.action_names = ACTION_SETS["simple"]
+    player.requested_action_set = "basic"
+    player.action_names = ACTION_SETS["basic"]
 
     assert player.activate_level_policy((0, 1))
     assert player.current_policy_level == "Level1-2"
@@ -190,7 +190,7 @@ def test_player_infers_each_automatic_level_policy_action_set(
     target_path = policy_path_for_state("Level8-4", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
     JerkPolicy(
-        action_names=ACTION_SETS["simple-down"],
+        action_names=ACTION_SETS["standard"],
         action_runs=(ActionRun(7, 1),),
         fallback_action=0,
     ).save(target_path)
@@ -202,10 +202,10 @@ def test_player_infers_each_automatic_level_policy_action_set(
         level_policy_root=tmp_path,
     )
     player.requested_action_set = None
-    player.action_names = ACTION_SETS["simple"]
+    player.action_names = ACTION_SETS["basic"]
 
     assert player.activate_level_policy((7, 3))
-    assert player.action_names == ACTION_SETS["simple-down"]
+    assert player.action_names == ACTION_SETS["standard"]
     assert player.action_masks.shape == (8, 9)
     action, _state = player.model.predict(np.zeros((1, 1), dtype=np.uint8))
     assert action.tolist() == [7]
@@ -217,21 +217,21 @@ def test_player_rejects_automatic_policy_outside_explicit_action_set(
     target_path = policy_path_for_state("Level8-4", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
     JerkPolicy(
-        action_names=ACTION_SETS["simple-down"],
+        action_names=ACTION_SETS["standard"],
         action_runs=(ActionRun(7, 1),),
         fallback_action=0,
     ).save(target_path)
 
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = SimpleNamespace(
-        action_set="simple",
+        action_set="basic",
         backend="native",
         level_policy_root=tmp_path,
     )
-    player.requested_action_set = "simple"
-    player.action_names = ACTION_SETS["simple"]
+    player.requested_action_set = "basic"
+    player.action_names = ACTION_SETS["basic"]
 
-    with pytest.raises(ValueError, match="does not match --action-set='simple'"):
+    with pytest.raises(ValueError, match="does not match --action-set='basic'"):
         player.activate_level_policy((7, 3))
 
 
@@ -241,10 +241,10 @@ def test_player_keeps_current_policy_when_next_level_is_untrained(
     current = object()
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = SimpleNamespace(
-        action_set="simple",
+        action_set="basic",
         level_policy_root=tmp_path,
     )
-    player.action_names = ACTION_SETS["simple"]
+    player.action_names = ACTION_SETS["basic"]
     player.model = current
 
     assert not player.activate_level_policy((8, 8))
