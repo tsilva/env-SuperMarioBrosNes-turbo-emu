@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.4.1 - 2026-07-21
+
 - Restore Python 3.9 compatibility for the public `ActionTable` alias and the
   release distribution smoke test.
 
