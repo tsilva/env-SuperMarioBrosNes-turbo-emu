@@ -141,7 +141,9 @@ smb-turbo play
 ```
 
 **Training** searches observation-free `(action, duration)` programs with beam
-search and the `simple-down` action set by default. It stops on the first level
+search and the `simple-down` action set by default. Beam ranks raw game-score
+gains first and charges each step `1 / (max_episode_steps + 1)`, so higher score
+always wins while fewer steps break equal-score ties. It stops on the first level
 completion; pass `--continue-after-completion` to turn the remaining transition
 budget into an anytime improvement search. Continued runs keep the best completed
 path locked, reserve beam capacity for incomplete alternatives, and systematically

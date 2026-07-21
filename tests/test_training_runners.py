@@ -180,6 +180,45 @@ def test_default_beam_run_overwrites_existing_canonical_policy(
     assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "beam"
 
 
+def test_beam_uses_go_explore_score_first_shaped_return(
+    tmp_path: Path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def task_factory(**kwargs):
+        captured.update(kwargs)
+        return _FakeSuccessTask(**kwargs)
+
+    output = tmp_path / "score-first-beam"
+    output.mkdir()
+    monkeypatch.setattr(train_beam, "MarioJerkTask", task_factory)
+    args = _parse_args(
+        [
+            "Level1-1",
+            "--algorithm",
+            "beam",
+            "--output",
+            str(output),
+            "--transitions",
+            "1",
+            "--lanes",
+            "1",
+            "--log-every",
+            "10",
+        ]
+    )
+
+    result = train_beam._run_training(
+        args, _NullReporter(), threading.Event()
+    )
+
+    assert result.accepted
+    assert captured["reward_mode"] == train.REWARD_MODE_SCORE_FIRST
+    assert captured["step_cost"] == pytest.approx(
+        train.score_first_step_cost(args.max_episode_steps)
+    )
+
+
 def test_continued_beam_publishes_later_better_completion_and_archives_all(
     tmp_path: Path, monkeypatch
 ) -> None:

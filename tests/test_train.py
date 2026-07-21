@@ -335,15 +335,20 @@ def test_training_flags_stop_and_protect_policies_by_default() -> None:
     assert continuous.overwrite is True
 
 
-def test_algorithm_defaults_make_go_explore_time_a_score_tiebreaker() -> None:
+def test_algorithm_defaults_make_beam_and_go_explore_score_first() -> None:
     parser = train_module.build_parser()
+    jerk = parser.parse_args(["Level1-1", "--algorithm", "jerk"])
     beam = parser.parse_args(["Level1-1", "--algorithm", "beam"])
     go_explore = parser.parse_args(["Level1-1", "--algorithm", "go-explore"])
 
+    train_module._apply_algorithm_defaults(parser, jerk)
     train_module._apply_algorithm_defaults(parser, beam)
     train_module._apply_algorithm_defaults(parser, go_explore)
 
-    assert beam.step_cost == train_module.STEP_COST
+    assert jerk.step_cost == train_module.STEP_COST
+    assert beam.step_cost == pytest.approx(
+        score_first_step_cost(beam.max_episode_steps)
+    )
     assert go_explore.step_cost == pytest.approx(
         score_first_step_cost(go_explore.max_episode_steps)
     )

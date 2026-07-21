@@ -24,6 +24,7 @@ from .training_ui import (
 )
 from .training import (
     N_ENVS,
+    REWARD_MODE_SCORE_FIRST,
     MarioJerkTask,
     _play_command,
     _protect_existing_policies,
@@ -146,6 +147,7 @@ def _run_training(
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
         action_set=args.action_set,
+        reward_mode=REWARD_MODE_SCORE_FIRST,
     )
     started_at = time.perf_counter()
     next_log = args.log_every

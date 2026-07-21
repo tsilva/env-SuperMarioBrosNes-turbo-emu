@@ -642,8 +642,8 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         type=float,
         default=None,
         help=(
-            "per-step return charge; defaults to 0.1 for beam/JERK and "
-            "1 / (max episode steps + 1) for Go-Explore"
+            "per-step return charge; defaults to 0.1 for JERK and "
+            "1 / (max episode steps + 1) for beam/Go-Explore"
         ),
     )
 
@@ -1094,7 +1094,7 @@ def _apply_algorithm_defaults(
     if args.step_cost is None:
         args.step_cost = (
             score_first_step_cost(args.max_episode_steps)
-            if args.algorithm == "go-explore"
+            if args.algorithm in {"beam", "go-explore"}
             else STEP_COST
         )
 
