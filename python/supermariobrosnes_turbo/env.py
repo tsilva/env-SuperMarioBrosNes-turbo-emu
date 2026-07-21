@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from enum import Enum, Flag
+from enum import Enum, Flag, IntEnum
 import gzip
 from importlib import resources
 import json
@@ -15,7 +15,10 @@ from gymnasium import spaces
 from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
-from ._supermariobrosnes_turbo import _RetroVecEnv as _CoreRetroVecEnv
+from ._supermariobrosnes_turbo import (
+    _RetroVecEnv as _CoreRetroVecEnv,
+    extra_info_descriptors as _native_extra_info_descriptors,
+)
 from .action_tables import (
     ActionTable,
     load_action_tables,
@@ -29,7 +32,7 @@ VISIBLE_HEIGHT = 224
 NES_BUTTONS = ("B", None, "SELECT", "START", "UP", "DOWN", "LEFT", "RIGHT", "A")
 BUTTON_TO_INDEX = {name: index for index, name in enumerate(NES_BUTTONS) if name is not None}
 ACTION_TABLES, ACTION_SETS, ACTION_BUTTONS = load_action_tables(NES_BUTTONS)
-ACTION_MEANINGS = ACTION_SETS["simple"]
+ACTION_MEANINGS = ACTION_SETS["basic"]
 CORE_ACTION_MEANINGS = tuple(ACTION_BUTTONS)
 MASK_BIT_WEIGHTS = (1 << np.arange(len(NES_BUTTONS), dtype=np.uint16)).astype(np.uint16)
 STABLE_RETRO_BUTTON_COMBOS = ((0, 16, 32), (0, 64, 128), (0, 1, 256, 257))
@@ -48,6 +51,21 @@ INFO_KEYS = (
     "xscrollHi",
     "xscrollLo",
 )
+_EXTRA_INFO_DESCRIPTORS = tuple(
+    {
+        "id": int(identifier),
+        "name": str(name),
+        "width": int(width),
+        "dtype": np.dtype(dtype),
+        "enum_name": enum_name,
+    }
+    for identifier, name, width, dtype, enum_name in _native_extra_info_descriptors()
+)
+EXTRA_INFO_KEYS = tuple(descriptor["name"] for descriptor in _EXTRA_INFO_DESCRIPTORS)
+AVAILABLE_INFO_KEYS = INFO_KEYS + EXTRA_INFO_KEYS
+_EXTRA_INFO_BY_NAME = {
+    descriptor["name"]: descriptor for descriptor in _EXTRA_INFO_DESCRIPTORS
+}
 _BASE_INFO_ARRAYS = (
     ("x_pos", "_x_pos"),
     ("coins", "_coins"),
@@ -70,6 +88,60 @@ class Actions(Enum):
     FILTERED = 1
     DISCRETE = 2
     MULTI_DISCRETE = 3
+
+
+class AreaType(IntEnum):
+    UNKNOWN = -1
+    WATER = 0
+    GROUND = 1
+    UNDERGROUND = 2
+    CASTLE = 3
+
+
+class PlayerMotion(IntEnum):
+    UNKNOWN = -1
+    GROUND = 0
+    JUMPING_OR_SWIMMING = 1
+    FALLING = 2
+    CLIMBING = 3
+
+
+class PlayerPower(IntEnum):
+    UNKNOWN = -1
+    SMALL = 0
+    BIG = 1
+    FIRE = 2
+
+
+class Direction(IntEnum):
+    LEFT = -1
+    NONE = 0
+    RIGHT = 1
+
+
+class GameMode(IntEnum):
+    UNKNOWN = -1
+    TITLE = 0
+    GAMEPLAY = 1
+    VICTORY = 2
+    GAME_OVER = 3
+
+
+class PlayerTask(IntEnum):
+    UNKNOWN = -1
+    ENTRANCE_TIMER_SETUP = 0
+    VINE_AUTO_CLIMB = 1
+    VERTICAL_PIPE_ENTRY = 2
+    SIDE_PIPE_ENTRY = 3
+    FLAGPOLE_SLIDE = 4
+    LEVEL_END = 5
+    LOSE_LIFE = 6
+    PLAYER_ENTRANCE = 7
+    PLAYER_CONTROL = 8
+    CHANGE_SIZE = 9
+    INJURY_BLINK = 10
+    PLAYER_DEATH = 11
+    FIRE_FLOWER_TRANSFORM = 12
 
 
 class State(Enum):
@@ -351,7 +423,12 @@ def _normalize_info_keys(info_keys: Any) -> list[str] | None:
         return None
     if isinstance(info_keys, str):
         raise ValueError("info_filter keys must be a sequence of strings, not a string")
-    return [str(key) for key in info_keys]
+    requested = [str(key) for key in info_keys]
+    unknown = sorted(set(requested) - set(AVAILABLE_INFO_KEYS))
+    if unknown:
+        raise ValueError(f"unknown info key(s): {', '.join(unknown)}")
+    selected = set(requested)
+    return [key for key in AVAILABLE_INFO_KEYS if key in selected]
 
 
 def _normalize_info_filter(info_filter: Any) -> tuple[str, list[str] | None]:
@@ -581,6 +658,19 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.obs_layout = _normalize_obs_layout(obs_layout)
         self.obs_copy, self._copy_obs, self._unsafe_view = _normalize_obs_copy(obs_copy)
         self._info_mode, self._info_keys = _normalize_info_filter(info_filter)
+        selected_extra_names = (
+            set()
+            if self._info_mode == "none" or self._info_keys is None
+            else set(self._info_keys) & set(EXTRA_INFO_KEYS)
+        )
+        self._selected_extra_descriptors = tuple(
+            descriptor
+            for descriptor in _EXTRA_INFO_DESCRIPTORS
+            if descriptor["name"] in selected_extra_names
+        )
+        selected_extra_ids = [
+            descriptor["id"] for descriptor in self._selected_extra_descriptors
+        ]
         self.reward_clip, self.reward_clip_low, self.reward_clip_high = _normalize_reward_clip(reward_clip)
         self.obs_resize_algorithm = _normalize_resize_algorithm(obs_resize_algorithm)
         self.obs_crop_mode = normalized_crop_mode
@@ -615,6 +705,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             normalized_crop_fill,
             self.obs_resize_algorithm,
             num_threads,
+            selected_extra_ids,
         )
         self._state_catalog = tuple(state_names)
         self.num_envs = self._core.num_envs
@@ -702,6 +793,22 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._time = np.empty((self.num_envs,), dtype=np.uint16)
         self._xscroll_hi = np.empty((self.num_envs,), dtype=np.uint8)
         self._xscroll_lo = np.empty((self.num_envs,), dtype=np.uint8)
+        extra_width = sum(
+            descriptor["width"] for descriptor in self._selected_extra_descriptors
+        )
+        if self._core.extra_info_shape() != (self.num_envs, extra_width):
+            raise RuntimeError("native extra info shape does not match selected descriptors")
+        self._extra_info = (
+            np.empty((self.num_envs, extra_width), dtype=np.int64)
+            if extra_width
+            else None
+        )
+        self._extra_info_offsets: dict[str, tuple[int, int]] = {}
+        offset = 0
+        for descriptor in self._selected_extra_descriptors:
+            end = offset + descriptor["width"]
+            self._extra_info_offsets[descriptor["name"]] = (offset, end)
+            offset = end
         self._active_state_indices = np.empty((self.num_envs,), dtype=np.int32)
         self._info_all_lanes_mask = np.ones((self.num_envs,), dtype=np.bool_)
         self._rgb_frames: np.ndarray | None = (
@@ -799,6 +906,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._initialized[reset_mask] = True
         self._write_active_state_indices()
         self._write_info_arrays()
+        self._write_extra_info_arrays()
         lane_infos: list[dict[str, Any]] = []
         for index in range(self.num_envs):
             if not bool(reset_mask[index]):
@@ -809,15 +917,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
                 "snapshot" if bool(snapshot_mask[index]) else "environment"
             )
             if self._info_mode != "none":
-                raw_info = self._base_info_dict(index)
-                if self._info_keys is not None:
-                    raw_info = {
-                        key: raw_info[key]
-                        for key in self._info_keys
-                        if key in raw_info
-                    }
-                raw_info.update(info)
-                info = raw_info
+                game_info = self._game_info_dict(index)
+                game_info.update(info)
+                info = game_info
             lane_infos.append(info)
         infos = self._vector_infos(lane_infos)
         self._pending_seed = None
@@ -980,6 +1082,11 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             self._xscroll_lo,
         )
         has_terminal = bool(np.any(self._terminated) or np.any(self._truncated))
+        if self._extra_info is not None and (
+            self._info_mode == "all"
+            or (self._info_mode == "terminal" and has_terminal)
+        ):
+            self._core.extra_info_into(self._extra_info)
         obs, rewards, terminated, truncated = (
             self._return_obs(),
             self._return_rewards(),
@@ -1008,6 +1115,10 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             self._xscroll_hi,
             self._xscroll_lo,
         )
+
+    def _write_extra_info_arrays(self) -> None:
+        if self._extra_info is not None:
+            self._core.extra_info_into(self._extra_info)
 
     def _write_active_state_indices(self) -> None:
         self._active_state_indices[:] = np.asarray(
@@ -1062,9 +1173,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         if self._info_mode == "terminal" and not terminal:
             return {}
 
-        info = self._base_info_dict(index)
-        if self._info_keys is not None:
-            info = {key: info[key] for key in self._info_keys if key in info}
+        info = self._game_info_dict(index)
         if terminal:
             if bool(self._terminated[index]):
                 info["terminated"] = True
@@ -1085,7 +1194,36 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
                 continue
             infos[key] = getattr(self, attr_name).astype(np.int_, copy=True)
             infos[f"_{key}"] = self._info_all_lanes_mask.copy()
+        if self._extra_info is not None:
+            for descriptor in self._selected_extra_descriptors:
+                key = descriptor["name"]
+                start, end = self._extra_info_offsets[key]
+                values = self._extra_info[:, start:end]
+                if descriptor["width"] == 1:
+                    values = values[:, 0]
+                infos[key] = values.astype(descriptor["dtype"], copy=True)
+                infos[f"_{key}"] = self._info_all_lanes_mask.copy()
         return infos
+
+    def _game_info_dict(self, index: int) -> dict[str, Any]:
+        info = self._base_info_dict(index)
+        if self._info_keys is not None:
+            info = {key: info[key] for key in self._info_keys if key in info}
+        if self._extra_info is None:
+            return info
+        for descriptor in self._selected_extra_descriptors:
+            key = descriptor["name"]
+            start, end = self._extra_info_offsets[key]
+            values = self._extra_info[index, start:end]
+            if descriptor["width"] == 1:
+                info[key] = (
+                    bool(values[0])
+                    if descriptor["dtype"] == np.dtype(np.bool_)
+                    else descriptor["dtype"].type(values[0])
+                )
+            else:
+                info[key] = values.astype(descriptor["dtype"], copy=True)
+        return info
 
     def _base_info_dict(self, index: int) -> dict[str, Any]:
         return {
@@ -1152,6 +1290,15 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         view = self._active_state_indices.view()
         view.setflags(write=False)
         return view
+
+    def ram(self) -> np.ndarray:
+        """Return an immutable owned snapshot of each lane's 2 KiB CPU RAM."""
+        if self.closed:
+            raise RuntimeError("cannot read RAM from a closed environment")
+        output = np.empty(self._core.ram_shape(), dtype=np.uint8)
+        self._core.ram_into(output)
+        output.setflags(write=False)
+        return output
 
     def capture_snapshots(self, mask: np.ndarray) -> tuple[Any | None, ...]:
         if self.closed:

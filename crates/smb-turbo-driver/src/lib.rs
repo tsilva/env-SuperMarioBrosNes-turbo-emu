@@ -11,6 +11,269 @@ const PPU_SPRITE0_DOT: usize = (22 + 30) * 341 + 1;
 
 pub type SmbOptions = bool;
 
+pub const ENEMY_SLOT_COUNT: usize = 6;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExtraInfoDtype {
+    Bool,
+    Int8,
+    Int16,
+    Int32,
+}
+
+impl ExtraInfoDtype {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Bool => "bool",
+            Self::Int8 => "int8",
+            Self::Int16 => "int16",
+            Self::Int32 => "int32",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExtraInfoDescriptor {
+    pub id: u8,
+    pub name: &'static str,
+    pub width: usize,
+    pub dtype: ExtraInfoDtype,
+    pub enum_name: Option<&'static str>,
+}
+
+const fn extra_descriptor(
+    id: u8,
+    name: &'static str,
+    width: usize,
+    dtype: ExtraInfoDtype,
+    enum_name: Option<&'static str>,
+) -> ExtraInfoDescriptor {
+    ExtraInfoDescriptor {
+        id,
+        name,
+        width,
+        dtype,
+        enum_name,
+    }
+}
+
+pub const EXTRA_INFO_DESCRIPTORS: [ExtraInfoDescriptor; 23] = [
+    extra_descriptor(0, "area_id", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(1, "area_type", 1, ExtraInfoDtype::Int8, Some("AreaType")),
+    extra_descriptor(2, "y_pos", 1, ExtraInfoDtype::Int32, None),
+    extra_descriptor(3, "y_screen_pos", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(
+        4,
+        "player_motion",
+        1,
+        ExtraInfoDtype::Int8,
+        Some("PlayerMotion"),
+    ),
+    extra_descriptor(
+        5,
+        "player_power",
+        1,
+        ExtraInfoDtype::Int8,
+        Some("PlayerPower"),
+    ),
+    extra_descriptor(6, "is_large", 1, ExtraInfoDtype::Bool, None),
+    extra_descriptor(7, "x_velocity", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(8, "y_velocity", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(9, "facing", 1, ExtraInfoDtype::Int8, Some("Direction")),
+    extra_descriptor(10, "is_crouching", 1, ExtraInfoDtype::Bool, None),
+    extra_descriptor(11, "is_swimming", 1, ExtraInfoDtype::Bool, None),
+    extra_descriptor(12, "injury_timer", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(13, "star_timer", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(14, "game_mode", 1, ExtraInfoDtype::Int8, Some("GameMode")),
+    extra_descriptor(
+        15,
+        "player_task",
+        1,
+        ExtraInfoDtype::Int8,
+        Some("PlayerTask"),
+    ),
+    extra_descriptor(
+        16,
+        "enemy_active",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Bool,
+        None,
+    ),
+    extra_descriptor(
+        17,
+        "enemy_type_id",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Int16,
+        None,
+    ),
+    extra_descriptor(
+        18,
+        "enemy_x_pos",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Int32,
+        None,
+    ),
+    extra_descriptor(
+        19,
+        "enemy_y_pos",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Int32,
+        None,
+    ),
+    extra_descriptor(
+        20,
+        "enemy_x_velocity",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Int16,
+        None,
+    ),
+    extra_descriptor(
+        21,
+        "enemy_y_velocity",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Int16,
+        None,
+    ),
+    extra_descriptor(
+        22,
+        "enemy_facing",
+        ENEMY_SLOT_COUNT,
+        ExtraInfoDtype::Int8,
+        Some("Direction"),
+    ),
+];
+
+pub fn extra_info_descriptor(id: u8) -> Option<&'static ExtraInfoDescriptor> {
+    EXTRA_INFO_DESCRIPTORS
+        .get(usize::from(id))
+        .filter(|descriptor| descriptor.id == id)
+}
+
+pub fn selected_extra_info_width(ids: &[u8]) -> Option<usize> {
+    ids.iter().try_fold(0usize, |width, &id| {
+        extra_info_descriptor(id).map(|descriptor| width + descriptor.width)
+    })
+}
+
+pub fn decode_extra_info(ram: &[u8; 2048], ids: &[u8], output: &mut [i64]) -> bool {
+    let Some(expected_width) = selected_extra_info_width(ids) else {
+        return false;
+    };
+    if output.len() != expected_width {
+        return false;
+    }
+
+    let mut offset = 0;
+    for &id in ids {
+        let width = extra_info_descriptor(id)
+            .expect("validated extra info id")
+            .width;
+        decode_extra_field(id, ram, &mut output[offset..offset + width]);
+        offset += width;
+    }
+    true
+}
+
+#[inline]
+fn signed_byte(value: u8) -> i64 {
+    i64::from(value as i8)
+}
+
+#[inline]
+fn decoded_enum(value: u8, maximum: u8) -> i64 {
+    if value <= maximum {
+        i64::from(value)
+    } else {
+        -1
+    }
+}
+
+#[inline]
+fn decoded_direction(value: u8) -> i64 {
+    match value {
+        1 => 1,
+        2 => -1,
+        _ => 0,
+    }
+}
+
+fn decode_extra_field(id: u8, ram: &[u8; 2048], output: &mut [i64]) {
+    match id {
+        0 => output[0] = i64::from(ram[0x0760]),
+        1 => output[0] = decoded_enum(ram[0x074e], 3),
+        2 => output[0] = i64::from(u16::from(ram[0x00b5]) << 8 | u16::from(ram[0x00ce])),
+        3 => output[0] = i64::from(ram[0x03b8]),
+        4 => output[0] = decoded_enum(ram[0x001d], 3),
+        5 => output[0] = decoded_enum(ram[0x0756], 2),
+        6 => output[0] = i64::from(ram[0x0754] == 0),
+        7 => output[0] = signed_byte(ram[0x0057]),
+        8 => output[0] = signed_byte(ram[0x009f]),
+        9 => output[0] = decoded_direction(ram[0x0033]),
+        10 => output[0] = i64::from(ram[0x0714] != 0),
+        11 => output[0] = i64::from(ram[0x0704] != 0),
+        12 => output[0] = i64::from(ram[0x079e]),
+        13 => output[0] = i64::from(ram[0x079f]),
+        14 => output[0] = decoded_enum(ram[0x0770], 3),
+        15 => output[0] = decoded_enum(ram[0x000e], 12),
+        16..=22 => {
+            for slot in 0..ENEMY_SLOT_COUNT {
+                let active = ram[0x000f + slot] != 0;
+                output[slot] = match id {
+                    16 => i64::from(active),
+                    17 => {
+                        if active {
+                            i64::from(ram[0x0016 + slot])
+                        } else {
+                            -1
+                        }
+                    }
+                    18 => {
+                        if active {
+                            i64::from(
+                                u16::from(ram[0x006e + slot]) << 8 | u16::from(ram[0x0087 + slot]),
+                            )
+                        } else {
+                            -1
+                        }
+                    }
+                    19 => {
+                        if active {
+                            i64::from(
+                                u16::from(ram[0x00b6 + slot]) << 8 | u16::from(ram[0x00cf + slot]),
+                            )
+                        } else {
+                            -1
+                        }
+                    }
+                    20 => {
+                        if active {
+                            signed_byte(ram[0x0058 + slot])
+                        } else {
+                            0
+                        }
+                    }
+                    21 => {
+                        if active {
+                            signed_byte(ram[0x00a0 + slot])
+                        } else {
+                            0
+                        }
+                    }
+                    22 => {
+                        if active {
+                            decoded_direction(ram[0x0046 + slot])
+                        } else {
+                            0
+                        }
+                    }
+                    _ => unreachable!(),
+                };
+            }
+        }
+        _ => unreachable!("validated extra info id"),
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SmbSignals {
     pub x_pos: u16,
@@ -1482,6 +1745,81 @@ fn page_crossed(a: u16, b: u16) -> bool {
 mod tests {
     use super::*;
     use nes_turbo_nrom_core::Cartridge;
+
+    #[test]
+    fn extra_info_catalog_is_dense_unique_and_bounded() {
+        let mut names = std::collections::HashSet::new();
+        for (index, descriptor) in EXTRA_INFO_DESCRIPTORS.iter().enumerate() {
+            assert_eq!(usize::from(descriptor.id), index);
+            assert!(names.insert(descriptor.name));
+            assert!(matches!(descriptor.width, 1 | ENEMY_SLOT_COUNT));
+            assert_eq!(extra_info_descriptor(descriptor.id), Some(descriptor));
+        }
+        assert_eq!(extra_info_descriptor(255), None);
+        assert_eq!(selected_extra_info_width(&[0, 16, 17]), Some(13));
+        assert_eq!(selected_extra_info_width(&[255]), None);
+    }
+
+    #[test]
+    fn extra_info_decoder_processes_scalars_and_unknown_enums() {
+        let mut ram = [0u8; 2048];
+        ram[0x0760] = 42;
+        ram[0x074e] = 2;
+        ram[0x00b5] = 3;
+        ram[0x00ce] = 4;
+        ram[0x03b8] = 199;
+        ram[0x001d] = 3;
+        ram[0x0756] = 2;
+        ram[0x0754] = 0;
+        ram[0x0057] = 0xff;
+        ram[0x009f] = 0x80;
+        ram[0x0033] = 2;
+        ram[0x0714] = 4;
+        ram[0x0704] = 1;
+        ram[0x079e] = 17;
+        ram[0x079f] = 23;
+        ram[0x0770] = 9;
+        ram[0x000e] = 13;
+        let ids = (0u8..16).collect::<Vec<_>>();
+        let mut output = vec![0; ids.len()];
+
+        assert!(decode_extra_info(&ram, &ids, &mut output));
+        assert_eq!(
+            output,
+            [42, 2, 772, 199, 3, 2, 1, -1, -128, -1, 1, 1, 17, 23, -1, -1]
+        );
+    }
+
+    #[test]
+    fn extra_info_decoder_masks_inactive_enemy_slots() {
+        let mut ram = [0u8; 2048];
+        ram[0x000f] = 1;
+        ram[0x0016] = 6;
+        ram[0x006e] = 2;
+        ram[0x0087] = 9;
+        ram[0x00b6] = 1;
+        ram[0x00cf] = 200;
+        ram[0x0058] = 0xfe;
+        ram[0x00a0] = 3;
+        ram[0x0046] = 1;
+        for slot in 1..ENEMY_SLOT_COUNT {
+            ram[0x0016 + slot] = 99;
+            ram[0x006e + slot] = 7;
+            ram[0x0087 + slot] = 7;
+            ram[0x0058 + slot] = 9;
+        }
+
+        let ids = (16u8..=22).collect::<Vec<_>>();
+        let mut output = vec![0; ENEMY_SLOT_COUNT * ids.len()];
+        assert!(decode_extra_info(&ram, &ids, &mut output));
+        assert_eq!(&output[0..6], &[1, 0, 0, 0, 0, 0]);
+        assert_eq!(&output[6..12], &[6, -1, -1, -1, -1, -1]);
+        assert_eq!(&output[12..18], &[521, -1, -1, -1, -1, -1]);
+        assert_eq!(&output[18..24], &[456, -1, -1, -1, -1, -1]);
+        assert_eq!(&output[24..30], &[-2, 0, 0, 0, 0, 0]);
+        assert_eq!(&output[30..36], &[3, 0, 0, 0, 0, 0]);
+        assert_eq!(&output[36..42], &[1, 0, 0, 0, 0, 0]);
+    }
 
     fn make_test_cart_with_prg(prg_rom: Vec<u8>) -> Cartridge {
         Cartridge {

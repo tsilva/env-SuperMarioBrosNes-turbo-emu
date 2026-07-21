@@ -10,9 +10,11 @@ Super Mario Bros extension. It does not discover games at runtime.
   loading, frame/event loop, and the `NromGame` contract.
 - `crates/smb-turbo-driver` is compiled only into the SMB extension. It owns
   the canonical ROM digest, SMB signals and episode semantics, sprite-zero
-  timing, signature capabilities, dispatch PCs, and fast-path handlers.
+  timing, signature capabilities, dispatch PCs, fast-path handlers, and the
+  semantic descriptor/decoder catalog for opt-in research infos.
 - The root crate owns the concrete `MarioVecEnv`, PyO3/NumPy boundary, Rayon
-  lane stepping, preprocessing, and the existing Python module.
+  lane stepping, preprocessing, construction-time info selection, optional
+  batched staging buffer, and the existing Python module.
 
 Future games must use a sibling driver and a sibling native extension/wheel.
 They must not be normal dependencies of this root package. This keeps their
@@ -31,6 +33,12 @@ code, dispatch sites, and LTO layout outside the SMB binary.
 
 There are no trait objects, registries, function-pointer tables, string
 lookups, JSON/YAML profiles, or runtime game selection in the frame loop.
+
+Research-info decoders are pure immutable RAM reads performed once after an
+info-producing vector step or reset. They are deliberately separate from the
+per-frame `synchronize` signal path. When no extra key is selected, the root
+crate stores no descriptor IDs, allocates no staging buffer, and makes no
+research-info extraction call.
 
 The core owns ordinary interpretation, PPU ticking, NMI ordering, pending PPU
 cycle delivery, event boundaries, and the frame guard. A handler may mutate

@@ -175,20 +175,20 @@ def test_explicit_thread_counts_preserve_deterministic_lane_contract() -> None:
         parallel.close()
 
 
-def test_named_simple_action_set_is_discrete_and_maps_indices() -> None:
+def test_named_basic_action_set_is_discrete_and_maps_indices() -> None:
     env = SuperMarioBrosNesTurboVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=require_rom(),
         num_envs=2,
-        use_restricted_actions="simple",
+        use_restricted_actions="basic",
         frame_skip=1,
         frame_stack=1,
         obs_grayscale=True,
         obs_resize=(1, 1),
     )
     try:
-        assert env.action_preset == "simple"
+        assert env.action_preset == "basic"
         assert env.action_meanings == (
             "noop",
             "right",
@@ -202,7 +202,7 @@ def test_named_simple_action_set_is_discrete_and_maps_indices() -> None:
         assert env.action_space == spaces.MultiDiscrete([7, 7])
         env.reset(seed=0)
         env.step(np.asarray([0, 6], dtype=np.int64))
-        with pytest.raises(ValueError, match="action_preset='simple'"):
+        with pytest.raises(ValueError, match="action_preset='basic'"):
             env.step(np.asarray([0, 7], dtype=np.int64))
     finally:
         env.close()
@@ -212,7 +212,7 @@ def test_removed_constructor_action_set_is_rejected() -> None:
     with pytest.raises(TypeError, match="action_set"):
         SuperMarioBrosNesTurboVecEnv(
             "SuperMarioBros-Nes-v0",
-            action_set="simple",
+            action_set="basic",
         )
 
 

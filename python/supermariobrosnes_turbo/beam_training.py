@@ -13,7 +13,7 @@ import numpy as np
 
 from . import ACTION_SETS
 from .beam import BeamSearch
-from .jerk import JerkPolicy, run_directory_for_state
+from .jerk import ActionRun, JerkPolicy, run_directory_for_state
 from . import training_ui
 from .training_ui import (
     PlainReporter,
@@ -38,6 +38,25 @@ BEAM_REFRESH_EPISODES = N_ENVS
 BEAM_DEEPEN_AFTER_GENERATIONS = 64
 MUTATION_RUNS = 8
 BRANCH_DURATIONS = (1, 2, 4, 8, 16, 32)
+
+
+def _remap_policy_runs(
+    policy: JerkPolicy, target_action_names: tuple[str, ...]
+) -> tuple[ActionRun, ...]:
+    """Map a compatible policy into the selected action table by name."""
+    target_indices = {name: index for index, name in enumerate(target_action_names)}
+    remapped: list[ActionRun] = []
+    for run in policy.action_runs:
+        action_name = policy.action_names[run.action]
+        try:
+            action = target_indices[action_name]
+        except KeyError as exc:
+            raise ValueError(
+                "beam initial policy action is absent from --action-set: "
+                f"{action_name!r}"
+            ) from exc
+        remapped.append(ActionRun(action, run.duration))
+    return tuple(remapped)
 
 
 def _overwrite_existing(args: argparse.Namespace) -> bool:
@@ -132,11 +151,9 @@ def _run_training(
     )
     if args.initial_policy is not None:
         initial_policy = JerkPolicy.load(args.initial_policy)
-        if initial_policy.action_names != search.action_names:
-            raise ValueError(
-                "beam initial policy action table does not match --action-set"
-            )
-        search.seed_program(initial_policy.action_runs)
+        search.seed_program(
+            _remap_policy_runs(initial_policy, search.action_names)
+        )
     task = MarioJerkTask(
         state=args.state,
         state_dir=args.state_dir,

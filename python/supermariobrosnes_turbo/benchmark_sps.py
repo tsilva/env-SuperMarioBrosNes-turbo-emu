@@ -75,9 +75,9 @@ CORE_ACTION_MEANINGS = (
     "start",
 )
 ACTION_SETS = {
-    "simple": ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left"),
-    "right": ("right", "right_b", "right_a", "right_a_b"),
-    "full": CORE_ACTION_MEANINGS,
+    "basic": ("noop", "right", "right_b", "right_a", "right_a_b", "a", "left"),
+    "right-jump": ("right", "right_b", "right_a", "right_a_b"),
+    "basic-start": CORE_ACTION_MEANINGS,
 }
 ACTION_BUTTONS = {
     "noop": (),
@@ -249,7 +249,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--obs-crop-mode", choices=("remove", "mask"), default=DEFAULT_OBS_CROP_MODE)
     parser.add_argument("--resize-width", type=int, default=CANONICAL_RESIZE_WIDTH)
     parser.add_argument("--resize-height", type=int, default=CANONICAL_RESIZE_HEIGHT)
-    parser.add_argument("--action-set", choices=sorted(ACTION_SETS), default="simple")
+    parser.add_argument("--action-set", choices=sorted(ACTION_SETS), default="basic")
     parser.add_argument(
         "--actions",
         default=None,

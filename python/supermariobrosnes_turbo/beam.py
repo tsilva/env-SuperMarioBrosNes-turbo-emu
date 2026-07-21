@@ -42,8 +42,14 @@ class BeamCandidate:
         return self.completed_return if self.completed else self.incomplete_return
 
     @property
-    def rank(self) -> tuple[float, float]:
-        return (float(self.completed), self.mean_return)
+    def rank(self) -> tuple[float, float, float]:
+        if self.completed:
+            return (1.0, self.completed_return, self.progress)
+        return (0.0, self.progress, self.incomplete_return)
+
+    @property
+    def incomplete_rank(self) -> tuple[float, float]:
+        return (self.progress, self.incomplete_return)
 
     def observe(self, value: float, *, completed: bool, progress: float) -> None:
         if completed:
@@ -69,6 +75,7 @@ class _ExpansionJob:
     generation: int
     parent_index: int
     branch_index: int
+    resume_parent_run_index: int | None = None
     sample_index: int = 0
     required: bool = True
 
@@ -88,6 +95,7 @@ class _BeamLaneState:
     replay_run_remaining: int = 0
     branch: ActionRun | None = None
     branch_remaining: int = 0
+    resume_parent_run_index: int | None = None
     exploration_action: int = 0
     exploration_remaining: int = 0
     job_generation: int = -1
@@ -98,10 +106,11 @@ class _BeamLaneState:
 class BeamSearch:
     """Anytime beam search over open-loop action-run programs.
 
-    Discovery retains the original steady-state behavior. An explicit
-    continued-budget run switches to fair coverage generations after the first
-    completion: every frozen parent receives its full branch neighborhood at a
-    progressively deeper cut before the beam can be pruned again.
+    Discovery retains incomplete programs by navigation progress before shaped
+    return. An explicit continued-budget run switches to fair coverage
+    generations after the first completion: frozen parents receive splice
+    mutations at progressively deeper cuts, with their proven suffix replayed
+    after the edited run before the beam can be pruned again.
     """
 
     def __init__(
@@ -208,7 +217,7 @@ class BeamSearch:
         self._coverage_completed = 0
         self._overflow_cursor = 0
         self._frontier_cursor = 0
-        self._frontier_best_return = float("-inf")
+        self._frontier_best_rank = (float("-inf"), float("-inf"))
 
     @property
     def beam_count(self) -> int:
@@ -333,6 +342,7 @@ class BeamSearch:
             replay_limit_runs=job.replay_limit_runs,
             branch=job.branch,
             branch_remaining=job.branch.duration,
+            resume_parent_run_index=job.resume_parent_run_index,
             job_generation=job.generation,
             job_required=job.required,
             rng=self._job_rng(job),
@@ -351,12 +361,17 @@ class BeamSearch:
             generation=template.generation,
             parent_index=template.parent_index,
             branch_index=template.branch_index,
+            resume_parent_run_index=template.resume_parent_run_index,
             sample_index=sample_index,
             required=False,
         )
 
     def _start_lane(self, lane: int) -> None:
-        if self._improvement_mode and self._parents:
+        if self._improvement_mode and self._parents and (
+            self._frontier_queue
+            or self._coverage_queue
+            or self._coverage_templates
+        ):
             if self._frontier_queue:
                 job = self._frontier_queue.popleft()
             elif self._coverage_queue:
@@ -398,6 +413,23 @@ class BeamSearch:
             state.replay_run_index += 1
         return run.action
 
+    @staticmethod
+    def _resume_parent_suffix_or_explore(state: _BeamLaneState) -> None:
+        parent = state.parent
+        resume_index = state.resume_parent_run_index
+        state.resume_parent_run_index = None
+        if (
+            parent is not None
+            and resume_index is not None
+            and resume_index < len(parent.runs)
+        ):
+            state.replay_run_index = resume_index
+            state.replay_limit_runs = len(parent.runs)
+            state.replay_run_remaining = 0
+            state.mode = "replay"
+            return
+        state.mode = "explore"
+
     def next_actions(self) -> np.ndarray:
         actions = np.empty(self.n_envs, dtype=np.int64)
         for lane, state in enumerate(self._lanes):
@@ -409,12 +441,12 @@ class BeamSearch:
             if state.mode == "branch":
                 branch = state.branch
                 if branch is None or state.branch_remaining == 0:
-                    state.mode = "explore"
+                    self._resume_parent_suffix_or_explore(state)
                 else:
                     action = branch.action
                     state.branch_remaining -= 1
                     if state.branch_remaining == 0:
-                        state.mode = "explore"
+                        self._resume_parent_suffix_or_explore(state)
             if action is None and state.mode == "explore":
                 if state.exploration_remaining == 0:
                     self._sample_exploration_run(lane, state)
@@ -447,9 +479,9 @@ class BeamSearch:
         if (
             self._improvement_mode
             and not completed
-            and candidate.incomplete_return > self._frontier_best_return
+            and candidate.incomplete_rank > self._frontier_best_rank
         ):
-            self._frontier_best_return = candidate.incomplete_return
+            self._frontier_best_rank = candidate.incomplete_rank
             self._queue_frontier(candidate)
         if completed:
             improved = previous_best is None or score_return > previous_best
@@ -487,22 +519,18 @@ class BeamSearch:
             progress=progress,
         )
 
-    @staticmethod
-    def _candidate_sort_key(candidate: BeamCandidate) -> tuple[Any, ...]:
-        return (candidate.mean_return, candidate.runs)
-
     def _select_retained(self) -> tuple[BeamCandidate, ...]:
         candidates = {**self._beam, **self._pending}
         if self._best_success is not None:
             candidates[self._best_success.runs] = self._best_success
         completed = sorted(
             (candidate for candidate in candidates.values() if candidate.completed),
-            key=self._candidate_sort_key,
+            key=lambda candidate: (candidate.completed_return, candidate.runs),
             reverse=True,
         )
         incomplete = sorted(
             (candidate for candidate in candidates.values() if not candidate.completed),
-            key=self._candidate_sort_key,
+            key=lambda candidate: (candidate.incomplete_rank, candidate.runs),
             reverse=True,
         )
         if not completed:
@@ -558,14 +586,21 @@ class BeamSearch:
                 0,
             )
             removed_runs = min(self._cut_depth, mutable_runs)
-            replay_limits = tuple(
-                dict.fromkeys(
-                    (len(parent.runs), len(parent.runs) - removed_runs)
+            cut_run_index = len(parent.runs) - removed_runs
+            if parent.completed:
+                replay_limits = (() if removed_runs == 0 else (cut_run_index,))
+            else:
+                replay_limits = tuple(
+                    dict.fromkeys((len(parent.runs), cut_run_index))
                 )
-            )
             branch_index = 0
             for replay_limit_runs in replay_limits:
                 branches = self._branch_neighborhood(parent, replay_limit_runs)
+                resume_parent_run_index = (
+                    replay_limit_runs + 1
+                    if replay_limit_runs < len(parent.runs)
+                    else None
+                )
                 for branch in branches:
                     jobs.append(
                         _ExpansionJob(
@@ -575,6 +610,7 @@ class BeamSearch:
                             generation=self.generation,
                             parent_index=parent_index,
                             branch_index=branch_index,
+                            resume_parent_run_index=resume_parent_run_index,
                         )
                     )
                     branch_index += 1
@@ -585,9 +621,13 @@ class BeamSearch:
         self._coverage_completed = 0
         self._overflow_cursor = 0
         self._frontier_cursor = 0
-        self._frontier_best_return = max(
-            (candidate.incomplete_return for candidate in self._parents),
-            default=float("-inf"),
+        self._frontier_best_rank = max(
+            (
+                candidate.incomplete_rank
+                for candidate in self._parents
+                if not candidate.completed
+            ),
+            default=(float("-inf"), float("-inf")),
         )
 
     def _queue_frontier(self, parent: BeamCandidate) -> None:
@@ -693,10 +733,14 @@ class BeamSearch:
         for lane, state in enumerate(self._lanes):
             reward = float(rewards_array[lane])
             state.episode_return += reward
-            if state.episode_return > state.best_return:
+            progress = float(progress_array[lane])
+            if (progress, state.episode_return) > (
+                state.best_progress,
+                state.best_return,
+            ):
                 state.best_return = state.episode_return
                 state.best_steps = state.step_count
-                state.best_progress = float(progress_array[lane])
+                state.best_progress = progress
             if not dones_array[lane]:
                 continue
             record = records_by_lane.get(lane)
@@ -753,7 +797,7 @@ class BeamSearch:
                 )
         return max(
             candidates,
-            key=lambda candidate: (candidate.incomplete_return, candidate.runs),
+            key=lambda candidate: (candidate.incomplete_rank, candidate.runs),
             default=None,
         )
 

@@ -85,7 +85,7 @@ env = SuperMarioBrosNesTurboVecEnv(
     "SuperMarioBros-Nes-v0",
     state="Level1-1",
     num_envs=16,
-    use_restricted_actions="simple",
+    use_restricted_actions="basic",
     frame_skip=4,
     obs_grayscale=True,
     obs_crop=(32, 0, 0, 0),
@@ -133,6 +133,99 @@ Handles are reusable, session-local, and intentionally not pickleable. A
 single masked reset can mix snapshot starts with ordinary `state_indices`;
 `infos["start_source"]` distinguishes `"snapshot"` from `"environment"`.
 
+## 🔬 Processed research infos
+
+The original `INFO_KEYS` remain the default. Additional semantic game state is
+opt-in, so the environment only decodes and returns the extra keys a caller
+requests:
+
+```python
+from supermariobrosnes_turbo import AreaType, PlayerMotion
+
+env = SuperMarioBrosNesTurboVecEnv(
+    "SuperMarioBros-Nes-v0",
+    state="Level1-1",
+    info_filter={
+        "mode": "all",
+        "keys": [
+            "x_pos",
+            "y_pos",
+            "area_type",
+            "player_motion",
+            "enemy_active",
+            "enemy_x_pos",
+        ],
+    },
+)
+observations, infos = env.reset()
+in_water = infos["area_type"] == AreaType.WATER
+climbing = infos["player_motion"] == PlayerMotion.CLIMBING
+```
+
+`EXTRA_INFO_KEYS` lists the opt-in catalog and `AVAILABLE_INFO_KEYS` combines it
+with the legacy keys. Explicit selections reject unknown names, remove
+duplicates, and return only selected game-state keys in catalog order. The
+`terminal` and `none` modes retain their existing meaning; reset lifecycle
+metadata and Gymnasium `_key` masks are not game-state selections.
+
+All selectable game-state variables are listed below in their canonical
+`AVAILABLE_INFO_KEYS` order. Legacy variables are returned by default; extra
+variables are returned only when explicitly named in `info_filter["keys"]`.
+
+| Key | Set | Shape | NumPy dtype | Meaning |
+| --- | --- | --- | --- | --- |
+| `x_pos` | Legacy/default | `(num_envs,)` | `np.int_` | Combined horizontal world position. |
+| `coins` | Legacy/default | `(num_envs,)` | `np.int_` | Legacy coin counter. |
+| `levelHi` | Legacy/default | `(num_envs,)` | `np.int_` | Legacy world-number component. |
+| `levelLo` | Legacy/default | `(num_envs,)` | `np.int_` | Legacy level-number component. |
+| `lives` | Legacy/default | `(num_envs,)` | `np.int_` | Signed legacy life counter; `-1` signals game over. |
+| `score` | Legacy/default | `(num_envs,)` | `np.int_` | Decoded decimal game score. |
+| `scrolling` | Legacy/default | `(num_envs,)` | `np.int_` | Legacy horizontal-scrolling signal. |
+| `time` | Legacy/default | `(num_envs,)` | `np.int_` | Decoded decimal level timer. |
+| `xscrollHi` | Legacy/default | `(num_envs,)` | `np.int_` | High/page component of horizontal scroll. |
+| `xscrollLo` | Legacy/default | `(num_envs,)` | `np.int_` | Low component of horizontal scroll. |
+| `area_id` | Extra/opt-in | `(num_envs,)` | `np.int16` | Stable internal subarea identifier. |
+| `area_type` | Extra/opt-in | `(num_envs,)` | `np.int8` | `AreaType`: `UNKNOWN=-1`, `WATER=0`, `GROUND=1`, `UNDERGROUND=2`, `CASTLE=3`. |
+| `y_pos` | Extra/opt-in | `(num_envs,)` | `np.int32` | Combined world-space vertical position. |
+| `y_screen_pos` | Extra/opt-in | `(num_envs,)` | `np.int16` | Screen-relative vertical position. |
+| `player_motion` | Extra/opt-in | `(num_envs,)` | `np.int8` | `PlayerMotion`: `UNKNOWN=-1`, `GROUND=0`, `JUMPING_OR_SWIMMING=1`, `FALLING=2`, `CLIMBING=3`. |
+| `player_power` | Extra/opt-in | `(num_envs,)` | `np.int8` | `PlayerPower`: `UNKNOWN=-1`, `SMALL=0`, `BIG=1`, `FIRE=2`. |
+| `is_large` | Extra/opt-in | `(num_envs,)` | `np.bool_` | Normalized large-player hitbox/size state. |
+| `x_velocity` | Extra/opt-in | `(num_envs,)` | `np.int16` | Sign-extended horizontal velocity in SMB velocity units. |
+| `y_velocity` | Extra/opt-in | `(num_envs,)` | `np.int16` | Sign-extended vertical velocity in SMB velocity units. |
+| `facing` | Extra/opt-in | `(num_envs,)` | `np.int8` | `Direction`: `LEFT=-1`, `NONE=0`, `RIGHT=1`. |
+| `is_crouching` | Extra/opt-in | `(num_envs,)` | `np.bool_` | Normalized crouching state. |
+| `is_swimming` | Extra/opt-in | `(num_envs,)` | `np.bool_` | Normalized swimming state. |
+| `injury_timer` | Extra/opt-in | `(num_envs,)` | `np.int16` | Injury/invulnerability countdown in game-timer ticks. |
+| `star_timer` | Extra/opt-in | `(num_envs,)` | `np.int16` | Star-power countdown in game-timer ticks. |
+| `game_mode` | Extra/opt-in | `(num_envs,)` | `np.int8` | `GameMode`: `UNKNOWN=-1`, `TITLE=0`, `GAMEPLAY=1`, `VICTORY=2`, `GAME_OVER=3`. |
+| `player_task` | Extra/opt-in | `(num_envs,)` | `np.int8` | `PlayerTask`: `UNKNOWN=-1`, `ENTRANCE_TIMER_SETUP=0`, `VINE_AUTO_CLIMB=1`, `VERTICAL_PIPE_ENTRY=2`, `SIDE_PIPE_ENTRY=3`, `FLAGPOLE_SLIDE=4`, `LEVEL_END=5`, `LOSE_LIFE=6`, `PLAYER_ENTRANCE=7`, `PLAYER_CONTROL=8`, `CHANGE_SIZE=9`, `INJURY_BLINK=10`, `PLAYER_DEATH=11`, `FIRE_FLOWER_TRANSFORM=12`. |
+| `enemy_active` | Extra/opt-in | `(num_envs, 6)` | `np.bool_` | Normalized active mask for the six enemy/object slots. |
+| `enemy_type_id` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Stable SMB object-category ID; inactive slots are `-1`. |
+| `enemy_x_pos` | Extra/opt-in | `(num_envs, 6)` | `np.int32` | Combined horizontal world positions; inactive slots are `-1`. |
+| `enemy_y_pos` | Extra/opt-in | `(num_envs, 6)` | `np.int32` | Combined vertical positions; inactive slots are `-1`. |
+| `enemy_x_velocity` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Signed horizontal velocities; inactive slots are `0`. |
+| `enemy_y_velocity` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Signed vertical velocities; inactive slots are `0`. |
+| `enemy_facing` | Extra/opt-in | `(num_envs, 6)` | `np.int8` | Normalized `Direction`; inactive slots are `0` (`NONE`). |
+
+The environment may also add lifecycle metadata independently of the selected
+game-state variables:
+
+| Key | When present | Meaning |
+| --- | --- | --- |
+| `state_index` | Reset lanes | Active state-catalog index. |
+| `start_source` | Reset lanes | Whether the lane started from the environment or a snapshot. |
+| `terminated` | Terminated lanes | The lane reached a game terminal state. |
+| `truncated` | Truncated lanes | The lane reached an external episode limit. |
+| `_<key>` | With each emitted key | Gymnasium boolean mask identifying lanes for which that key is valid. |
+
+Returned game-state arrays are owned copies and cannot be changed by later
+environment steps. Unknown categorical engine values become `UNKNOWN = -1`.
+
+Researchers who intentionally need unprocessed state can call `env.ram()` for
+an immutable owned `(num_envs, 2048)` `uint8` snapshot. RAM addresses and byte
+decoding are not part of the semantic `info` contract.
+
 ## 🏁 Train and play
 
 ```bash
@@ -141,15 +234,20 @@ smb-turbo play
 ```
 
 **Training** searches observation-free `(action, duration)` programs with beam
-search and the `simple-down` action set by default. Beam ranks raw game-score
+search and the `standard` action set by default. Beam ranks raw game-score
 gains first and charges each step `1 / (max_episode_steps + 1)`, so higher score
 always wins while fewer steps break equal-score ties. It stops on the first level
 completion; pass `--continue-after-completion` to turn the remaining transition
 budget into an anytime improvement search. Continued runs keep the best completed
-path locked, reserve beam capacity for incomplete alternatives, and systematically
-move mutations from the tail toward the root. The published policy is replaced
-only when completed shaped return improves, while every completion is appended
-to `successes.jsonl`.
+path locked, retain incomplete alternatives by furthest progress, and
+systematically move mutations from the tail toward the root. Each mutation
+replaces one action run and then replays the proven suffix, preserving completion
+whenever the edited trajectory remains compatible. The published policy is
+replaced only when completed shaped return improves, while every completion is
+appended to `successes.jsonl`. A Beam `--initial-policy` with a compatible smaller
+action table is remapped by action name into the selected table, so historical
+`basic` policies can seed the default `standard` search without restricting
+it.
 
 A new default beam run replaces the existing canonical run; custom outputs and
 explicit JERK or Go-Explore runs remain protected unless `--overwrite` is passed.
@@ -222,7 +320,7 @@ level instead uses `<Directory>/<State>/`. Interactive campaigns keep one TUI
 open and show separate progress bars for the current level's transitions and the
 overall 32-level campaign. A level that exhausts its budget is reported and the
 campaign continues to the next level; a safe stop ends the current level and
-does not start another. The default `simple-down` action set keeps pipe-dependent
+does not start another. The default `standard` action set keeps pipe-dependent
 levels searchable; an explicit `--action-set` is respected.
 
 New default runs use `runs/<State>/` regardless of algorithm. For compatibility,
@@ -242,6 +340,7 @@ make test                             # run Rust and Python tests
 make test-retro-oracle                # run ROM-backed parity and policy tests
 make benchmark                        # benchmark SuperMarioBros-Nes-turbo locally
 make benchmark-report                 # compare SuperMarioBros-Nes-turbo with Stable Retro
+uv run python scripts/benchmark_info_filter.py --rom /path/to/rom.nes  # diagnostic infos overhead
 ```
 
 ## 📈 Benchmark
@@ -250,6 +349,8 @@ make benchmark-report                 # compare SuperMarioBros-Nes-turbo with St
 
 The chart records the published `0.3.0` comparison. See
 [BENCHMARKS.md](BENCHMARKS.md) for exact results, protocol, and machine details.
+`benchmark_info_filter.py` is a paired diagnostic for the optional research-info
+path only; its output is never eligible for autoresearch acceptance records.
 
 ## Notes
 
@@ -261,7 +362,7 @@ The chart records the published `0.3.0` comparison. See
 - **Actions:** `Actions.ALL` and `Actions.FILTERED` accept per-button masks;
   `Actions.DISCRETE` provides Stable Retro-compatible 36-way actions and
   `Actions.MULTI_DISCRETE` exposes the three restricted button groups. Named
-  metadata presets (`simple`, `simple-down`, `right`, `full`) and inline button
+  metadata presets (`basic`, `standard`, `right-jump`, `basic-start`) and inline button
   tables such as `[[], ["RIGHT"], ["RIGHT", "A"]]` produce exact discrete
   spaces through `use_restricted_actions`.
 - **Playback:** Play commands require a discoverable native SDL2 library and

@@ -681,7 +681,7 @@ def save_jerk_checkpoint(
     timesteps: int,
     episodes: int,
     best_reward: float,
-    action_set: str = "simple",
+    action_set: str = "standard",
     metadata: dict[str, Any] | None = None,
 ) -> Path:
     if action_set not in ACTION_SETS:

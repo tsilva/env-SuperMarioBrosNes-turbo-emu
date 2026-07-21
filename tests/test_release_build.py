@@ -153,5 +153,10 @@ def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_availabl
         'restored_infos["start_source"]',
         "np.testing.assert_array_equal(expected, actual)",
         "canonical SMB ROM is unavailable",
+        "extra_info_descriptors",
+        "enemy_active",
+        "smoke-feature-wheel",
+        "feature-smoke Python must be CPython 3.9",
+        "feature-smoke ROM SHA-256",
     ):
         assert required in source

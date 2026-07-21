@@ -61,6 +61,7 @@ IGNORED_ROOT_DIR_NAMES = {
 }
 IGNORED_FILE_SUFFIXES = {".o", ".a", ".so", ".dylib", ".d", ".pyc", ".pyo"}
 ROM_SUFFIXES = {".nes", ".sfc", ".smc", ".gb", ".gbc", ".gen", ".sms", ".bin"}
+EXPECTED_SMB_ROM_SHA256 = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
 
 
 def release_temp_dir() -> Path:
@@ -656,8 +657,17 @@ def run(args_list: list[str], **kwargs: object) -> None:
     subprocess.run(args_list, check=True, **kwargs)
 
 
-def smoke_distribution(distribution: Path, python: Path) -> None:
+def smoke_distribution(
+    distribution: Path,
+    python: Path,
+    *,
+    required_rom: Path | None = None,
+) -> None:
     distribution = distribution.resolve()
+    required_rom_expression = (
+        repr(str(required_rom.resolve())) if required_rom is not None else "default_rom_path()"
+    )
+    feature_smoke_required = required_rom is not None
     with tempfile.TemporaryDirectory(prefix="supermariobrosnes-distribution-smoke.", dir=release_temp_dir()) as tmp:
         target = Path(tmp)
         environment = target / "venv"
@@ -678,16 +688,31 @@ def smoke_distribution(distribution: Path, python: Path) -> None:
 import numpy as np
 import {IMPORT_NAME}
 from {IMPORT_NAME} import {EXTENSION_NAME}
-from {IMPORT_NAME} import Actions, NES_BUTTONS, default_rom_path
+from {IMPORT_NAME} import (
+    AVAILABLE_INFO_KEYS,
+    EXTRA_INFO_KEYS,
+    INFO_KEYS,
+    Actions,
+    NES_BUTTONS,
+    default_rom_path,
+)
 print({IMPORT_NAME}.__file__)
 print({EXTENSION_NAME}.__file__)
 assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
 assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
 assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.supports_live_snapshots is True
+assert len(INFO_KEYS) == 10
+assert len(EXTRA_INFO_KEYS) > 0
+assert AVAILABLE_INFO_KEYS == INFO_KEYS + EXTRA_INFO_KEYS
+assert hasattr({EXTENSION_NAME}, "extra_info_descriptors")
+assert len({EXTENSION_NAME}.extra_info_descriptors()) == len(EXTRA_INFO_KEYS)
+for method in ("extra_info_shape", "extra_info_into", "ram_shape", "ram_into"):
+    assert hasattr({EXTENSION_NAME}._RetroVecEnv, method)
 
-rom_path = default_rom_path()
+rom_path = {required_rom_expression}
 if rom_path is None:
-    print("snapshot replay smoke skipped: canonical SMB ROM is unavailable")
+    assert {feature_smoke_required!r} is False
+    print("ROM-backed feature smoke skipped: ABI surface passed, canonical SMB ROM is unavailable")
 else:
     env = {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv(
         "SuperMarioBros-Nes-v0",
@@ -701,11 +726,30 @@ else:
         obs_grayscale=True,
         obs_resize=(84, 84),
         obs_layout="chw",
+        info_filter={{
+            "mode": "all",
+            "keys": ["x_pos", "y_pos", "area_type", "enemy_active", "enemy_x_pos"],
+        }},
     )
     try:
-        env.reset()
+        _, initial_infos = env.reset()
+        assert initial_infos["x_pos"].shape == (2,)
+        assert initial_infos["y_pos"].dtype == np.int32
+        assert initial_infos["area_type"].dtype == np.int8
+        assert initial_infos["enemy_active"].shape == (2, 6)
+        assert initial_infos["enemy_active"].dtype == np.bool_
+        assert initial_infos["enemy_x_pos"].shape == (2, 6)
+        frozen_enemy_x = initial_infos["enemy_x_pos"].copy()
+        ram = env.ram()
+        assert ram.shape == (2, 2048)
+        assert ram.dtype == np.uint8
+        assert ram.flags.writeable is False
         warmup = np.zeros((2, len(NES_BUTTONS)), dtype=np.uint8)
-        env.step(warmup)
+        _, _, _, _, step_infos = env.step(warmup)
+        assert set(key for key in step_infos if not key.startswith("_")) == {{
+            "x_pos", "y_pos", "area_type", "enemy_active", "enemy_x_pos"
+        }}
+        np.testing.assert_array_equal(initial_infos["enemy_x_pos"], frozen_enemy_x)
         handles = env.capture_snapshots(
             np.asarray([True, False], dtype=np.bool_)
         )
@@ -748,14 +792,56 @@ else:
             run([str(command), *arguments], cwd=target)
 
 
-def smoke_wheel(args: argparse.Namespace) -> None:
-    wheel = args.wheel.resolve()
+def resolve_smoke_wheel(path: Path) -> Path:
+    wheel = path.resolve()
     if wheel.is_dir():
         candidates = sorted(wheel.glob("*.whl"))
         if len(candidates) != 1:
             raise SystemExit(f"expected one wheel in {wheel}, found {candidates}")
         wheel = candidates[0]
+    return wheel
+
+
+def smoke_wheel(args: argparse.Namespace) -> None:
+    wheel = resolve_smoke_wheel(args.wheel)
     smoke_distribution(wheel, args.python)
+
+
+def smoke_feature_wheel(args: argparse.Namespace) -> None:
+    wheel = resolve_smoke_wheel(args.wheel)
+    rom = args.rom.resolve()
+    if not rom.is_file():
+        raise SystemExit(f"feature-smoke ROM does not exist: {rom}")
+    rom_digest = sha256(rom)
+    if rom_digest != EXPECTED_SMB_ROM_SHA256:
+        raise SystemExit(
+            f"feature-smoke ROM SHA-256 must be {EXPECTED_SMB_ROM_SHA256}, got {rom_digest}"
+        )
+    version_text = subprocess.check_output(
+        [
+            str(args.python),
+            "-c",
+            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')",
+        ],
+        text=True,
+    ).strip()
+    if version_text != "3.9":
+        raise SystemExit(
+            f"feature-smoke Python must be CPython 3.9, got {version_text} from {args.python}"
+        )
+    smoke_distribution(wheel, args.python, required_rom=rom)
+    evidence = {
+        "status": "passed",
+        "wheel": str(wheel),
+        "wheel_sha256": sha256(wheel),
+        "rom_sha256": rom_digest,
+        "python": str(args.python.resolve()),
+        "python_version": version_text,
+        "feature": "processed_research_infos",
+    }
+    args.evidence.parent.mkdir(parents=True, exist_ok=True)
+    args.evidence.write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(evidence, indent=2))
 
 
 def smoke_sdist(args: argparse.Namespace) -> None:
@@ -850,6 +936,16 @@ def main() -> None:
     smoke.add_argument("wheel", type=Path)
     smoke.add_argument("--python", type=Path, default=PYTHON)
     smoke.set_defaults(func=smoke_wheel)
+
+    feature_smoke = subparsers.add_parser(
+        "smoke-feature-wheel",
+        help="Fail-closed Python 3.9 installed-wheel smoke for ROM-backed research infos",
+    )
+    feature_smoke.add_argument("wheel", type=Path)
+    feature_smoke.add_argument("--python", type=Path, required=True)
+    feature_smoke.add_argument("--rom", type=Path, required=True)
+    feature_smoke.add_argument("--evidence", type=Path, required=True)
+    feature_smoke.set_defaults(func=smoke_feature_wheel)
 
     smoke_source = subparsers.add_parser("smoke-sdist", help="Build, install, and import-test a source distribution")
     smoke_source.add_argument("sdist", type=Path)

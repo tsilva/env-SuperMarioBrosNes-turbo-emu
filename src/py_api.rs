@@ -3,7 +3,8 @@
 #![allow(clippy::useless_conversion)]
 
 use numpy::{
-    PyReadonlyArray1, PyReadonlyArray4, PyReadwriteArray1, PyReadwriteArray4, PyUntypedArrayMethods,
+    PyReadonlyArray1, PyReadonlyArray4, PyReadwriteArray1, PyReadwriteArray2, PyReadwriteArray4,
+    PyUntypedArrayMethods,
 };
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -19,7 +20,9 @@ use crate::emulator::{
 use crate::vec_env::{
     CropMode, InitialState, LiveSnapshot, MarioVecEnv, ResizeAlgorithm, VecEnvConfig,
 };
-use smb_turbo_driver::EXPECTED_SMB_ROM_SHA256;
+use smb_turbo_driver::{
+    selected_extra_info_width, EXPECTED_SMB_ROM_SHA256, EXTRA_INFO_DESCRIPTORS,
+};
 
 #[pyclass(name = "_RetroVecEnv")]
 pub struct RetroVecEnv {
@@ -54,7 +57,7 @@ impl MarioLiveSnapshot {
 #[pymethods]
 impl RetroVecEnv {
     #[new]
-    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, state_catalog_data=None, state_catalog_names=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None))]
+    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, state_catalog_data=None, state_catalog_names=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None, extra_info_ids=None))]
     pub fn new(
         rom_path: String,
         num_envs: usize,
@@ -78,6 +81,7 @@ impl RetroVecEnv {
         crop_fill: u8,
         resize_algorithm: &str,
         num_threads: Option<isize>,
+        extra_info_ids: Option<Vec<u8>>,
     ) -> PyResult<Self> {
         if num_envs == 0 {
             return Err(PyValueError::new_err("num_envs must be > 0"));
@@ -118,6 +122,21 @@ impl RetroVecEnv {
         }
         let crop_mode = build_crop_mode(crop_mode)?;
         let resize_algorithm = build_resize_algorithm(resize_algorithm)?;
+        let extra_info_ids = extra_info_ids.unwrap_or_default();
+        if selected_extra_info_width(&extra_info_ids).is_none() {
+            return Err(PyValueError::new_err(
+                "extra_info_ids contains an unknown id",
+            ));
+        }
+        let mut unique_extra_ids = std::collections::HashSet::new();
+        if extra_info_ids
+            .iter()
+            .any(|id| !unique_extra_ids.insert(*id))
+        {
+            return Err(PyValueError::new_err(
+                "extra_info_ids must not contain duplicates",
+            ));
+        }
         let available_threads = thread::available_parallelism()
             .map(|count| count.get())
             .unwrap_or(1);
@@ -176,7 +195,7 @@ impl RetroVecEnv {
             sticky_action_prob,
         };
         Ok(Self {
-            inner: MarioVecEnv::new(cart, config, state_catalog, seed)
+            inner: MarioVecEnv::new(cart, config, state_catalog, seed, extra_info_ids)
                 .map_err(|err| PyValueError::new_err(err.to_string()))?,
             thread_pool,
             num_threads: effective_num_threads,
@@ -269,6 +288,56 @@ impl RetroVecEnv {
             VISIBLE_FRAME_WIDTH,
             RGB_CHANNELS,
         )
+    }
+
+    pub fn extra_info_shape(&self) -> (usize, usize) {
+        (self.inner.config().num_envs, self.inner.extra_info_width())
+    }
+
+    pub fn extra_info_into<'py>(
+        &self,
+        py: Python<'py>,
+        mut output: PyReadwriteArray2<'py, i64>,
+    ) -> PyResult<()> {
+        if output.shape() != [self.inner.config().num_envs, self.inner.extra_info_width()] {
+            return Err(PyValueError::new_err(format!(
+                "extra info output shape must be {:?}, got {:?}",
+                self.extra_info_shape(),
+                output.shape(),
+            )));
+        }
+        let mut output_rw = output.as_array_mut();
+        let output_slice = output_rw
+            .as_slice_mut()
+            .ok_or_else(|| PyValueError::new_err("extra info output must be C-contiguous"))?;
+        let pool = self.thread_pool.as_ref();
+        let inner = &self.inner;
+        py.allow_threads(|| install_in_pool(pool, || inner.extra_info_into(output_slice)));
+        Ok(())
+    }
+
+    pub fn ram_shape(&self) -> (usize, usize) {
+        (self.inner.config().num_envs, 2048)
+    }
+
+    pub fn ram_into<'py>(
+        &self,
+        py: Python<'py>,
+        mut output: PyReadwriteArray2<'py, u8>,
+    ) -> PyResult<()> {
+        if output.shape() != [self.inner.config().num_envs, 2048] {
+            return Err(PyValueError::new_err(format!(
+                "RAM output shape must be {:?}, got {:?}",
+                self.ram_shape(),
+                output.shape(),
+            )));
+        }
+        let mut output_rw = output.as_array_mut();
+        let output_slice = output_rw
+            .as_slice_mut()
+            .ok_or_else(|| PyValueError::new_err("RAM output must be C-contiguous"))?;
+        py.allow_threads(|| self.inner.ram_into(output_slice));
+        Ok(())
     }
 
     pub fn rgb_frames_into<'py>(
@@ -894,10 +963,27 @@ fn build_resize_algorithm(algorithm: &str) -> PyResult<ResizeAlgorithm> {
     }
 }
 
+#[pyfunction]
+fn extra_info_descriptors() -> Vec<(u8, String, usize, String, Option<String>)> {
+    EXTRA_INFO_DESCRIPTORS
+        .iter()
+        .map(|descriptor| {
+            (
+                descriptor.id,
+                descriptor.name.to_string(),
+                descriptor.width,
+                descriptor.dtype.as_str().to_string(),
+                descriptor.enum_name.map(str::to_string),
+            )
+        })
+        .collect()
+}
+
 #[pymodule]
 fn _supermariobrosnes_turbo(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<MarioLiveSnapshot>()?;
     m.add_class::<RetroVecEnv>()?;
+    m.add_function(wrap_pyfunction!(extra_info_descriptors, m)?)?;
     m.add("NES_WIDTH", NES_WIDTH)?;
     m.add("NES_HEIGHT", NES_HEIGHT)?;
     m.add("VISIBLE_FRAME_WIDTH", VISIBLE_FRAME_WIDTH)?;

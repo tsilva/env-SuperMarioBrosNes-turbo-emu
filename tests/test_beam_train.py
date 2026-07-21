@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from supermariobrosnes_turbo import beam_training, training
 from supermariobrosnes_turbo.beam import BeamCandidate, BeamSearch
 from supermariobrosnes_turbo.jerk import (
@@ -36,7 +38,7 @@ def _search(*, n_envs: int = 1, beam_width: int = 2) -> BeamSearch:
     )
 
 
-def test_beam_prunes_to_width_and_keeps_success_above_higher_failure() -> None:
+def test_beam_prunes_to_width_and_keeps_success_plus_furthest_failure() -> None:
     search = _search(beam_width=2)
     search._upsert_candidate(
         _runs((1, 1)), score_return=100.0, completed=False, progress=100.0
@@ -51,7 +53,7 @@ def test_beam_prunes_to_width_and_keeps_success_above_higher_failure() -> None:
 
     assert search.beam_count == 2
     assert _runs((2, 1)) in search._beam
-    assert _runs((1, 1)) in search._beam
+    assert _runs((3, 1)) in search._beam
 
 
 def test_beam_expands_parent_prefix_with_systematic_action_run_branch() -> None:
@@ -108,7 +110,30 @@ def test_beam_active_best_candidate_carries_observed_progress() -> None:
     )
     retained = search.best_candidate()
     assert retained is not None
-    assert retained.progress == 654.0
+    assert retained.progress == 999.0
+
+
+def test_score_first_beam_retains_furthest_prefix_not_earliest_return() -> None:
+    search = _search()
+
+    for progress, done in ((10.0, False), (20.0, False), (30.0, True)):
+        search.next_actions()
+        search.observe(
+            [-0.1],
+            [done],
+            (
+                {0: SimpleNamespace(completed=False, progress=progress)}
+                if done
+                else None
+            ),
+            progresses=[progress],
+        )
+
+    candidate = search.best_candidate()
+    assert candidate is not None
+    assert candidate.progress == 30.0
+    assert candidate.step_count == 3
+    assert candidate.incomplete_return == pytest.approx(-0.3)
 
 
 def test_beam_cli_defaults_to_canonical_output_and_shared_action_contract() -> None:
@@ -189,11 +214,14 @@ def test_improvement_mode_promotes_success_and_mutates_from_root() -> None:
 
     assert search.improvement_mode
     assert search.best_success_return == 1.0
-    assert search.coverage_total == 2
+    assert search.coverage_total == 1
     assert search._lanes[0].parent is search.best_candidate()
     assert {
         job.replay_limit_runs for job in search._coverage_templates
-    } == {0, 1}
+    } == {0}
+    assert {
+        job.resume_parent_run_index for job in search._coverage_templates
+    } == {1}
 
     search.next_actions()
     search.observe(
@@ -281,6 +309,37 @@ def test_deepening_alternates_earlier_cuts_with_local_refinement() -> None:
     assert search.cut_depth == 4
 
 
+def test_completed_parent_mutation_replays_its_proven_suffix() -> None:
+    search = _search(beam_width=1)
+    parent = BeamCandidate(
+        runs=_runs((1, 1), (2, 1), (3, 1)),
+        completed_return=10.0,
+        progress=100.0,
+    )
+    search._beam = {parent.runs: parent}
+    search._parents = (parent,)
+    search._best_success = parent
+    search._improvement_mode = True
+    search._cut_depth = 2
+    search._prepare_coverage()
+    job = next(
+        job
+        for job in search._coverage_templates
+        if job.branch == ActionRun(4, 1)
+    )
+    search._lanes[0] = search._state_for_job(job)
+
+    actions = [int(search.next_actions()[0]) for _ in range(3)]
+
+    assert actions == [1, 4, 3]
+    assert job.replay_limit_runs == 1
+    assert job.resume_parent_run_index == 2
+    assert all(
+        template.replay_limit_runs < len(parent.runs)
+        for template in search._coverage_templates
+    )
+
+
 def test_beam_warm_start_replays_the_seed_program_exactly_on_one_lane() -> None:
     search = _search(n_envs=2)
     runs = _runs((1, 2), (2, 1))
@@ -289,6 +348,32 @@ def test_beam_warm_start_replays_the_seed_program_exactly_on_one_lane() -> None:
     actions = [int(search.next_actions()[0]) for _ in range(3)]
 
     assert actions == [1, 1, 2]
+
+
+def test_beam_remaps_simple_warm_start_into_simple_down_by_action_name() -> None:
+    policy = JerkPolicy(
+        action_names=ACTIONS,
+        action_runs=_runs((1, 2), (6, 1)),
+        fallback_action=0,
+    )
+
+    remapped = beam_training._remap_policy_runs(
+        policy,
+        tuple(training.ACTION_SETS["simple-down"]),
+    )
+
+    assert remapped == _runs((1, 2), (6, 1))
+
+
+def test_beam_rejects_warm_start_action_absent_from_selected_table() -> None:
+    policy = JerkPolicy(
+        action_names=("noop", "left"),
+        action_runs=_runs((1, 1)),
+        fallback_action=0,
+    )
+
+    with pytest.raises(ValueError, match="'left'"):
+        beam_training._remap_policy_runs(policy, ("noop", "right"))
 
 
 def test_strictly_better_unsolved_frontier_is_queued_for_immediate_extension() -> None:

@@ -37,7 +37,7 @@ class TrainingSnapshot:
     stop_rule: str
     output: Path
     total_timesteps: int
-    action_set: str = "simple (7 actions)"
+    action_set: str = "standard (8 actions)"
     timesteps: int = 0
     elapsed: float = 0.0
     loop_fps: float = 0.0

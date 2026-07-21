@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Add an opt-in catalog of processed player, area, engine, and six-slot enemy
+  state to Gymnasium infos, including public enum types and exact requested-key
+  filtering without changing the legacy default infos.
+- Add immutable per-lane CPU RAM snapshots for researchers who explicitly need
+  unprocessed state.
 
 ## 0.4.1 - 2026-07-21
 

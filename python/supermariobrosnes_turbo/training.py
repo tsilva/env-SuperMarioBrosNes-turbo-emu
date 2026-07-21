@@ -41,7 +41,7 @@ from .training_ui import (
 
 
 LOGGER = logging.getLogger("jerk_train")
-ACTION_SET = "simple-down"
+ACTION_SET = "standard"
 TOTAL_TIMESTEPS = 10_000_000
 N_ENVS = 64
 MAX_EPISODE_STEPS = 4_500

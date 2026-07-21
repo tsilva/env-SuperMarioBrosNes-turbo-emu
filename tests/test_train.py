@@ -793,6 +793,7 @@ def test_named_run_checkpoint_round_trip(tmp_path) -> None:
     assert actions == [1, 1, 3, 0]
     assert policy.timesteps == 123
     assert policy.metadata["terminate_on_level_change"] is False
+    assert policy.action_set == "simple-down"
 
 
 def test_exploit_probability_matches_rlab_schedule() -> None:

@@ -162,8 +162,8 @@ def test_discrete_indices_are_bijective_in_stable_retro_order() -> None:
     assert len(set(expected)) == 36
 
 
-def test_named_simple_and_right_sets_keep_their_controller_mappings() -> None:
-    assert _named_action_controller_bytes(ACTION_SETS["simple"]).tolist() == [
+def test_named_action_sets_keep_their_controller_mappings() -> None:
+    assert _named_action_controller_bytes(ACTION_SETS["basic"]).tolist() == [
         0,
         128,
         130,
@@ -172,13 +172,13 @@ def test_named_simple_and_right_sets_keep_their_controller_mappings() -> None:
         1,
         64,
     ]
-    assert _named_action_controller_bytes(ACTION_SETS["right"]).tolist() == [
+    assert _named_action_controller_bytes(ACTION_SETS["right-jump"]).tolist() == [
         128,
         130,
         129,
         131,
     ]
-    assert _named_action_controller_bytes(ACTION_SETS["full"]).tolist() == [
+    assert _named_action_controller_bytes(ACTION_SETS["basic-start"]).tolist() == [
         0,
         128,
         130,
@@ -188,7 +188,7 @@ def test_named_simple_and_right_sets_keep_their_controller_mappings() -> None:
         64,
         8,
     ]
-    assert _named_action_controller_bytes(ACTION_SETS["simple-down"]).tolist() == [
+    assert _named_action_controller_bytes(ACTION_SETS["standard"]).tolist() == [
         0,
         128,
         130,
@@ -212,7 +212,7 @@ def test_named_preset_and_inline_table_have_the_same_contract() -> None:
         state="Level1-1",
         rom_path=rom,
         num_envs=1,
-        use_restricted_actions="right",
+        use_restricted_actions="right-jump",
     )
     inline = SuperMarioBrosNesTurboVecEnv(
         "SuperMarioBros-Nes-v0",
@@ -227,7 +227,7 @@ def test_named_preset_and_inline_table_have_the_same_contract() -> None:
         ],
     )
     try:
-        assert named.action_preset == "right"
+        assert named.action_preset == "right-jump"
         assert inline.action_preset is None
         assert named.action_table == inline.action_table
         assert named.action_meanings == inline.action_meanings

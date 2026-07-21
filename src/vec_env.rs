@@ -4,6 +4,7 @@ use crate::emulator::{
 };
 use crate::profiler::Profiler;
 use rayon::prelude::*;
+use smb_turbo_driver::{decode_extra_info, selected_extra_info_width};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub(crate) const PARALLEL_ENV_THRESHOLD: usize = 4;
@@ -133,6 +134,8 @@ pub struct MarioVecEnv {
     scratch: Vec<Vec<u8>>,
     profiler: Option<Profiler>,
     profile_shards: Vec<Profiler>,
+    extra_info_ids: Vec<u8>,
+    extra_info_width: usize,
 }
 
 #[derive(Clone)]
@@ -156,6 +159,7 @@ impl MarioVecEnv {
         config: VecEnvConfig,
         state_catalog: Vec<InitialState>,
         seed: u64,
+        extra_info_ids: Vec<u8>,
     ) -> Result<Self, StateLoadError> {
         let resize_plan = AreaResizePlan::new(
             config.source_width(),
@@ -170,6 +174,8 @@ impl MarioVecEnv {
         let scratch = (0..config.num_envs)
             .map(|_| vec![0; scratch_len])
             .collect::<Vec<_>>();
+        let extra_info_width = selected_extra_info_width(&extra_info_ids)
+            .expect("extra info ids must be validated before MarioVecEnv construction");
         let mut env = Self {
             config,
             resize_plan,
@@ -185,6 +191,8 @@ impl MarioVecEnv {
             scratch,
             profiler: None,
             profile_shards: Vec::new(),
+            extra_info_ids,
+            extra_info_width,
         };
         if !env.state_catalog.is_empty() {
             let mut validator = NesEmulator::new_with_options(cart, config.terminate_on_flag);
@@ -524,6 +532,44 @@ impl MarioVecEnv {
                 &mut xscroll_hi[env_idx],
                 &mut xscroll_lo[env_idx],
             );
+        }
+    }
+
+    pub fn extra_info_width(&self) -> usize {
+        self.extra_info_width
+    }
+
+    pub fn extra_info_into(&self, output: &mut [i64]) {
+        debug_assert_eq!(output.len(), self.config.num_envs * self.extra_info_width);
+        if self.extra_info_width == 0 {
+            return;
+        }
+        if self.config.num_threads > 1 && self.config.num_envs >= self.config.parallel_env_threshold
+        {
+            let ids = &self.extra_info_ids;
+            self.envs
+                .par_iter()
+                .zip(output.par_chunks_mut(self.extra_info_width))
+                .for_each(|(env, output)| {
+                    let decoded = decode_extra_info(env.ram(), ids, output);
+                    debug_assert!(decoded);
+                });
+        } else {
+            for (env, output) in self
+                .envs
+                .iter()
+                .zip(output.chunks_mut(self.extra_info_width))
+            {
+                let decoded = decode_extra_info(env.ram(), &self.extra_info_ids, output);
+                debug_assert!(decoded);
+            }
+        }
+    }
+
+    pub fn ram_into(&self, output: &mut [u8]) {
+        debug_assert_eq!(output.len(), self.config.num_envs * 2048);
+        for (env, output) in self.envs.iter().zip(output.chunks_mut(2048)) {
+            output.copy_from_slice(env.ram());
         }
     }
 
@@ -2002,7 +2048,7 @@ mod tests {
             chr_rom: vec![0; 8192],
             vertical_mirroring: true,
         };
-        let mut env = MarioVecEnv::new(cart, config, Vec::new(), 1).unwrap();
+        let mut env = MarioVecEnv::new(cart, config, Vec::new(), 1, Vec::new()).unwrap();
         let previous_controller_state = 0b1011_0111;
         env.last_actions[0] = previous_controller_state;
 

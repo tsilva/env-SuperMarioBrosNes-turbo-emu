@@ -73,6 +73,24 @@ Missing or empty release notes are also a hard failure. Never synthesize
 release notes from commits; the script may only promote human-authored
 `Unreleased` prose.
 
+Releases containing the processed research-info catalog also require a
+fail-closed installed-wheel feature smoke on CPython 3.9 in a maintainer
+environment that has the canonical ROM. Run the helper against the exact wheel
+being released and keep its JSON evidence outside the repository:
+
+```bash
+uv run python .codex/skills/build-release/scripts/release_build.py \
+  smoke-feature-wheel <wheel> \
+  --python <python3.9> \
+  --rom <canonical-rom.nes> \
+  --evidence <external-artifact-dir>/research-info-smoke.json
+```
+
+The command must fail when Python is not 3.9, the ROM is absent or has the
+wrong canonical hash, or the installed wheel does not exercise mixed legacy
+and extra infos. Do not describe a ROM-free public-CI smoke as feature-level
+validation; it validates only the stable ABI surface.
+
 3. Capture the released tag and version.
 
 The command should end with output like:
