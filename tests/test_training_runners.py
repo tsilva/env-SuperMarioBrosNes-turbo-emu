@@ -283,11 +283,15 @@ def test_both_trainers_finish_success_and_budget_paths(
         )
         assert policy.metadata["cell_encoding"] == "raw-bytes"
         assert policy.metadata["cell_key_bytes"] == 64
+        assert policy.metadata["success_guided_restore_probability"] == 0.5
         assert run_config["go_explore_cell_frame_shape"] == [8, 8]
         assert run_config["go_explore_cell_hud_mask"] == [32, 0, 0, 0]
         assert run_config["go_explore_cell_quantization_bits"] == 3
         assert run_config["go_explore_cell_encoding"] == "raw-bytes"
         assert run_config["go_explore_cell_key_bytes"] == 64
+        assert (
+            run_config["go_explore_success_guided_restore_probability"] == 0.5
+        )
 
 
 @pytest.mark.parametrize(("module", "extra_args"), TRAINERS)

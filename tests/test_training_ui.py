@@ -221,6 +221,8 @@ def test_go_explore_dashboard_shows_cell_metrics_instead_of_replay_metrics() -> 
         "archive_recent_new_cell_rate": 0.052,
         "archive_recent_visit_window": 10_000,
         "archive_visits_per_cell": 34.7,
+        "success_guided_cell_count": 234,
+        "success_guided_selection_count": 512,
         "retained_count": 361,
         "locked_count": 125,
         "loop_fps": 4_372.0,
@@ -244,6 +246,8 @@ def test_go_explore_dashboard_shows_cell_metrics_instead_of_replay_metrics() -> 
     assert snapshot.archive_recent_new_cell_rate == 0.052
     assert snapshot.archive_recent_visit_window == 10_000
     assert snapshot.archive_visits_per_cell == 34.7
+    assert snapshot.success_guided_cell_count == 234
+    assert snapshot.success_guided_selection_count == 512
 
     async def exercise() -> None:
         app = TrainingApp(snapshot, None)
@@ -256,6 +260,7 @@ def test_go_explore_dashboard_shows_cell_metrics_instead_of_replay_metrics() -> 
             assert "Cell restores   1,024" in search
             assert "Cell visits     8,192 · 34.7/cell" in search
             assert "New-cell rate   5.2% / 10,000 visits" in search
+            assert "Success-guided  512 · 234 cells" in search
             assert "Archive updates 73" in search
             assert "Replay chance" not in search
             assert "Locked" not in search

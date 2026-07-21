@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 
 from . import ACTION_SETS
-from .go_explore import GoExploreSearch
+from .go_explore import GoExploreSearch, SUCCESS_GUIDED_RESTORE_PROBABILITY
 from .jerk import JerkPolicy, run_directory_for_state
 from . import training_ui
 from .training_ui import (
@@ -50,6 +50,9 @@ def _policy(search: GoExploreSearch) -> JerkPolicy:
             "cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
             "cell_encoding": "raw-bytes",
             "cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
+            "success_guided_restore_probability": (
+                SUCCESS_GUIDED_RESTORE_PROBABILITY
+            ),
         }
     )
     return policy
@@ -64,6 +67,9 @@ def _run_config(args: argparse.Namespace) -> dict[str, Any]:
         "go_explore_cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
         "go_explore_cell_encoding": "raw-bytes",
         "go_explore_cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
+        "go_explore_success_guided_restore_probability": (
+            SUCCESS_GUIDED_RESTORE_PROBABILITY
+        ),
     }
 
 
@@ -84,6 +90,8 @@ def _metric_row(
         "archive_recent_new_cell_rate": search.archive_recent_new_cell_rate,
         "archive_recent_visit_window": search.archive_recent_visit_window,
         "archive_visits_per_cell": search.archive_visits_per_cell,
+        "success_guided_cell_count": search.success_guided_cell_count,
+        "success_guided_selection_count": search.success_guided_selection_count,
         "retained_count": search.retained_count,
         "locked_count": search.locked_count,
         "incomplete_retained_count": search.incomplete_retained_count,

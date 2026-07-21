@@ -16,6 +16,7 @@ from .jerk import ActionRun, JerkPolicy, canonicalize_runs, run_step_count
 
 
 RECENT_CELL_VISIT_WINDOW = 10_000
+SUCCESS_GUIDED_RESTORE_PROBABILITY = 0.5
 
 
 def _deep_sizeof(value: Any, seen: set[int] | None = None) -> int:
@@ -112,6 +113,9 @@ class GoExploreCell:
     episode_return: float
     progress: float
     program_steps: int = 0
+    parent_key: Hashable | None = None
+    best_success_return: float | None = None
+    success_selections: int = 0
     visits: int = 0
     selections: int = 0
     updates: int = 0
@@ -137,6 +141,7 @@ class _PendingCell:
     episode_return: float
     progress: float
     step_count: int
+    parent_key: Hashable | None
     visits: int
 
 
@@ -147,6 +152,7 @@ class _GoExploreLaneState:
     progress: float = 0.0
     program_steps: int = 0
     steps_since_restart: int = 0
+    path_cell_keys: list[Hashable] = field(default_factory=list)
     exploration_action: int = 0
     exploration_remaining: int = 0
 
@@ -207,6 +213,8 @@ class GoExploreSearch:
         self._recent_cell_batches: deque[tuple[int, int]] = deque()
         self._recent_cell_visits = 0
         self._recent_new_cells = 0
+        self._elite_success_cell_keys: tuple[Hashable, ...] = ()
+        self._success_guided_selection_count = 0
         self._lanes = [_GoExploreLaneState() for _ in range(self.n_envs)]
         self._rngs = [
             np.random.default_rng(np.random.SeedSequence([self.seed, lane, 0x474F4558]))
@@ -254,6 +262,14 @@ class GoExploreSearch:
         return self.archive_visit_count / len(self._archive)
 
     @property
+    def success_guided_cell_count(self) -> int:
+        return len(self._elite_success_cell_keys)
+
+    @property
+    def success_guided_selection_count(self) -> int:
+        return self._success_guided_selection_count
+
+    @property
     def retained_count(self) -> int:
         return self.archive_count + self.successful_episodes
 
@@ -299,7 +315,7 @@ class GoExploreSearch:
             else:
                 cell.visits += 1
             self._archive_visit_count += 1
-            self._lanes[lane] = _GoExploreLaneState()
+            self._lanes[lane] = _GoExploreLaneState(path_cell_keys=[key])
         self._archive_memory_bytes = _deep_sizeof(self._archive)
 
     @staticmethod
@@ -405,7 +421,78 @@ class GoExploreSearch:
             progress=progress,
             completed=completed,
         )
+        improved_success = completed and (
+            previous is None
+            or candidate.episode_return > previous.episode_return
+        )
         self._consider_best(candidate)
+        if completed:
+            self._record_success_lineage(
+                state,
+                candidate.episode_return,
+                promote=improved_success,
+            )
+
+    def _success_lineage(self, state: _GoExploreLaneState) -> tuple[Hashable, ...]:
+        """Return root-to-terminal archived cells represented by one lane."""
+        if not state.path_cell_keys:
+            return ()
+        origin = state.path_cell_keys[0]
+        ancestors: list[Hashable] = []
+        seen: set[Hashable] = set()
+        key: Hashable | None = origin
+        while key is not None and key not in seen:
+            seen.add(key)
+            cell = self._archive.get(key)
+            if cell is None:
+                break
+            ancestors.append(key)
+            key = cell.parent_key
+        ancestors.reverse()
+
+        lineage: list[Hashable] = []
+        seen.clear()
+        for key in (*ancestors, *state.path_cell_keys[1:]):
+            if key in self._archive and key not in seen:
+                seen.add(key)
+                lineage.append(key)
+        return tuple(lineage)
+
+    def _record_success_lineage(
+        self,
+        state: _GoExploreLaneState,
+        episode_return: float,
+        *,
+        promote: bool,
+    ) -> None:
+        lineage = self._success_lineage(state)
+        for key in lineage:
+            cell = self._archive[key]
+            if (
+                cell.best_success_return is None
+                or episode_return > cell.best_success_return
+            ):
+                cell.best_success_return = episode_return
+        if promote:
+            self._elite_success_cell_keys = lineage
+            for key in lineage:
+                self._archive[key].success_selections = 0
+
+    @staticmethod
+    def _observe_cell_key(
+        state: _GoExploreLaneState, key: Hashable
+    ) -> Hashable | None:
+        """Track distinct visited cells and return this cell's trajectory parent."""
+        if not state.path_cell_keys:
+            state.path_cell_keys.append(key)
+            return None
+        if state.path_cell_keys[-1] != key:
+            parent_key = state.path_cell_keys[-1]
+            state.path_cell_keys.append(key)
+            return parent_key
+        if len(state.path_cell_keys) >= 2:
+            return state.path_cell_keys[-2]
+        return None
 
     def _consider_best(self, candidate: GoExploreCandidate) -> None:
         if candidate.completed:
@@ -494,6 +581,7 @@ class GoExploreSearch:
 
             key = cell_keys[lane]
             observed_counts[key] = observed_counts.get(key, 0) + 1
+            parent_key = self._observe_cell_key(state, key)
             cell = self._archive.get(key)
             current_pending = self._pending.get(key)
             comparison: GoExploreCell | _PendingCell | None = (
@@ -511,6 +599,7 @@ class GoExploreSearch:
                     episode_return=state.episode_return,
                     progress=progress,
                     step_count=state.program_steps,
+                    parent_key=parent_key,
                     visits=0,
                 )
             if state.steps_since_restart >= self.explore_steps:
@@ -570,6 +659,7 @@ class GoExploreSearch:
                     episode_return=pending.episode_return,
                     progress=pending.progress,
                     program_steps=pending.step_count,
+                    parent_key=pending.parent_key,
                     visits=pending.visits,
                 )
                 self._archive[pending.key] = cell
@@ -586,12 +676,31 @@ class GoExploreSearch:
             existing.episode_return = pending.episode_return
             existing.progress = pending.progress
             existing.program_steps = pending.step_count
+            existing.parent_key = pending.parent_key
             existing.updates += 1
             self._archive_update_count += 1
             self._archive_memory_bytes += _deep_sizeof(existing) - previous_size
         self._pending = {}
 
     def _select_cell(self, lane: int) -> GoExploreCell:
+        rng = self._rngs[lane]
+        if (
+            self._elite_success_cell_keys
+            and rng.random() < SUCCESS_GUIDED_RESTORE_PROBABILITY
+        ):
+            cells = tuple(
+                self._archive[key] for key in self._elite_success_cell_keys
+            )
+            weights = np.asarray(
+                [1.0 / math.sqrt(1.0 + cell.success_selections) for cell in cells],
+                dtype=np.float64,
+            )
+            index = int(rng.choice(len(cells), p=weights / weights.sum()))
+            cell = cells[index]
+            cell.success_selections += 1
+            self._success_guided_selection_count += 1
+            return cell
+
         cells = tuple(self._archive.values())
         weights = np.asarray(
             [
@@ -602,7 +711,7 @@ class GoExploreSearch:
             dtype=np.float64,
         )
         probabilities = weights / weights.sum()
-        index = int(self._rngs[lane].choice(len(cells), p=probabilities))
+        index = int(rng.choice(len(cells), p=probabilities))
         return cells[index]
 
     def restart(self, mask: Sequence[bool]) -> tuple[Any | None, ...]:
@@ -622,6 +731,7 @@ class GoExploreSearch:
                 episode_return=cell.episode_return,
                 progress=cell.progress,
                 program_steps=cell.step_count,
+                path_cell_keys=[cell.key],
             )
         return tuple(snapshots)
 

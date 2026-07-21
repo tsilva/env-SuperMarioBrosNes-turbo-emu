@@ -202,6 +202,11 @@ Go-Explore ranks paths with raw game-score gains first and charges each step
 `1 / (max_episode_steps + 1)` by default, so the entire episode's time charge is
 less than one score point. Higher score therefore always wins, while fewer steps
 break ties; an explicit `--step-cost` overrides that default.
+After the first completion, half of archived restores continue novelty-weighted
+exploration and half sample underused cells across the best successful
+trajectory. Success return is propagated through parent-linked archived cells,
+so score improvement can mutate the whole proven route instead of only states
+near the flag.
 
 Omit the training state to process all 32 canonical levels in game order:
 

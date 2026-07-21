@@ -184,6 +184,57 @@ def test_go_explore_tracks_recent_new_cells_per_visit() -> None:
     assert search.archive_visits_per_cell == 1.5
 
 
+def test_go_explore_credits_and_samples_the_best_success_lineage(
+    monkeypatch,
+) -> None:
+    search = _search(explore_steps=8)
+    search.initialize(("root",), ("root-snapshot",))
+
+    search.next_actions()
+    search.observe([1.0], [False], ["prefix"], progresses=[100.0])
+    search.commit_archive(("prefix-snapshot",))
+    assert search.archive["prefix"].parent_key == "root"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(search, "_select_cell", lambda _lane: search.archive["prefix"])
+        search.restart([True])
+
+    search.next_actions()
+    search.observe([2.0], [False], ["winning-suffix"], progresses=[200.0])
+    search.commit_archive(("winning-suffix-snapshot",))
+    assert search.archive["winning-suffix"].parent_key == "prefix"
+
+    search.next_actions()
+    search.observe(
+        [5.0],
+        [True],
+        ["terminal"],
+        {0: SimpleNamespace(completed=True, progress=300.0)},
+        progresses=[300.0],
+    )
+
+    assert search.best_success_return == 8.0
+    assert search.success_guided_cell_count == 3
+    for key in ("root", "prefix", "winning-suffix"):
+        assert search.archive[key].best_success_return == 8.0
+
+    monkeypatch.setattr(
+        go_explore_module, "SUCCESS_GUIDED_RESTORE_PROBABILITY", 1.0
+    )
+    selected = {
+        search.restart([True])[0]
+        for _ in range(30)
+    }
+
+    assert selected <= {
+        "root-snapshot",
+        "prefix-snapshot",
+        "winning-suffix-snapshot",
+    }
+    assert selected
+    assert search.success_guided_selection_count == 30
+
+
 def test_go_explore_locks_successes_and_selects_them_only_by_return() -> None:
     search = _search(explore_steps=1)
     search.initialize(("root",), ("root-snapshot",))

@@ -59,6 +59,8 @@ class TrainingSnapshot:
     archive_recent_new_cell_rate: float = 0.0
     archive_recent_visit_window: int = 0
     archive_visits_per_cell: float = 0.0
+    success_guided_cell_count: int = 0
+    success_guided_selection_count: int = 0
     archive_replay_probability: float | None = None
     archive_selected_prefix_return_mean: float | None = None
     generation: int | None = None
@@ -242,6 +244,10 @@ def snapshot_from_row(
             row.get("archive_recent_visit_window", 0)
         ),
         archive_visits_per_cell=float(row.get("archive_visits_per_cell", 0.0)),
+        success_guided_cell_count=int(row.get("success_guided_cell_count", 0)),
+        success_guided_selection_count=int(
+            row.get("success_guided_selection_count", 0)
+        ),
         archive_replay_probability=row.get("archive_replay_probability"),
         archive_selected_prefix_return_mean=row.get(
             "archive_selected_prefix_return_mean"
@@ -604,6 +610,8 @@ class TrainingApp(App[Optional[TrainingResult]]):
                 f"{snapshot.archive_visits_per_cell:,.1f}/cell\n"
                 f"New-cell rate   {snapshot.archive_recent_new_cell_rate:.1%} / "
                 f"{snapshot.archive_recent_visit_window:,} visits\n"
+                f"Success-guided  {snapshot.success_guided_selection_count:,} · "
+                f"{snapshot.success_guided_cell_count:,} cells\n"
                 f"Archive updates {snapshot.archive_update_count:,}\n"
                 f"Episodes         {snapshot.episodes:,}"
             )
