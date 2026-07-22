@@ -105,3 +105,21 @@ def test_release_accepts_already_prepared_target_changelog(tmp_path, monkeypatch
     release.promote_changelog("0.3.1", generated_notes="- Generated release.")
 
     assert changes.read_text() == original
+
+
+def test_release_folds_new_notes_into_already_prepared_target(tmp_path, monkeypatch):
+    release = _release_module()
+    changes = tmp_path / "CHANGES.md"
+    changes.write_text(
+        "# Changelog\n\n## Unreleased\n\n- Later improvement.\n\n"
+        "## 0.3.1 - 2026-07-15\n\n- Prepared release.\n"
+    )
+    monkeypatch.setattr(release, "CHANGES", changes)
+
+    release.promote_changelog("0.3.1", generated_notes="- Generated release.")
+
+    assert changes.read_text() == (
+        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
+        "## 0.3.1 - 2026-07-15\n\n- Later improvement.\n"
+        "- Prepared release.\n"
+    )

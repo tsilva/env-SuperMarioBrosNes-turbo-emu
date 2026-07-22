@@ -143,7 +143,14 @@ def promote_changelog(
     else:
         unreleased = tail[:separator].strip()
         history = tail[separator + 1 :].strip()
-    if f"## {version} " in text:
+    version_heading = f"## {version} "
+    if version_heading in text:
+        if not unreleased or unreleased == "- Nothing yet.":
+            return
+        heading_start = history.index(version_heading)
+        body_start = history.index("\n\n", heading_start) + 2
+        history = f"{history[:body_start]}{unreleased}\n{history[body_start:]}"
+        CHANGES.write_text(f"{prefix}- Nothing yet.\n\n{history.rstrip()}\n", encoding="utf-8")
         return
     if not unreleased or unreleased == "- Nothing yet.":
         unreleased = generated_notes or ""
