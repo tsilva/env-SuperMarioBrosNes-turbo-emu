@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-- Make Go-Explore the default trainer, continue through the transition budget
-  after completion by default, and add `--stop-on-completion` as the explicit
-  first-success opt-out.
+- Nothing yet.
 
 ## 0.4.2 - 2026-07-21
 
+- Make Go-Explore the default trainer, continue through the transition budget
+  after completion by default, and add `--stop-on-completion` as the explicit
+  first-success opt-out.
 - Add an opt-in catalog of processed player, area, engine, and six-slot enemy
   state to Gymnasium infos, including public enum types and exact requested-key
   filtering without changing the legacy default infos.
