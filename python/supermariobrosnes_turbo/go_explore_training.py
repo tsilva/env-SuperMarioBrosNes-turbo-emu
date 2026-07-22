@@ -30,6 +30,7 @@ from .training import (
     GO_EXPLORE_CELL_REPRESENTATION,
     MarioJerkTask,
     REWARD_MODE_SCORE_FIRST,
+    _force_policy_overwrite,
     _play_command,
     _protect_existing_policies,
     _save_policy,
@@ -39,6 +40,11 @@ from .training import (
 LOGGER = logging.getLogger("go_explore_train")
 GO_EXPLORE_EXPLORE_STEPS = 128
 ARCHIVE_GROWTH_EVENT_INTERVAL = 1_000
+
+
+def _overwrite_existing(args: argparse.Namespace) -> bool:
+    """Only the configured default run replaces the canonical policy."""
+    return _force_policy_overwrite(args)
 
 
 def _policy(search: GoExploreSearch) -> JerkPolicy:
@@ -218,7 +224,11 @@ def _run_training(
                     first_success_step = step
                     accepted_lane = int(np.flatnonzero(successes)[0])
                     accepted_path = run_dir / "checkpoints" / f"{args.state}-{step}.zip"
-                    _save_policy(_policy(search), accepted_path, force=args.overwrite)
+                    _save_policy(
+                        _policy(search),
+                        accepted_path,
+                        force=_overwrite_existing(args),
+                    )
                     elapsed = time.perf_counter() - started_at
                     success_row = _metric_row(
                         search, elapsed=elapsed, accepted=accepted
@@ -339,7 +349,7 @@ def _run_training(
                 checkpoint_path = _save_policy(
                     _policy(search),
                     run_dir / "checkpoints" / f"{args.state}-{step}.zip",
-                    force=args.overwrite,
+                    force=_overwrite_existing(args),
                 )
                 reporter.update(
                     snapshot,
@@ -473,7 +483,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         parser.error(str(exc))
 
     run_dir = args.output or run_directory_for_state(args.state)
-    _protect_existing_policies(run_dir, force=args.overwrite)
+    _protect_existing_policies(run_dir, force=_overwrite_existing(args))
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")
     (run_dir / "successes.jsonl").write_text("", encoding="utf-8")

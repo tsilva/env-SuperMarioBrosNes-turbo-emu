@@ -26,6 +26,7 @@ from .training import (
     N_ENVS,
     REWARD_MODE_SCORE_FIRST,
     MarioJerkTask,
+    _force_policy_overwrite,
     _play_command,
     _protect_existing_policies,
     _save_policy,
@@ -60,8 +61,8 @@ def _remap_policy_runs(
 
 
 def _overwrite_existing(args: argparse.Namespace) -> bool:
-    """Canonical beam runs replace the current default policy and artifacts."""
-    return args.output is None or args.overwrite
+    """Only the configured default run replaces the canonical policy."""
+    return _force_policy_overwrite(args)
 
 
 def _metric_row(

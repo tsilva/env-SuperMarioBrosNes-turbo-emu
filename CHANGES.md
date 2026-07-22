@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Make Go-Explore the default trainer, continue through the transition budget
+  after completion by default, and add `--stop-on-completion` as the explicit
+  first-success opt-out.
 
 ## 0.4.2 - 2026-07-21
 

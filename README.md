@@ -233,24 +233,17 @@ smb-turbo train Level1-1
 smb-turbo play
 ```
 
-**Training** searches observation-free `(action, duration)` programs with beam
-search and the `standard` action set by default. Beam ranks raw game-score
-gains first and charges each step `1 / (max_episode_steps + 1)`, so higher score
-always wins while fewer steps break equal-score ties. It stops on the first level
-completion; pass `--continue-after-completion` to turn the remaining transition
-budget into an anytime improvement search. Continued runs keep the best completed
-path locked, retain incomplete alternatives by furthest progress, and
-systematically move mutations from the tail toward the root. Each mutation
-replaces one action run and then replays the proven suffix, preserving completion
-whenever the edited trajectory remains compatible. The published policy is
-replaced only when completed shaped return improves, while every completion is
-appended to `successes.jsonl`. A Beam `--initial-policy` with a compatible smaller
-action table is remapped by action name into the selected table, so historical
-`basic` policies can seed the default `standard` search without restricting
-it.
+**Training** searches observation-free `(action, duration)` programs with
+Go-Explore and the `standard` action set by default. It consumes the transition
+budget as an anytime improvement search, keeping the best completed trajectory
+locked and publishing only higher-return completions; pass `--stop-on-completion`
+to stop after the first completed path. Go-Explore ranks raw game-score gains
+first and charges each step `1 / (max_episode_steps + 1)`, so higher score always
+wins while fewer steps break equal-score ties. Every completion is appended to
+`successes.jsonl`.
 
-A new default beam run replaces the existing canonical run; custom outputs and
-explicit JERK or Go-Explore runs remain protected unless `--overwrite` is passed.
+A new default Go-Explore run replaces the existing canonical run; custom outputs
+and explicit Beam or JERK runs remain protected unless `--overwrite` is passed.
 `Level1-1` writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained
 policy when available and switches policies as levels change. Running
 `smb-turbo play` without a state starts from `Level1-1`; pass an exact state
@@ -276,24 +269,31 @@ policy is saved when a candidate exists.
 The checkout-compatible `uv run python train.py Level1-1` and
 `uv run python play.py` entry points remain available.
 
-To use JERK instead of the default fixed-width beam while keeping the same
-action-run representation, reward, episode boundary, and playback format, run:
+To use JERK instead of the default Go-Explore search while keeping the same
+action-run representation, episode boundary, and playback format, run:
 
 ```bash
 smb-turbo train Level1-1 --algorithm jerk --overwrite
 smb-turbo play Level1-1
 ```
 
-To run only the trajectory-finding phase of Go-Explore, with exact archived
-state restoration and no robustification phase, run:
+To use fixed-width Beam search instead, run:
 
 ```bash
-smb-turbo train Level1-1 --algorithm go-explore --overwrite
+smb-turbo train Level1-1 --algorithm beam --overwrite
 smb-turbo play Level1-1
 ```
 
-Go-Explore policies use the same canonical `(action, duration)` ZIP format as
-beam policies, so the regular playback command needs no algorithm-specific mode.
+Beam ranks completed trajectories with the same score-first return as Go-Explore,
+retains incomplete alternatives by furthest progress, and systematically moves
+splice mutations from the tail toward the root while replaying the proven suffix.
+A compatible `--initial-policy` with a smaller action table is remapped by action
+name into the selected table, so historical `basic` policies can seed the
+`standard` search without restricting it.
+
+Go-Explore uses the same canonical `(action, duration)` ZIP format as Beam, so
+the regular playback command needs no algorithm-specific mode. It performs
+trajectory finding with exact archived-state restoration and no robustification.
 Go-Explore cells are keyed by level, sublevel, and the raw bytes of the native
 8x8 grayscale frame after HUD masking and 3-bit quantization; horizontal position
 is not part of the cell key. Keeping the 64-byte visual value directly avoids

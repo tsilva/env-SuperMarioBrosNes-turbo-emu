@@ -124,9 +124,10 @@ def _level_args(args: argparse.Namespace, state: str) -> argparse.Namespace:
 
 
 def _force_existing(module: ModuleType, args: argparse.Namespace) -> bool:
-    if args.algorithm == "beam":
-        return bool(module._overwrite_existing(args))
-    return bool(args.overwrite)
+    del module
+    from .training import _force_policy_overwrite
+
+    return _force_policy_overwrite(args)
 
 
 def _preflight(

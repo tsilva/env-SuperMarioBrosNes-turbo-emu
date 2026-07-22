@@ -57,12 +57,22 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     )
 
     assert args.state == "Level1-1"
-    assert args.algorithm == "beam"
+    assert args.algorithm == "go-explore"
     assert args.transitions == 100
     assert args.lanes == 4
     assert args.action_set == "standard"
     assert args.continue_after_completion
     assert args.overwrite
+    stopped = parser.parse_args(["Level1-1", "--stop-on-completion"])
+    assert stopped.continue_after_completion is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "Level1-1",
+                "--continue-after-completion",
+                "--stop-on-completion",
+            ]
+        )
     with pytest.raises(SystemExit):
         parser.parse_args(["Level1-1", "--timesteps", "100"])
 
@@ -224,7 +234,7 @@ def test_train_main_dispatches_go_explore(monkeypatch) -> None:
         lambda args, _parser: int(args.algorithm == "go-explore"),
     )
 
-    assert training.main(["Level1-1", "--algorithm", "go-explore"]) == 1
+    assert training.main(["Level1-1"]) == 1
 
 
 def test_train_without_state_dispatches_all_canonical_levels(monkeypatch) -> None:

@@ -42,6 +42,7 @@ from .training_ui import (
 
 LOGGER = logging.getLogger("jerk_train")
 ACTION_SET = "standard"
+DEFAULT_ALGORITHM = "go-explore"
 TOTAL_TIMESTEPS = 10_000_000
 N_ENVS = 64
 MAX_EPISODE_STEPS = 4_500
@@ -502,6 +503,14 @@ def exploit_probability(total_steps: int, total_timesteps: int) -> float:
     )
 
 
+def _force_policy_overwrite(args: argparse.Namespace) -> bool:
+    """Allow replacement only for the canonical default run or explicit force."""
+    return bool(
+        args.overwrite
+        or (args.output is None and args.algorithm == DEFAULT_ALGORITHM)
+    )
+
+
 def _save_policy(policy: JerkPolicy, path: Path, *, force: bool = False) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.stem}.{uuid.uuid4().hex}.zip"
@@ -599,8 +608,8 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument(
         "--algorithm",
         choices=("jerk", "beam", "go-explore"),
-        default="beam",
-        help="training search algorithm (default: beam)",
+        default=DEFAULT_ALGORITHM,
+        help=f"training search algorithm (default: {DEFAULT_ALGORITHM})",
     )
     parser.add_argument(
         "--rom", type=Path, help="ROM path; defaults to Stable Retro-compatible discovery"
@@ -702,14 +711,23 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         metavar="STEPS",
         help="random exploration horizon after each archived restore (default: 128)",
     )
-    parser.add_argument(
+    completion = parser.add_mutually_exclusive_group()
+    completion.add_argument(
         "--continue-after-completion",
+        dest="continue_after_completion",
         action="store_true",
         help=(
             "continue to the transition budget and publish only higher-return "
-            "completed paths"
+            "completed paths (default)"
         ),
     )
+    completion.add_argument(
+        "--stop-on-completion",
+        dest="continue_after_completion",
+        action="store_false",
+        help="stop after the first completed path",
+    )
+    parser.set_defaults(continue_after_completion=True)
     parser.add_argument(
         "--overwrite",
         action="store_true",
@@ -819,7 +837,11 @@ def _run_training(
                     accepted_path = (
                         run_dir / "checkpoints" / f"{args.state}-{step}.zip"
                     )
-                    _save_policy(search.policy(), accepted_path, force=args.overwrite)
+                    _save_policy(
+                        search.policy(),
+                        accepted_path,
+                        force=_force_policy_overwrite(args),
+                    )
                     elapsed = time.perf_counter() - started_at
                     success_row = _metric_row(
                         search, elapsed=elapsed, accepted=accepted
@@ -912,7 +934,7 @@ def _run_training(
                 checkpoint_path = _save_policy(
                     search.policy(),
                     run_dir / "checkpoints" / f"{args.state}-{step}.zip",
-                    force=args.overwrite,
+                    force=_force_policy_overwrite(args),
                 )
                 reporter.update(
                     snapshot,
@@ -937,7 +959,7 @@ def _run_training(
             final_path = _save_policy(
                 final_policy,
                 target_policy_path,
-                force=args.overwrite,
+                force=_force_policy_overwrite(args),
             )
         elapsed = time.perf_counter() - started_at
         final_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
@@ -1136,7 +1158,10 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         parser.error(str(exc))
 
     run_dir = args.output or run_directory_for_state(args.state)
-    _protect_existing_policies(run_dir, force=args.overwrite)
+    _protect_existing_policies(
+        run_dir,
+        force=_force_policy_overwrite(args),
+    )
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")
     (run_dir / "run_config.json").write_text(

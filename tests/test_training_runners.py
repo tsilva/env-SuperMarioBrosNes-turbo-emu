@@ -152,19 +152,17 @@ def _parse_args(values: list[str]):
     return args
 
 
-def test_default_beam_run_overwrites_existing_canonical_policy(
+def test_default_go_explore_run_overwrites_existing_canonical_policy(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(train_beam, "MarioJerkTask", _FakeSuccessTask)
+    monkeypatch.setattr(train_go_explore, "MarioJerkTask", _FakeSuccessTask)
     policy_path = policy_path_for_state("Level1-1")
     policy_path.parent.mkdir(parents=True)
     policy_path.write_bytes(b"old policy")
     args = _parse_args(
         [
             "Level1-1",
-            "--algorithm",
-            "beam",
             "--transitions",
             "1",
             "--lanes",
@@ -174,10 +172,12 @@ def test_default_beam_run_overwrites_existing_canonical_policy(
         ]
     )
 
-    result = train_beam._run_training(args, _NullReporter(), threading.Event())
+    result = train_go_explore._run_training(
+        args, _NullReporter(), threading.Event()
+    )
 
     assert result.accepted
-    assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "beam"
+    assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "go-explore"
 
 
 def test_beam_uses_go_explore_score_first_shaped_return(

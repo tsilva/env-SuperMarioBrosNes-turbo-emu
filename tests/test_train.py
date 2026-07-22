@@ -320,19 +320,20 @@ def test_score_first_reward_makes_time_only_a_score_tiebreaker() -> None:
     assert 1_000.0 - 1_000 * step_cost > 1_000.0 - 1_200 * step_cost
 
 
-def test_training_flags_stop_and_protect_policies_by_default() -> None:
+def test_training_flags_continue_and_protect_policies_by_default() -> None:
     parser = train_module.build_parser()
 
     defaults = parser.parse_args(["Level1-1"])
-    continuous = parser.parse_args(
-        ["Level1-1", "--continue-after-completion", "--overwrite"]
+    stopped = parser.parse_args(
+        ["Level1-1", "--stop-on-completion", "--overwrite"]
     )
 
     assert defaults.lanes == 64
-    assert defaults.continue_after_completion is False
+    assert defaults.algorithm == "go-explore"
+    assert defaults.continue_after_completion is True
     assert defaults.overwrite is False
-    assert continuous.continue_after_completion is True
-    assert continuous.overwrite is True
+    assert stopped.continue_after_completion is False
+    assert stopped.overwrite is True
 
 
 def test_algorithm_defaults_make_beam_and_go_explore_score_first() -> None:
@@ -352,6 +353,23 @@ def test_algorithm_defaults_make_beam_and_go_explore_score_first() -> None:
     assert go_explore.step_cost == pytest.approx(
         score_first_step_cost(go_explore.max_episode_steps)
     )
+
+
+def test_only_default_canonical_or_explicit_runs_force_policy_overwrite() -> None:
+    parser = train_module.build_parser()
+    default = parser.parse_args(["Level1-1"])
+    custom_default = parser.parse_args(
+        ["Level1-1", "--output", "runs/custom"]
+    )
+    beam = parser.parse_args(["Level1-1", "--algorithm", "beam"])
+    forced_beam = parser.parse_args(
+        ["Level1-1", "--algorithm", "beam", "--overwrite"]
+    )
+
+    assert train_module._force_policy_overwrite(default)
+    assert not train_module._force_policy_overwrite(custom_default)
+    assert not train_module._force_policy_overwrite(beam)
+    assert train_module._force_policy_overwrite(forced_beam)
 
 
 def test_active_best_candidate_carries_observed_progress() -> None:
@@ -463,7 +481,7 @@ def test_policy_save_requires_force_to_replace_existing_file(tmp_path) -> None:
     assert JerkPolicy.load(policy_path).action_runs == _runs((1, 2))
 
 
-def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> None:
+def test_training_continues_on_completion_unless_disabled(tmp_path, monkeypatch) -> None:
     class FakeTask:
         instances: list["FakeTask"] = []
 
@@ -516,6 +534,7 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
                 "1",
                 "--log-every",
                 "10",
+                "--stop-on-completion",
             ]
         )
         == 0
@@ -542,7 +561,6 @@ def test_training_stops_on_completion_unless_disabled(tmp_path, monkeypatch) -> 
                 "1",
                 "--log-every",
                 "10",
-                "--continue-after-completion",
             ]
         )
         == 0
