@@ -25,6 +25,8 @@ from supermariobrosnes_turbo.jerk import (
 from supermariobrosnes_turbo.training import (
     GO_EXPLORE_CELL_FRAME_SHAPE,
     GO_EXPLORE_CELL_KEY_BYTES,
+    GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+    GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
     MarioJerkTask,
     REWARD_MODE_SCORE_FIRST,
     go_explore_frame_bytes,
@@ -130,6 +132,10 @@ def test_go_explore_task_uses_native_masked_downscaled_observations(
     assert task.native.config["obs_resize_algorithm"] == "area"
     assert task.native.config["obs_grayscale"] is True
     assert task.native.config["frame_stack"] == 1
+    assert task.native.config["info_filter"] == {
+        "mode": "all",
+        "keys": ["area_id", "y_pos"],
+    }
 
 
 def test_go_explore_frame_bytes_quantize_each_lane_without_hashing() -> None:
@@ -149,20 +155,35 @@ def test_go_explore_frame_bytes_quantize_each_lane_without_hashing() -> None:
     assert quantized[3, 4] == 1
 
 
-def test_go_explore_cell_keys_use_only_level_sublevel_and_frame_bytes() -> None:
+def test_go_explore_cell_keys_include_area_and_tile_position_buckets() -> None:
+    class FakeNative:
+        x_pos = np.asarray([100, 2_000], dtype=np.uint16)
+
     task = MarioJerkTask.__new__(MarioJerkTask)
     task.n_envs = 2
+    task.native = FakeNative()
     task.previous_level_hi = np.asarray([1, 2], dtype=np.int16)
     task.previous_level_lo = np.asarray([3, 4], dtype=np.int16)
-    task.previous_x = np.asarray([100, 2_000], dtype=np.int64)
+    task.cell_area_id = np.asarray([5, 6], dtype=np.int16)
+    task.cell_y_pos = np.asarray([31, 32], dtype=np.int64)
     observations = np.zeros((2, 1, *GO_EXPLORE_CELL_FRAME_SHAPE), dtype=np.uint8)
 
     keys = task.go_explore_cell_keys(observations)
 
     assert keys[0][:2] == (1, 3)
     assert keys[1][:2] == (2, 4)
-    assert keys[0][2] == keys[1][2]
-    assert len(keys[0]) == 3
+    assert keys[0][2:5] == (
+        5,
+        100 // GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+        31 // GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+    )
+    assert keys[1][2:5] == (
+        6,
+        2_000 // GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+        32 // GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+    )
+    assert keys[0][5] == keys[1][5]
+    assert len(keys[0]) == 6
 
 
 def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:
@@ -182,10 +203,17 @@ def test_task_snapshots_restore_emulator_and_reward_accounting() -> None:
 
         def reset(self, *, options):
             self.reset_options = options
+            return None, {
+                "area_id": np.asarray([7, 0], dtype=np.int16),
+                "y_pos": np.asarray([48, 0], dtype=np.int32),
+            }
 
     task = MarioJerkTask.__new__(MarioJerkTask)
     task.n_envs = 2
     task.native = FakeNative()
+    task.visual_cell_observations = True
+    task.cell_area_id = np.asarray([1, 2], dtype=np.int16)
+    task.cell_y_pos = np.asarray([16, 32], dtype=np.int64)
     task.episode_steps = np.asarray([3, 4], dtype=np.int64)
     task.last_progress_step = np.asarray([2, 3], dtype=np.int64)
     task.episode_returns = np.asarray([10.0, 20.0])
@@ -211,6 +239,8 @@ def test_task_snapshots_restore_emulator_and_reward_accounting() -> None:
     assert task.episode_steps.tolist() == [3, 4]
     assert task.episode_returns.tolist() == [10.0, 20.0]
     assert task.previous_x.tolist() == [75, 85]
+    assert task.cell_area_id.tolist() == [7, 2]
+    assert task.cell_y_pos.tolist() == [48, 32]
     assert task.seen_scroll_transitions == [{(1, 2)}, {(3, 4)}]
 
 

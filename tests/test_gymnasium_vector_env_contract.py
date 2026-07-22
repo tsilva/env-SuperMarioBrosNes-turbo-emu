@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import gzip
 import inspect
 import os
+from pathlib import Path
 import pickle
 import subprocess
 import sys
@@ -501,6 +503,77 @@ def test_rgb_render_is_independent_of_policy_preprocessing() -> None:
         assert frames.shape == (224, 240, 3)
     finally:
         env.close()
+
+
+def test_rgb_render_keeps_mario_visible_during_injury_transition() -> None:
+    state_path = (
+        Path(__file__).resolve().parents[1]
+        / "python"
+        / "supermariobrosnes_turbo"
+        / "data"
+        / "SuperMarioBros-Nes-v0"
+        / "Level1-1.state"
+    )
+    state = bytearray(gzip.decompress(state_path.read_bytes()))
+    ram_field = b"RAM\0" + (2048).to_bytes(4, "little")
+    ram_offset = state.index(ram_field) + len(ram_field)
+    state[ram_offset + 0x0756] = 1  # PlayerStatus: big
+    state[ram_offset + 0x0754] = 0  # PlayerSize: big
+
+    def transition_env(frame_skip: int) -> SuperMarioBrosNesTurboVecEnv:
+        return SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            state=bytes(state),
+            rom_path=require_rom(),
+            num_envs=1,
+            use_restricted_actions=Actions.ALL,
+            render_mode="rgb_array",
+            frame_skip=frame_skip,
+            frame_stack=1,
+            obs_grayscale=True,
+            obs_resize=(8, 8),
+        )
+
+    skipped = transition_env(4)
+    reference = transition_env(1)
+    action = noop(1)
+    action[0, NES_BUTTONS.index("B")] = 1
+    action[0, NES_BUTTONS.index("RIGHT")] = 1
+    saw_injury_transition = False
+    saw_flicker_pair = False
+    try:
+        skipped.reset()
+        reference.reset()
+        assert skipped.render() is not None
+        assert reference.render() is not None
+
+        for _ in range(50):
+            skipped.step(action)
+            recent_frames: list[tuple[np.ndarray, int]] = []
+            for _ in range(4):
+                reference.step(action)
+                frame = reference.render()
+                assert frame is not None
+                oam = reference._core._debug_oam(0)
+                visible_sprites = sum(oam[offset] < 239 for offset in range(0, 256, 4))
+                recent_frames.append((frame, visible_sprites))
+
+            previous, current = recent_frames[-2:]
+            expected = previous if previous[1] > current[1] else current
+            rendered = skipped.render()
+            assert rendered is not None
+            np.testing.assert_array_equal(rendered, expected[0])
+
+            ram = skipped.ram()[0]
+            if ram[0x000E] == 10:  # InjuryBlink / big-to-small transition
+                saw_injury_transition = True
+                saw_flicker_pair |= previous[1] != current[1]
+
+        assert saw_injury_transition
+        assert saw_flicker_pair
+    finally:
+        skipped.close()
+        reference.close()
 
 
 def test_native_game_over_blocks_until_manual_reset() -> None:

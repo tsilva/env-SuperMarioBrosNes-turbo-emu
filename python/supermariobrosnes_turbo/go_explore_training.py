@@ -28,6 +28,8 @@ from .training import (
     GO_EXPLORE_CELL_KEY_BYTES,
     GO_EXPLORE_CELL_QUANTIZATION_BITS,
     GO_EXPLORE_CELL_REPRESENTATION,
+    GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+    GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
     MarioJerkTask,
     REWARD_MODE_SCORE_FIRST,
     _force_policy_overwrite,
@@ -56,6 +58,8 @@ def _policy(search: GoExploreSearch) -> JerkPolicy:
             "cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
             "cell_encoding": "raw-bytes",
             "cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
+            "cell_x_bucket_pixels": GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+            "cell_y_bucket_pixels": GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
             "success_guided_restore_probability": (
                 SUCCESS_GUIDED_RESTORE_PROBABILITY
             ),
@@ -73,6 +77,8 @@ def _run_config(args: argparse.Namespace) -> dict[str, Any]:
         "go_explore_cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
         "go_explore_cell_encoding": "raw-bytes",
         "go_explore_cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
+        "go_explore_cell_x_bucket_pixels": GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+        "go_explore_cell_y_bucket_pixels": GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
         "go_explore_success_guided_restore_probability": (
             SUCCESS_GUIDED_RESTORE_PROBABILITY
         ),

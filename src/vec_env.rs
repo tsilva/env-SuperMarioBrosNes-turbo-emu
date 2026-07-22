@@ -1,6 +1,7 @@
 use crate::cartridge::Cartridge;
 use crate::emulator::{
-    NesEmulator, StateLoadError, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT, VISIBLE_FRAME_WIDTH,
+    NesEmulator, StateLoadError, NES_HEIGHT, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT,
+    VISIBLE_FRAME_WIDTH,
 };
 use crate::profiler::Profiler;
 use rayon::prelude::*;
@@ -136,6 +137,7 @@ pub struct MarioVecEnv {
     profile_shards: Vec<Profiler>,
     extra_info_ids: Vec<u8>,
     extra_info_width: usize,
+    visual_rgb_active: bool,
 }
 
 #[derive(Clone)]
@@ -193,6 +195,7 @@ impl MarioVecEnv {
             profile_shards: Vec::new(),
             extra_info_ids,
             extra_info_width,
+            visual_rgb_active: false,
         };
         if !env.state_catalog.is_empty() {
             let mut validator = NesEmulator::new_with_options(cart, config.terminate_on_flag);
@@ -324,6 +327,7 @@ impl MarioVecEnv {
                 );
             }
         }
+        self.refresh_visual_rgb_frames(reset_mask);
         self.any_pending_reset = self.pending_reset.iter().any(|pending| *pending);
         Ok(())
     }
@@ -437,6 +441,7 @@ impl MarioVecEnv {
                 obs_chunk.copy_from_slice(&replacement.observation);
             }
         }
+        self.refresh_visual_rgb_frames(reset_mask);
         self.any_pending_reset = self.pending_reset.iter().any(|pending| *pending);
         Ok(())
     }
@@ -452,18 +457,43 @@ impl MarioVecEnv {
         &self.active_state_indices
     }
 
-    pub fn rgb_frames_hwc_into(&self, dst: &mut [u8]) {
+    pub fn rgb_frames_hwc_into(&mut self, dst: &mut [u8]) {
         let frame_stride = visual_rgb_frame_len();
         debug_assert_eq!(dst.len(), self.config.num_envs * frame_stride);
-        let mut planar = vec![0; frame_stride];
-
+        if !self.visual_rgb_active {
+            // Keep the training path allocation-free; intermediate visual frames
+            // are retained only after a caller actually requests RGB rendering.
+            self.visual_rgb_active = true;
+            let visual_scratch_len = visual_rgb_scratch_len();
+            let base_scratch_len = scratch_len(self.config);
+            for scratch in &mut self.scratch {
+                scratch.resize(base_scratch_len + visual_scratch_len, 0);
+            }
+            let all_envs = vec![true; self.config.num_envs];
+            self.refresh_visual_rgb_frames(&all_envs);
+        }
         for env_idx in 0..self.config.num_envs {
             let start = env_idx * frame_stride;
-            write_visible_rgb_hwc(
-                &self.envs[env_idx],
-                &mut planar,
-                &mut dst[start..start + frame_stride],
-            );
+            let base = scratch_len(self.config);
+            let cached_planar = &self.scratch[env_idx][base..base + frame_stride];
+            planar_rgb_to_hwc(cached_planar, &mut dst[start..start + frame_stride]);
+        }
+    }
+
+    fn refresh_visual_rgb_frames(&mut self, refresh_mask: &[bool]) {
+        if !self.visual_rgb_active {
+            return;
+        }
+        let base = scratch_len(self.config);
+        let frame_len = visual_rgb_frame_len();
+        for (env_idx, &selected) in refresh_mask.iter().enumerate() {
+            if selected {
+                self.envs[env_idx].write_rgb_visible_frame_cropped(
+                    &mut self.scratch[env_idx][base..base + frame_len],
+                    0,
+                    VISIBLE_FRAME_HEIGHT,
+                );
+            }
         }
     }
 
@@ -601,6 +631,7 @@ impl MarioVecEnv {
         }
 
         let config = self.config;
+        let visual_rgb_active = self.visual_rgb_active;
         let obs_stride = config.obs_len_per_env();
         let effective_actions_storage;
         let actions = if config.sticky_action_prob > 0.0 {
@@ -651,6 +682,7 @@ impl MarioVecEnv {
                         resize_plan,
                         env,
                         scratch,
+                        visual_rgb_active,
                         *action,
                         obs_chunk,
                         reward_out,
@@ -677,6 +709,7 @@ impl MarioVecEnv {
                     &self.resize_plan,
                     &mut self.envs[env_idx],
                     &mut self.scratch[env_idx],
+                    visual_rgb_active,
                     actions[env_idx],
                     &mut obs[start..end],
                     &mut rewards[env_idx],
@@ -731,6 +764,7 @@ impl MarioVecEnv {
         }
 
         let config = self.config;
+        let visual_rgb_active = self.visual_rgb_active;
         let obs_stride = config.obs_len_per_env();
         let effective_actions_storage;
         let actions = if config.sticky_action_prob > 0.0 {
@@ -783,6 +817,7 @@ impl MarioVecEnv {
                         resize_plan,
                         env,
                         scratch,
+                        visual_rgb_active,
                         *action,
                         obs_chunk,
                         reward_out,
@@ -810,6 +845,7 @@ impl MarioVecEnv {
                     &self.resize_plan,
                     &mut self.envs[env_idx],
                     &mut self.scratch[env_idx],
+                    visual_rgb_active,
                     actions[env_idx],
                     &mut obs[start..end],
                     &mut rewards[env_idx],
@@ -941,13 +977,6 @@ impl XorShift64 {
     }
 }
 
-fn write_visible_rgb_hwc(env: &NesEmulator, planar: &mut [u8], dst: &mut [u8]) {
-    debug_assert_eq!(planar.len(), visual_rgb_frame_len());
-    debug_assert_eq!(dst.len(), visual_rgb_frame_len());
-    env.write_rgb_visible_frame_cropped(planar, 0, VISIBLE_FRAME_HEIGHT);
-    planar_rgb_to_hwc(planar, dst);
-}
-
 fn planar_rgb_to_hwc(src: &[u8], dst: &mut [u8]) {
     let plane = VISIBLE_FRAME_WIDTH * VISIBLE_FRAME_HEIGHT;
     for idx in 0..plane {
@@ -961,6 +990,77 @@ fn planar_rgb_to_hwc(src: &[u8], dst: &mut [u8]) {
 #[inline]
 fn visual_rgb_frame_len() -> usize {
     VISIBLE_FRAME_WIDTH * VISIBLE_FRAME_HEIGHT * RGB_CHANNELS
+}
+
+fn visual_rgb_scratch_len() -> usize {
+    2 * visual_rgb_frame_len()
+}
+
+struct VisualFrameAccumulator<'a> {
+    frame_a: &'a mut [u8],
+    frame_b: &'a mut [u8],
+    count: usize,
+    score_a: usize,
+    score_b: usize,
+}
+
+impl<'a> VisualFrameAccumulator<'a> {
+    fn new(scratch: &'a mut [u8], active: bool) -> Option<Self> {
+        if !active {
+            return None;
+        }
+        let frame_len = visual_rgb_frame_len();
+        debug_assert_eq!(scratch.len(), visual_rgb_scratch_len());
+        let (frame_a, frame_b) = scratch.split_at_mut(frame_len);
+        Some(Self {
+            frame_a,
+            frame_b,
+            count: 0,
+            score_a: 0,
+            score_b: 0,
+        })
+    }
+
+    fn capture(&mut self, env: &NesEmulator) {
+        let visible_sprites = env
+            .oam()
+            .chunks_exact(4)
+            .filter(|sprite| sprite[0] < (NES_HEIGHT - 1) as u8)
+            .count();
+        let target = if self.count & 1 == 0 {
+            self.score_a = visible_sprites;
+            &mut *self.frame_a
+        } else {
+            self.score_b = visible_sprites;
+            &mut *self.frame_b
+        };
+        env.write_rgb_visible_frame_cropped(target, 0, VISIBLE_FRAME_HEIGHT);
+        self.count += 1;
+    }
+
+    fn finish(&mut self) {
+        if self.count == 0 {
+            return;
+        }
+        if self.count == 1 {
+            return;
+        }
+        let current_is_a = self.count & 1 == 1;
+        // SMB moves every sprite offscreen on alternating injury-animation
+        // frames. Even frame skips can otherwise alias that blank phase and
+        // make Mario disappear for the whole transition. Prefer the recent
+        // frame with more onscreen OAM entries, and otherwise keep the newest.
+        let select_b = if self.score_a > self.score_b {
+            false
+        } else if self.score_b > self.score_a {
+            true
+        } else {
+            !current_is_a
+        };
+        if select_b {
+            self.frame_a.copy_from_slice(self.frame_b);
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -996,6 +1096,7 @@ fn step_one(
     resize_plan: &AreaResizePlan,
     env: &mut NesEmulator,
     scratch: &mut [u8],
+    visual_rgb_active: bool,
     controller_state: u8,
     obs_chunk: &mut [u8],
     reward_out: &mut f32,
@@ -1012,6 +1113,9 @@ fn step_one(
     xscroll_hi_out: &mut u8,
     xscroll_lo_out: &mut u8,
 ) {
+    let base_scratch_len = scratch_len(config);
+    let (scratch, visual_scratch) = scratch.split_at_mut(base_scratch_len);
+    let mut visual_frames = VisualFrameAccumulator::new(visual_scratch, visual_rgb_active);
     let mut reward = 0.0;
     let mut done = false;
     if config.frame_maxpool {
@@ -1021,6 +1125,9 @@ fn step_one(
         let mut recent_count = 0usize;
         for _ in 0..config.frame_skip {
             reward += env.step_frame(controller_state);
+            if let Some(visual_frames) = &mut visual_frames {
+                visual_frames.capture(env);
+            }
             let target = if recent_count & 1 == 0 {
                 &mut *frame_a
             } else {
@@ -1045,6 +1152,9 @@ fn step_one(
     } else {
         for _ in 0..config.frame_skip {
             reward += env.step_frame(controller_state);
+            if let Some(visual_frames) = &mut visual_frames {
+                visual_frames.capture(env);
+            }
             done = env.is_done();
             if done {
                 break;
@@ -1052,6 +1162,9 @@ fn step_one(
         }
         shift_stack_left(config, obs_chunk);
         write_current_frame_to_last_stack_slot(config, resize_plan, env, scratch, obs_chunk);
+    }
+    if let Some(visual_frames) = &mut visual_frames {
+        visual_frames.finish();
     }
 
     *reward_out = reward;
@@ -1078,6 +1191,7 @@ fn step_one_profiled(
     resize_plan: &AreaResizePlan,
     env: &mut NesEmulator,
     scratch: &mut [u8],
+    visual_rgb_active: bool,
     controller_state: u8,
     obs_chunk: &mut [u8],
     reward_out: &mut f32,
@@ -1095,6 +1209,9 @@ fn step_one_profiled(
     xscroll_lo_out: &mut u8,
     profiler: &mut Profiler,
 ) {
+    let base_scratch_len = scratch_len(config);
+    let (scratch, visual_scratch) = scratch.split_at_mut(base_scratch_len);
+    let mut visual_frames = VisualFrameAccumulator::new(visual_scratch, visual_rgb_active);
     let mut reward = 0.0;
     let mut done = false;
     if config.frame_maxpool {
@@ -1104,6 +1221,11 @@ fn step_one_profiled(
         let mut recent_count = 0usize;
         for _ in 0..config.frame_skip {
             reward += env.step_frame_profiled(controller_state, profiler);
+            if let Some(visual_frames) = &mut visual_frames {
+                let render_start = Instant::now();
+                visual_frames.capture(env);
+                profiler.record_render(render_start.elapsed());
+            }
             let target = if recent_count & 1 == 0 {
                 &mut *frame_a
             } else {
@@ -1134,6 +1256,11 @@ fn step_one_profiled(
     } else {
         for _ in 0..config.frame_skip {
             reward += env.step_frame_profiled(controller_state, profiler);
+            if let Some(visual_frames) = &mut visual_frames {
+                let render_start = Instant::now();
+                visual_frames.capture(env);
+                profiler.record_render(render_start.elapsed());
+            }
             done = env.is_done();
             if done {
                 break;
@@ -1150,6 +1277,9 @@ fn step_one_profiled(
             obs_chunk,
             profiler,
         );
+    }
+    if let Some(visual_frames) = &mut visual_frames {
+        visual_frames.finish();
     }
 
     *reward_out = reward;

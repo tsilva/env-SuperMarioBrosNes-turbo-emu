@@ -117,6 +117,16 @@ def test_native_view_configures_a_directly_displayable_environment(
         assert captured[key] == value
 
 
+def test_native_raw_view_displays_temporally_stable_rgb_render() -> None:
+    rendered = np.full((224, 240, 3), 37, dtype=np.uint8)
+    player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
+    player.args = SimpleNamespace(backend="native", view="raw")
+    player.env = SimpleNamespace(render=lambda: rendered)
+    player.obs = np.zeros((1, 3, 224, 240), dtype=np.uint8)
+
+    assert player.current_display_frame() is rendered
+
+
 def test_stable_retro_raw_view_uses_native_visible_rgb_dimensions(
     monkeypatch,
 ) -> None:

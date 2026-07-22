@@ -643,6 +643,10 @@ class SdlPolicyPlayer:
         self.sdl.SDL_RenderPresent(self.renderer)
 
     def current_display_frame(self) -> np.ndarray:
+        if self.args.backend == "native" and self.args.view == "raw":
+            frame = self.env.render()
+            if frame is not None:
+                return np.asarray(frame)
         return display_frame_from_obs(self.obs[0], grayscale=self.args.view != "raw")
 
     def sleep_until_next_frame(self) -> None:

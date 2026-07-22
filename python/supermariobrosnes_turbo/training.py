@@ -69,7 +69,11 @@ GO_EXPLORE_CELL_FRAME_SHAPE = (8, 8)
 GO_EXPLORE_CELL_HUD_MASK = (32, 0, 0, 0)
 GO_EXPLORE_CELL_QUANTIZATION_BITS = 3
 GO_EXPLORE_CELL_KEY_BYTES = 64
-GO_EXPLORE_CELL_REPRESENTATION = "level-sublevel-gray8x8-q3-bytes"
+GO_EXPLORE_CELL_X_BUCKET_PIXELS = 16
+GO_EXPLORE_CELL_Y_BUCKET_PIXELS = 16
+GO_EXPLORE_CELL_REPRESENTATION = (
+    "level-sublevel-area-xy16-gray8x8-q3-bytes"
+)
 
 
 def go_explore_frame_bytes(observations: np.ndarray) -> tuple[bytes, ...]:
@@ -231,6 +235,7 @@ class MarioJerkTask:
         self.max_episode_steps = int(max_episode_steps)
         self.stall_steps = int(stall_steps)
         self.reward_mode = str(reward_mode)
+        self.visual_cell_observations = bool(visual_cell_observations)
         if self.reward_mode not in {
             REWARD_MODE_PROGRESS_SCORE,
             REWARD_MODE_SCORE_FIRST,
@@ -247,7 +252,7 @@ class MarioJerkTask:
         if self.step_cost < 0.0:
             raise ValueError("JERK step_cost must be non-negative")
         observation_options: dict[str, Any]
-        if visual_cell_observations:
+        if self.visual_cell_observations:
             observation_options = {
                 "obs_crop": GO_EXPLORE_CELL_HUD_MASK,
                 "obs_crop_mode": "mask",
@@ -273,7 +278,11 @@ class MarioJerkTask:
             maxpool_last_two=False,
             sticky_action_prob=0.0,
             reward_clip=False,
-            info_filter="none",
+            info_filter=(
+                {"mode": "all", "keys": ["area_id", "y_pos"]}
+                if self.visual_cell_observations
+                else "none"
+            ),
             **observation_options,
         )
         self.action_names = tuple(self.native.action_meanings)
@@ -288,7 +297,22 @@ class MarioJerkTask:
         self.completed_base = np.zeros(self.n_envs, dtype=np.int64)
         self.max_global_x = np.zeros(self.n_envs, dtype=np.int64)
         self.previous_x = np.zeros(self.n_envs, dtype=np.int64)
+        self.cell_area_id = np.full(self.n_envs, -1, dtype=np.int16)
+        self.cell_y_pos = np.zeros(self.n_envs, dtype=np.int64)
         self.seen_scroll_transitions = [set() for _ in range(self.n_envs)]
+
+    def _update_cell_state(
+        self, infos: Mapping[str, Any], mask: np.ndarray
+    ) -> None:
+        if not self.visual_cell_observations:
+            return
+        selected = np.asarray(mask, dtype=np.bool_)
+        area_id = np.asarray(infos["area_id"])
+        y_pos = np.asarray(infos["y_pos"])
+        if area_id.shape != (self.n_envs,) or y_pos.shape != (self.n_envs,):
+            raise ValueError("Go-Explore cell infos must contain one value per lane")
+        self.cell_area_id[selected] = area_id[selected]
+        self.cell_y_pos[selected] = y_pos[selected]
 
     def _initialize_lanes(self, mask: np.ndarray) -> None:
         current_x = self.native.xscroll_hi.astype(
@@ -310,15 +334,18 @@ class MarioJerkTask:
             self.seen_scroll_transitions[int(lane)].clear()
 
     def reset(self) -> np.ndarray:
-        observations, _infos = self.native.reset(seed=self.seed)
-        self._initialize_lanes(np.ones(self.n_envs, dtype=np.bool_))
+        observations, infos = self.native.reset(seed=self.seed)
+        all_lanes = np.ones(self.n_envs, dtype=np.bool_)
+        self._update_cell_state(infos, all_lanes)
+        self._initialize_lanes(all_lanes)
         return observations
 
     def reset_lanes(self, mask: np.ndarray) -> None:
         reset_mask = np.asarray(mask, dtype=np.bool_)
         if not np.any(reset_mask):
             return
-        self.native.reset(options={"reset_mask": reset_mask})
+        _observations, infos = self.native.reset(options={"reset_mask": reset_mask})
+        self._update_cell_state(infos, reset_mask)
         self._initialize_lanes(reset_mask)
 
     def capture_snapshots(
@@ -367,7 +394,7 @@ class MarioJerkTask:
         selected = [int(lane) for lane in np.flatnonzero(restore_mask)]
         if any(snapshots[lane] is None for lane in selected):
             raise ValueError("every restored lane requires a task snapshot")
-        self.native.reset(
+        _observations, infos = self.native.reset(
             options={
                 "reset_mask": restore_mask,
                 "snapshots": [
@@ -376,6 +403,7 @@ class MarioJerkTask:
                 ],
             }
         )
+        self._update_cell_state(infos, restore_mask)
         for lane in selected:
             snapshot = snapshots[lane]
             assert snapshot is not None
@@ -396,8 +424,8 @@ class MarioJerkTask:
 
     def go_explore_cell_keys(
         self, observations: np.ndarray
-    ) -> tuple[tuple[int, int, bytes], ...]:
-        """Return level-scoped quantized native visual observations."""
+    ) -> tuple[tuple[int, int, int, int, int, bytes], ...]:
+        """Return area-scoped, tile-bucketed quantized visual observations."""
         frame_bytes = go_explore_frame_bytes(observations)
         if len(frame_bytes) != self.n_envs:
             raise ValueError("Go-Explore requires one cell observation per lane")
@@ -405,6 +433,9 @@ class MarioJerkTask:
             (
                 int(self.previous_level_hi[lane]),
                 int(self.previous_level_lo[lane]),
+                int(self.cell_area_id[lane]),
+                int(self.native.x_pos[lane]) // GO_EXPLORE_CELL_X_BUCKET_PIXELS,
+                int(self.cell_y_pos[lane]) // GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
                 frame_bytes[lane],
             )
             for lane in range(self.n_envs)
@@ -416,8 +447,11 @@ class MarioJerkTask:
         np.ndarray, np.ndarray, np.ndarray, dict[int, EpisodeRecord], np.ndarray
     ]:
         action_indices = np.asarray(actions, dtype=np.int64)
-        observations, _native_rewards, native_terminated, native_truncated, _infos = (
+        observations, _native_rewards, native_terminated, native_truncated, infos = (
             self.native.step(action_indices)
+        )
+        self._update_cell_state(
+            infos, np.ones(self.n_envs, dtype=np.bool_)
         )
         current_lives = self.native.lives.astype(np.int64, copy=False)
         current_level_hi = self.native.level_hi.astype(np.int64, copy=False)

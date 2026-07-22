@@ -341,7 +341,7 @@ impl RetroVecEnv {
     }
 
     pub fn rgb_frames_into<'py>(
-        &self,
+        &mut self,
         py: Python<'py>,
         mut frames: PyReadwriteArray4<'py, u8>,
     ) -> PyResult<()> {
