@@ -72,3 +72,36 @@ def test_release_promotes_unreleased_changelog(tmp_path, monkeypatch):
         "## 0.3.1 - 2026-07-15\n\n- New behavior.\n\n"
         "## 0.3.0 - 2026-07-14\n\n- Old behavior.\n"
     )
+
+
+def test_release_generates_changelog_when_unreleased_is_empty(tmp_path, monkeypatch):
+    release = _release_module()
+    changes = tmp_path / "CHANGES.md"
+    changes.write_text(
+        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
+        "## 0.3.0 - 2026-07-14\n\n- Old behavior.\n"
+    )
+    monkeypatch.setattr(release, "CHANGES", changes)
+
+    release.promote_changelog(
+        "0.3.1",
+        release_date="2026-07-15",
+        generated_notes="- Improve automatic releases.",
+    )
+
+    assert "## 0.3.1 - 2026-07-15\n\n- Improve automatic releases." in changes.read_text()
+
+
+def test_release_accepts_already_prepared_target_changelog(tmp_path, monkeypatch):
+    release = _release_module()
+    changes = tmp_path / "CHANGES.md"
+    original = (
+        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
+        "## 0.3.1 - 2026-07-15\n\n- Prepared release.\n"
+    )
+    changes.write_text(original)
+    monkeypatch.setattr(release, "CHANGES", changes)
+
+    release.promote_changelog("0.3.1", generated_notes="- Generated release.")
+
+    assert changes.read_text() == original

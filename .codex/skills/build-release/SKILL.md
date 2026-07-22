@@ -17,12 +17,15 @@ versions unless the user explicitly asks for one.
 
 `make release` runs `uv sync --extra dev --group dev` and then
 `scripts/release.py`. The script enforces a clean tree, configured upstream,
-synced remote state, unused PyPI version, version consistency, lock refresh,
-local checks, release commit, tag creation, and atomic push. Before committing,
-tagging, or pushing, it requires non-empty, human-authored notes in the
-checked-in `CHANGES.md` `Unreleased` section, promotes them to the target
-version and release date, creates a fresh `Unreleased` section, and stages the
-changelog with the version and lock files. The pushed tag triggers
+synced remote state, unused PyPI version, version consistency, locked dependency
+resolution, local checks, release commit, tag creation, and atomic push. It
+uses any checked-in `CHANGES.md` `Unreleased` prose when present and otherwise
+generates concise notes from commit subjects since the previous release tag.
+It promotes those notes to the target version and release date, creates a fresh
+`Unreleased` section, and stages the changelog with the version and lock files.
+An untagged project version is treated as a pending release; otherwise the
+default is the next patch version. Failed preparation restores the release
+files it changed. The pushed tag triggers
 `.github/workflows/release.yml`, which builds and audits macOS ARM64, macOS
 Intel, Linux x86-64, Linux ARM64, and Windows x86-64 wheels plus a source
 distribution. It publishes through PyPI trusted publishing and then creates a
@@ -69,9 +72,8 @@ Do not manually duplicate the old local wheel-building checklist. If
 `make release` fails, report the failing stage and exact relevant error, then
 stop. Common failures include a dirty worktree, unsynced upstream, an existing
 PyPI version, formatting/test failures, tag collisions, or push failures.
-Missing or empty release notes are also a hard failure. Never synthesize
-release notes from commits; the script may only promote human-authored
-`Unreleased` prose.
+No release-note preparation is required from the user. When `Unreleased` is
+empty, let the script generate notes from the commits since the previous tag.
 
 Releases containing the processed research-info catalog also require a
 fail-closed installed-wheel feature smoke on CPython 3.9 in a maintainer

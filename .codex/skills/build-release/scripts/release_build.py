@@ -29,6 +29,7 @@ VERSION_PATH = REPO_ROOT / "VERSION.txt"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 CARGO_TOML = REPO_ROOT / "Cargo.toml"
 CARGO_LOCK = REPO_ROOT / "Cargo.lock"
+UV_LOCK = REPO_ROOT / "uv.lock"
 PYTHON = Path(sys.executable)
 PACKAGE_NAME = "supermariobrosnes-turbo"
 IMPORT_NAME = "supermariobrosnes_turbo"
@@ -182,6 +183,32 @@ def replace_section_version(path: Path, section: str, version: str) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
+def replace_package_version(path: Path, package_name: str, version: str) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    in_package = False
+    matching_package = False
+    changed = False
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[[") and stripped.endswith("]]"):
+            in_package = stripped[2:-2].strip() == "package"
+            matching_package = False
+            continue
+        if not in_package:
+            continue
+        if stripped.startswith("name = "):
+            matching_package = stripped.split("=", 1)[1].strip().strip('"') == package_name
+            continue
+        if matching_package and stripped.startswith("version = "):
+            newline = "\n" if line.endswith("\n") else ""
+            lines[index] = f'version = "{version}"{newline}'
+            changed = True
+            break
+    if not changed:
+        raise RuntimeError(f"could not replace {package_name!r} version in {path}")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
 def write_version(version: str) -> None:
     VERSION_PATH.write_text(f"{version}\n", encoding="utf-8")
 
@@ -252,6 +279,8 @@ def bump_version(args: argparse.Namespace) -> None:
         write_version(target)
         replace_section_version(PYPROJECT, "project", target)
         replace_section_version(CARGO_TOML, "package", target)
+        replace_package_version(CARGO_LOCK, PACKAGE_NAME, target)
+        replace_package_version(UV_LOCK, PACKAGE_NAME, target)
     print(target)
 
 
@@ -260,6 +289,8 @@ def sync_version(args: argparse.Namespace) -> None:
     validate_version(version)
     replace_section_version(PYPROJECT, "project", version)
     replace_section_version(CARGO_TOML, "package", version)
+    replace_package_version(CARGO_LOCK, PACKAGE_NAME, version)
+    replace_package_version(UV_LOCK, PACKAGE_NAME, version)
     print(version)
 
 

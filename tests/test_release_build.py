@@ -32,6 +32,20 @@ def test_version_file_is_the_single_source_of_truth():
         assert f'"{release_file}"' in release_script
 
 
+def test_version_bump_updates_only_the_project_entries_in_lockfiles(tmp_path):
+    release_build = _release_build_module()
+    lock = tmp_path / "lock.toml"
+    lock.write_text(
+        '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n'
+        '[[package]]\nname = "supermariobrosnes-turbo"\nversion = "0.4.2"\n'
+    )
+
+    release_build.replace_package_version(lock, "supermariobrosnes-turbo", "0.4.3")
+
+    assert 'name = "dependency"\nversion = "9.9.9"' in lock.read_text()
+    assert 'name = "supermariobrosnes-turbo"\nversion = "0.4.3"' in lock.read_text()
+
+
 def test_release_validates_python_314_with_stable_abi_wheels():
     root = Path(__file__).resolve().parents[1]
     workflow = (root / ".github" / "workflows" / "release.yml").read_text(
@@ -53,6 +67,9 @@ def test_local_release_runs_the_ci_source_gates():
     assert '"--all-targets"' in release_script
     assert '"--all-features"' in release_script
     assert "check_smb_dependency_closure.py" in release_script
+    assert '"uv", "lock", "--check"' in release_script
+    assert '"cargo", "metadata", "--locked", "--no-deps"' in release_script
+    assert '"cargo", "generate-lockfile"' not in release_script
 
 
 def test_release_wheel_builds_use_platform_scoped_cargo_caches():

@@ -15,6 +15,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_HELPER = REPO_ROOT / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
 PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
 CHANGES = REPO_ROOT / "CHANGES.md"
+RELEASE_FILES = (
+    REPO_ROOT / "VERSION.txt",
+    REPO_ROOT / "pyproject.toml",
+    REPO_ROOT / "Cargo.toml",
+    REPO_ROOT / "Cargo.lock",
+    REPO_ROOT / "uv.lock",
+    CHANGES,
+)
 
 
 def run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -63,11 +71,33 @@ def helper_capture(*args: str) -> str:
     return capture([str(PYTHON), str(RELEASE_HELPER), *args])
 
 
+def tag_exists(tag: str) -> bool:
+    return subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", tag],
+        cwd=REPO_ROOT,
+        stdout=subprocess.DEVNULL,
+    ).returncode == 0
+
+
+def latest_release_tag() -> str | None:
+    try:
+        return capture(["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"])
+    except subprocess.CalledProcessError:
+        return None
+
+
 def target_version(args: argparse.Namespace) -> str:
     if args.to:
         version = args.to
-    else:
+    elif args.part:
         version = helper_capture("bump-version", "--part", args.part).splitlines()[-1]
+    else:
+        current = (REPO_ROOT / "VERSION.txt").read_text(encoding="utf-8").strip()
+        version = (
+            current
+            if not tag_exists(f"v{current}")
+            else helper_capture("bump-version", "--part", "patch").splitlines()[-1]
+        )
     helper("check-version")
     helper("check-pypi", "--version", version)
     return version
@@ -76,11 +106,31 @@ def target_version(args: argparse.Namespace) -> str:
 def refresh_locks() -> None:
     env = os.environ.copy()
     env.setdefault("UV_CACHE_DIR", ".uv-cache")
-    run(["uv", "lock"], env=env)
-    run(["cargo", "generate-lockfile"])
+    run(["uv", "lock", "--check"], env=env)
+    run(["cargo", "metadata", "--locked", "--no-deps"])
 
 
-def promote_changelog(version: str, *, release_date: str | None = None) -> None:
+def generated_release_notes(base_ref: str | None) -> str:
+    revision = f"{base_ref}..HEAD" if base_ref else "HEAD"
+    subjects = capture(["git", "log", "--format=%s", revision]).splitlines()
+    ignored_prefixes = ("Release v", "Bump version to ")
+    notes = []
+    for subject in reversed(subjects):
+        subject = subject.strip()
+        if not subject or subject.startswith(ignored_prefixes) or subject in notes:
+            continue
+        notes.append(subject)
+    if not notes:
+        raise SystemExit("no releasable commits found for automatic release notes")
+    return "\n".join(f"- {subject.rstrip('.')}." for subject in notes)
+
+
+def promote_changelog(
+    version: str,
+    *,
+    release_date: str | None = None,
+    generated_notes: str | None = None,
+) -> None:
     text = CHANGES.read_text(encoding="utf-8")
     prefix = "# Changelog\n\n## Unreleased\n\n"
     if not text.startswith(prefix):
@@ -93,10 +143,12 @@ def promote_changelog(version: str, *, release_date: str | None = None) -> None:
     else:
         unreleased = tail[:separator].strip()
         history = tail[separator + 1 :].strip()
-    if not unreleased or unreleased == "- Nothing yet.":
-        raise SystemExit("CHANGES.md Unreleased section must describe the release")
     if f"## {version} " in text:
-        raise SystemExit(f"CHANGES.md already contains release {version}")
+        return
+    if not unreleased or unreleased == "- Nothing yet.":
+        unreleased = generated_notes or ""
+    if not unreleased:
+        raise SystemExit("could not generate release notes from commits")
     released = release_date or date.today().isoformat()
     updated = (
         f"{prefix}- Nothing yet.\n\n"
@@ -148,7 +200,11 @@ def create_commit_and_tag(version: str) -> str:
             "CHANGES.md",
         ]
     )
-    run(["git", "commit", "-m", f"Release {tag}"])
+    if subprocess.run(
+        ["git", "diff", "--cached", "--quiet"],
+        cwd=REPO_ROOT,
+    ).returncode != 0:
+        run(["git", "commit", "-m", f"Release {tag}"])
     run(["git", "tag", tag, "HEAD"])
     return tag
 
@@ -170,8 +226,7 @@ def parse_args() -> argparse.Namespace:
     group.add_argument(
         "--part",
         choices=("patch", "minor", "major"),
-        default="patch",
-        help="Version component to bump when --to is omitted",
+        help="Version component to bump; by default reuse an untagged project version or bump patch",
     )
     parser.add_argument("--skip-checks", action="store_true", help="Skip local cargo/maturin/test gates")
     parser.add_argument("--dry-run-push", action="store_true", help="Create the commit and tag, but dry-run the push")
@@ -185,14 +240,26 @@ def main() -> None:
         raise SystemExit("expected release environment at .venv/bin/python; run `uv sync --extra dev --group dev`")
     ensure_clean()
     remote, branch = ensure_synced()
+    base_ref = latest_release_tag()
     version = target_version(args)
-    helper("bump-version", "--to", version, "--write")
-    release_date = date.today().isoformat()
-    promote_changelog(version, release_date=release_date)
-    refresh_locks()
-    helper("check-version", "--version", version)
-    run_checks(args.skip_checks)
-    tag = create_commit_and_tag(version)
+    snapshots = {path: path.read_bytes() for path in RELEASE_FILES}
+    try:
+        helper("bump-version", "--to", version, "--write")
+        release_date = date.today().isoformat()
+        promote_changelog(
+            version,
+            release_date=release_date,
+            generated_notes=generated_release_notes(base_ref),
+        )
+        refresh_locks()
+        helper("check-version", "--version", version)
+        run_checks(args.skip_checks)
+        tag = create_commit_and_tag(version)
+    except BaseException:
+        for path, contents in snapshots.items():
+            path.write_bytes(contents)
+        subprocess.run(["git", "reset", "--quiet"], cwd=REPO_ROOT, check=False)
+        raise
     push_release(remote, branch, tag, args.dry_run_push)
     print()
     print(f"Released {tag}: pushed {branch} and tag to {remote}.")
