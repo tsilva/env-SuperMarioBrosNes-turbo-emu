@@ -22,11 +22,9 @@ from collections import deque
 from dataclasses import asdict, dataclass
 import json
 import math
-import os
 from pathlib import Path
 import random
 import signal
-import sys
 import time
 from typing import Any, Iterable, Sequence
 
@@ -80,7 +78,9 @@ class Config:
     imagination_horizon: int = 15
     imagination_starts: int = 128
     entropy_scale: float = 3e-3
-    exploration: float = 0.1
+    exploration: float = 0.05
+    exploration_run_mean: float = 4.0
+    exploration_run_max: int = 32
     free_nats: float = 1.0
     dyn_scale: float = 1.0
     rep_scale: float = 0.1
@@ -730,6 +730,7 @@ def imagine(
 def actor_critic_losses(
     agent: DreamerV3,
     posterior: RSSMState,
+    replay_batch: dict[str, Tensor],
     normalizer: ReturnNormalizer,
     rng: torch.Generator,
 ) -> tuple[Tensor, Tensor, dict[str, float]]:
@@ -763,10 +764,25 @@ def actor_critic_losses(
     with torch.no_grad():
         slow_probs = agent.slow_critic(features[:-1].detach()).softmax(-1)
     slow_reg = -(slow_probs * critic_logits.log_softmax(-1)).sum(-1)
-    critic_loss = (weights * (value_loss + slow_reg)).mean()
+    imagination_critic_loss = (weights * (value_loss + slow_reg)).mean()
+
+    replay_features = agent.feature(posterior).detach()
+    with torch.no_grad():
+        replay_values = agent.twohot.mean(agent.slow_critic(replay_features)).transpose(0, 1)
+        replay_rewards = replay_batch["reward"][:, 1:].transpose(0, 1)
+        replay_discounts = (
+            agent.config.gamma * replay_batch["cont"][:, 1:]
+        ).transpose(0, 1)
+        replay_returns = lambda_returns(
+            replay_rewards, replay_discounts, replay_values, agent.config.lambda_
+        ).transpose(0, 1)
+    replay_logits = agent.critic(replay_features[:, :-1])
+    replay_value_loss = agent.twohot.loss(replay_logits, replay_returns).mean()
+    critic_loss = imagination_critic_loss + 0.3 * replay_value_loss
     metrics = {
         "actor": float(actor_loss.detach().cpu()),
         "critic": float(critic_loss.detach().cpu()),
+        "replay_critic": float(replay_value_loss.detach().cpu()),
         "imag_return": float(returns.mean().detach().cpu()),
         "imag_reward": float(rewards.mean().detach().cpu()),
         "entropy": float(entropy.mean().detach().cpu()),
@@ -798,7 +814,7 @@ def optimize(
     model_optimizer.step()
 
     actor_loss, critic_loss, behavior_metrics = actor_critic_losses(
-        agent, posterior.detach(), normalizer, torch_rng
+        agent, posterior.detach(), batch, normalizer, torch_rng
     )
     actor_optimizer.zero_grad(set_to_none=True)
     actor_loss.backward()
@@ -1046,6 +1062,8 @@ def train(config: Config, *, resume: Path | None = None) -> Path:
     recent_metrics: dict[str, float] = {}
     best_progress = 0.0
     trajectories: list[list[int]] = [[] for _ in range(config.envs)]
+    exploration_actions = np.full(config.envs, NOOP_ACTION, dtype=np.int64)
+    exploration_remaining = np.zeros(config.envs, dtype=np.int64)
     state = agent.rssm.initial(config.envs, device)
 
     try:
@@ -1066,10 +1084,23 @@ def train(config: Config, *, resume: Path | None = None) -> Path:
                 else:
                     sampled, _ = agent.policy(state, deterministic=False)
                     actions = sampled.cpu().numpy().astype(np.int64)
-                    explore = rng.random(config.envs) < config.exploration
-                    actions[explore] = rng.integers(
-                        0, action_count, int(np.count_nonzero(explore)), dtype=np.int64
+                    continuing = exploration_remaining > 0
+                    actions[continuing] = exploration_actions[continuing]
+                    exploration_remaining[continuing] -= 1
+                    starting = (~continuing) & (
+                        rng.random(config.envs) < config.exploration
                     )
+                    count = int(np.count_nonzero(starting))
+                    if count:
+                        exploration_actions[starting] = rng.integers(
+                            0, action_count, count, dtype=np.int64
+                        )
+                        durations = np.minimum(
+                            rng.geometric(1.0 / config.exploration_run_mean, count),
+                            config.exploration_run_max,
+                        )
+                        exploration_remaining[starting] = durations - 1
+                        actions[starting] = exploration_actions[starting]
             for lane, action in enumerate(actions):
                 trajectories[lane].append(int(action))
 
@@ -1119,6 +1150,7 @@ def train(config: Config, *, resume: Path | None = None) -> Path:
                 next_observations[dones] = reset_obs[dones]
                 for lane in np.flatnonzero(dones):
                     trajectories[int(lane)].clear()
+                exploration_remaining[dones] = 0
 
             observations = next_observations
             previous_actions = onehot_actions(actions, action_count, device)
@@ -1250,7 +1282,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--batch-length", type=int, default=32)
     parser.add_argument("--train-ratio", type=float, default=8.0)
-    parser.add_argument("--exploration", type=float, default=0.1)
+    parser.add_argument("--exploration", type=float, default=0.05)
+    parser.add_argument("--exploration-run-mean", type=float, default=4.0)
+    parser.add_argument("--exploration-run-max", type=int, default=32)
     parser.add_argument("--entropy-scale", type=float, default=3e-3)
     parser.add_argument("--eval-every", type=int, default=50_000)
     parser.add_argument("--checkpoint-every", type=int, default=100_000)
@@ -1266,6 +1300,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def config_from_args(args: argparse.Namespace) -> Config:
+    if not 0.0 <= args.exploration <= 1.0:
+        raise SystemExit("--exploration must be between zero and one")
+    if args.exploration_run_mean < 1.0:
+        raise SystemExit("--exploration-run-mean must be at least one")
+    if args.exploration_run_max < 1:
+        raise SystemExit("--exploration-run-max must be positive")
     output = args.output or Path("runs") / "dreamerv3" / args.state
     return Config(
         state=args.state,
@@ -1278,6 +1318,8 @@ def config_from_args(args: argparse.Namespace) -> Config:
         batch_length=args.batch_length,
         train_ratio=args.train_ratio,
         exploration=args.exploration,
+        exploration_run_mean=args.exploration_run_mean,
+        exploration_run_max=args.exploration_run_max,
         entropy_scale=args.entropy_scale,
         eval_every=args.eval_every,
         checkpoint_every=args.checkpoint_every,
