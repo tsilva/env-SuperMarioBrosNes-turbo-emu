@@ -4,6 +4,10 @@
 
 - Nothing yet.
 
+## 0.4.3 - 2026-07-22
+
+- Improve Go-Explore cell keys and cache native RGB frames.
+
 ## 0.4.2 - 2026-07-21
 
 - Make Go-Explore the default trainer, continue through the transition budget
