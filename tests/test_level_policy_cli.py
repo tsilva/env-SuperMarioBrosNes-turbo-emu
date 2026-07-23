@@ -43,7 +43,9 @@ def test_state_resolution_is_exact_and_supports_custom_names(tmp_path: Path) -> 
 
 def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     parser = training.build_parser()
-    assert parser.parse_args([]).state is None
+    campaign_defaults = parser.parse_args([])
+    assert campaign_defaults.state is None
+    assert campaign_defaults.continue_after_completion is False
     args = parser.parse_args(
         [
             "Level1-1",
@@ -245,17 +247,43 @@ def test_train_without_state_dispatches_all_canonical_levels(monkeypatch) -> Non
         "list_available_states",
         lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
     )
-    selected_action_sets: list[str] = []
+    selected_defaults: list[tuple[str, bool]] = []
     monkeypatch.setattr(
         training_campaign,
         "run",
         lambda args, _parser: (
-            selected_action_sets.append(args.action_set) or int(args.state is None)
+            selected_defaults.append(
+                (args.action_set, args.continue_after_completion)
+            )
+            or int(args.state is None)
         ),
     )
 
     assert training.main([]) == 1
-    assert selected_action_sets == ["standard"]
+    assert selected_defaults == [("standard", False)]
+
+
+def test_all_level_training_can_explicitly_continue_after_completion(
+    monkeypatch,
+) -> None:
+    from supermariobrosnes_turbo import training_campaign
+
+    monkeypatch.setattr(
+        training,
+        "list_available_states",
+        lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
+    )
+    selected_modes: list[bool] = []
+    monkeypatch.setattr(
+        training_campaign,
+        "run",
+        lambda args, _parser: (
+            selected_modes.append(args.continue_after_completion) or 0
+        ),
+    )
+
+    assert training.main(["--continue-after-completion"]) == 0
+    assert selected_modes == [True]
 
 
 def test_all_level_training_preserves_an_explicit_action_set(monkeypatch) -> None:

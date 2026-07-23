@@ -90,6 +90,20 @@ GO_EXPLORE_CELL_INFO_KEYS = (
 )
 
 
+class _TrainingArgumentParser(argparse.ArgumentParser):
+    """Resolve the completion default from the selected training scope."""
+
+    def parse_known_args(
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        parsed, extras = super().parse_known_args(args, namespace)
+        if parsed.continue_after_completion is None:
+            parsed.continue_after_completion = parsed.state is not None
+        return parsed, extras
+
+
 def go_explore_route_phase(
     *,
     loop_command_active: bool,
@@ -660,7 +674,7 @@ def _play_command(
 
 
 def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog=prog, description=__doc__)
+    parser = _TrainingArgumentParser(prog=prog, description=__doc__)
     parser.add_argument(
         "state",
         nargs="?",
@@ -792,7 +806,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "continue to the transition budget and publish only higher-return "
-            "completed paths (default)"
+            "completed paths (default when training an explicit state)"
         ),
     )
     completion.add_argument(
@@ -801,7 +815,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         action="store_false",
         help="stop after the first completed path",
     )
-    parser.set_defaults(continue_after_completion=True)
+    parser.set_defaults(continue_after_completion=None)
     parser.add_argument(
         "--overwrite",
         action="store_true",

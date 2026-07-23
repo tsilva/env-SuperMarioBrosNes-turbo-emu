@@ -238,13 +238,13 @@ smb-turbo play
 ```
 
 **Training** searches observation-free `(action, duration)` programs with
-Go-Explore and the `standard` action set by default. It consumes the transition
-budget as an anytime improvement search, keeping the best completed trajectory
-locked and publishing only higher-return completions; pass `--stop-on-completion`
-to stop after the first completed path. Go-Explore ranks raw game-score gains
-first and charges each step `1 / (max_episode_steps + 1)`, so higher score always
-wins while fewer steps break equal-score ties. Every completion is appended to
-`successes.jsonl`.
+Go-Explore and the `standard` action set by default. When an explicit state is
+supplied, it consumes the transition budget as an anytime improvement search,
+keeping the best completed trajectory locked and publishing only higher-return
+completions; pass `--stop-on-completion` to stop after the first completed path.
+Go-Explore ranks raw game-score gains first and charges each step
+`1 / (max_episode_steps + 1)`, so higher score always wins while fewer steps
+break equal-score ties. Every completion is appended to `successes.jsonl`.
 
 A new default Go-Explore run replaces the existing canonical run; custom outputs
 and explicit Beam or JERK runs remain protected unless `--overwrite` is passed.
@@ -334,10 +334,13 @@ The transition budget applies independently to each level. Every policy and its
 artifacts are written under `runs/<State>/`; with `--output <Directory>`, each
 level instead uses `<Directory>/<State>/`. Interactive campaigns keep one TUI
 open and show separate progress bars for the current level's transitions and the
-overall 32-level campaign. A level that exhausts its budget is reported and the
-campaign continues to the next level; a safe stop ends the current level and
-does not start another. The default `standard` action set keeps pipe-dependent
-levels searchable; an explicit `--action-set` is respected.
+overall 32-level campaign. By default, the campaign advances to the next level
+as soon as the current level is completed; pass `--continue-after-completion` to
+keep improving each completed level until its transition budget is exhausted. A
+level that exhausts its budget without completing is reported and the campaign
+continues to the next level; a safe stop ends the current level and does not
+start another. The default `standard` action set keeps pipe-dependent levels
+searchable; an explicit `--action-set` is respected.
 
 New default runs use `runs/<State>/` regardless of algorithm. For compatibility,
 playback still discovers historical algorithm-specific directories, preferring
