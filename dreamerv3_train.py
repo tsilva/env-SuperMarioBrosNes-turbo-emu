@@ -71,6 +71,7 @@ class Config:
     max_episode_steps: int = 4_500
     stall_steps: int = 450
     frame_skip: int = 4
+    noop_reset_max: int = 0
     learning_rate: float = 3e-4
     model_learning_rate: float = 3e-4
     gamma: float = 0.997
@@ -621,6 +622,7 @@ def make_env(config: Config, envs: int | None = None) -> SuperMarioBrosNesTurboV
         frame_skip=config.frame_skip,
         frame_stack=1,
         maxpool_last_two=True,
+        noop_reset_max=config.noop_reset_max,
         sticky_action_prob=0.0,
         reward_clip=False,
         info_filter="none",
@@ -1292,6 +1294,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-episode-steps", type=int, default=4_500)
     parser.add_argument("--stall-steps", type=int, default=450)
     parser.add_argument("--frame-skip", type=int, default=4)
+    parser.add_argument(
+        "--noop-reset-max",
+        type=int,
+        default=0,
+        metavar="FRAMES",
+        help=(
+            "maximum seeded random raw emulator frames applied after ordinary "
+            "state resets (default: 0, disabled)"
+        ),
+    )
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--verify-policy", type=Path)
@@ -1306,6 +1318,8 @@ def config_from_args(args: argparse.Namespace) -> Config:
         raise SystemExit("--exploration-run-mean must be at least one")
     if args.exploration_run_max < 1:
         raise SystemExit("--exploration-run-max must be positive")
+    if args.noop_reset_max < 0:
+        raise SystemExit("--noop-reset-max must be non-negative")
     output = args.output or Path("runs") / "dreamerv3" / args.state
     return Config(
         state=args.state,
@@ -1327,6 +1341,7 @@ def config_from_args(args: argparse.Namespace) -> Config:
         max_episode_steps=args.max_episode_steps,
         stall_steps=args.stall_steps,
         frame_skip=args.frame_skip,
+        noop_reset_max=args.noop_reset_max,
         device=args.device,
         output=str(output),
         rom=args.rom,

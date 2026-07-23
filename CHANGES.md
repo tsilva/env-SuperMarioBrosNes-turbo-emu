@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Expose seeded reset-time NOOP randomization through every trainer with an
+  explicit raw-frame maximum and a disabled default.
 
 ## 0.4.3 - 2026-07-22
 

@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 import json
 import logging
 import os
 from pathlib import Path
 import shlex
+import struct
 import threading
 import time
 from typing import Any
@@ -19,6 +20,8 @@ import numpy as np
 
 from . import (
     ACTION_SETS,
+    PlayerMotion,
+    PlayerTask,
     SuperMarioBrosNesTurboVecEnv,
     list_available_states,
 )
@@ -65,32 +68,45 @@ INVALID_XSCROLL_MIN = 0xFF00
 SCROLL_TRANSITION_MIN_DROP = 128
 SCROLL_TRANSITION_BUCKET = 64
 OBSERVATION_FREE_CROP = (0, VISIBLE_HEIGHT - 1, 0, VISIBLE_WIDTH - 1)
-GO_EXPLORE_CELL_FRAME_SHAPE = (8, 8)
-GO_EXPLORE_CELL_HUD_MASK = (32, 0, 0, 0)
-GO_EXPLORE_CELL_QUANTIZATION_BITS = 3
-GO_EXPLORE_CELL_KEY_BYTES = 64
-GO_EXPLORE_CELL_X_BUCKET_PIXELS = 16
+GO_EXPLORE_CELL_X_BUCKET_PIXELS = 8
 GO_EXPLORE_CELL_Y_BUCKET_PIXELS = 16
+GO_EXPLORE_ROUTE_COUNTER_MAX = 7
+GO_EXPLORE_CELL_KEY_STRUCT = struct.Struct("<BBBBHHBBB")
+GO_EXPLORE_CELL_KEY_BYTES = GO_EXPLORE_CELL_KEY_STRUCT.size
+GO_EXPLORE_CELL_ENCODING = "packed-bytes"
 GO_EXPLORE_CELL_REPRESENTATION = (
-    "level-sublevel-area-xy16-gray8x8-q3-bytes"
+    "level-sublevel-area-pointer-x8-y16-route-ground-power"
+)
+GO_EXPLORE_CELL_INFO_KEYS = (
+    "area_id",
+    "y_pos",
+    "area_pointer",
+    "loop_command_active",
+    "loop_correct_count",
+    "loop_pass_count",
+    "player_motion",
+    "player_power",
+    "player_task",
 )
 
 
-def go_explore_frame_bytes(observations: np.ndarray) -> tuple[bytes, ...]:
-    """Encode native masked grayscale frames as deterministic quantized bytes."""
-    frames = np.asarray(observations)
-    expected_tail = (1, *GO_EXPLORE_CELL_FRAME_SHAPE)
-    if frames.ndim != 4 or frames.shape[1:] != expected_tail:
-        raise ValueError(
-            "Go-Explore cell observations must have shape "
-            f"(lanes, {expected_tail[0]}, {expected_tail[1]}, {expected_tail[2]})"
-        )
-    if frames.dtype != np.uint8:
-        raise TypeError("Go-Explore cell observations must have dtype uint8")
-
-    flattened = frames[:, 0].reshape(frames.shape[0], -1)
-    quantized = np.right_shift(flattened, 8 - GO_EXPLORE_CELL_QUANTIZATION_BITS)
-    return tuple(row.tobytes() for row in quantized)
+def go_explore_route_phase(
+    *,
+    loop_command_active: bool,
+    loop_correct_count: int,
+    loop_pass_count: int,
+    player_task: int,
+) -> int:
+    """Pack route-causal castle progress and pipe-transition state into one byte."""
+    correct = min(max(int(loop_correct_count), 0), GO_EXPLORE_ROUTE_COUNTER_MAX)
+    passed = min(max(int(loop_pass_count), 0), GO_EXPLORE_ROUTE_COUNTER_MAX)
+    transition = int(player_task) != int(PlayerTask.PLAYER_CONTROL)
+    return (
+        int(transition)
+        | (int(bool(loop_command_active)) << 1)
+        | (correct << 2)
+        | (passed << 5)
+    )
 
 
 @dataclass(frozen=True)
@@ -225,9 +241,10 @@ class MarioJerkTask:
         max_episode_steps: int,
         stall_steps: int,
         step_cost: float | None,
+        noop_reset_max: int = 0,
         action_set: str = ACTION_SET,
         reward_mode: str = REWARD_MODE_PROGRESS_SCORE,
-        visual_cell_observations: bool = False,
+        go_explore_cells: bool = False,
     ) -> None:
         self.n_envs = int(n_envs)
         self.state = state
@@ -235,7 +252,7 @@ class MarioJerkTask:
         self.max_episode_steps = int(max_episode_steps)
         self.stall_steps = int(stall_steps)
         self.reward_mode = str(reward_mode)
-        self.visual_cell_observations = bool(visual_cell_observations)
+        self.go_explore_cells = bool(go_explore_cells)
         if self.reward_mode not in {
             REWARD_MODE_PROGRESS_SCORE,
             REWARD_MODE_SCORE_FIRST,
@@ -249,18 +266,12 @@ class MarioJerkTask:
         self.step_cost = float(
             default_step_cost if step_cost is None else step_cost
         )
+        self.noop_reset_max = int(noop_reset_max)
         if self.step_cost < 0.0:
             raise ValueError("JERK step_cost must be non-negative")
-        observation_options: dict[str, Any]
-        if self.visual_cell_observations:
-            observation_options = {
-                "obs_crop": GO_EXPLORE_CELL_HUD_MASK,
-                "obs_crop_mode": "mask",
-                "obs_resize": GO_EXPLORE_CELL_FRAME_SHAPE,
-                "obs_resize_algorithm": "area",
-            }
-        else:
-            observation_options = {"obs_crop": OBSERVATION_FREE_CROP}
+        if self.noop_reset_max < 0:
+            raise ValueError("noop_reset_max must be non-negative")
+        observation_options: dict[str, Any] = {"obs_crop": OBSERVATION_FREE_CROP}
         self.native = SuperMarioBrosNesTurboVecEnv(
             "SuperMarioBros-Nes-v0",
             state=self.state,
@@ -276,11 +287,12 @@ class MarioJerkTask:
             frame_skip=4,
             frame_stack=1,
             maxpool_last_two=False,
+            noop_reset_max=self.noop_reset_max,
             sticky_action_prob=0.0,
             reward_clip=False,
             info_filter=(
-                {"mode": "all", "keys": ["area_id", "y_pos"]}
-                if self.visual_cell_observations
+                {"mode": "all", "keys": list(GO_EXPLORE_CELL_INFO_KEYS)}
+                if self.go_explore_cells
                 else "none"
             ),
             **observation_options,
@@ -298,21 +310,34 @@ class MarioJerkTask:
         self.max_global_x = np.zeros(self.n_envs, dtype=np.int64)
         self.previous_x = np.zeros(self.n_envs, dtype=np.int64)
         self.cell_area_id = np.full(self.n_envs, -1, dtype=np.int16)
-        self.cell_y_pos = np.zeros(self.n_envs, dtype=np.int64)
+        self.cell_y_pos = np.zeros(self.n_envs, dtype=np.int32)
+        self.cell_area_pointer = np.zeros(self.n_envs, dtype=np.int16)
+        self.cell_loop_command_active = np.zeros(self.n_envs, dtype=np.bool_)
+        self.cell_loop_correct_count = np.zeros(self.n_envs, dtype=np.int16)
+        self.cell_loop_pass_count = np.zeros(self.n_envs, dtype=np.int16)
+        self.cell_player_motion = np.full(self.n_envs, -1, dtype=np.int8)
+        self.cell_player_power = np.full(self.n_envs, -1, dtype=np.int8)
+        self.cell_player_task = np.full(self.n_envs, -1, dtype=np.int8)
         self.seen_scroll_transitions = [set() for _ in range(self.n_envs)]
 
-    def _update_cell_state(
-        self, infos: Mapping[str, Any], mask: np.ndarray
-    ) -> None:
-        if not self.visual_cell_observations:
+    def _update_cell_state(self, infos: Mapping[str, Any], mask: np.ndarray) -> None:
+        if not self.go_explore_cells:
             return
         selected = np.asarray(mask, dtype=np.bool_)
-        area_id = np.asarray(infos["area_id"])
-        y_pos = np.asarray(infos["y_pos"])
-        if area_id.shape != (self.n_envs,) or y_pos.shape != (self.n_envs,):
+        values = {key: np.asarray(infos[key]) for key in GO_EXPLORE_CELL_INFO_KEYS}
+        if any(value.shape != (self.n_envs,) for value in values.values()):
             raise ValueError("Go-Explore cell infos must contain one value per lane")
-        self.cell_area_id[selected] = area_id[selected]
-        self.cell_y_pos[selected] = y_pos[selected]
+        self.cell_area_id[selected] = values["area_id"][selected]
+        self.cell_y_pos[selected] = values["y_pos"][selected]
+        self.cell_area_pointer[selected] = values["area_pointer"][selected]
+        self.cell_loop_command_active[selected] = values["loop_command_active"][
+            selected
+        ]
+        self.cell_loop_correct_count[selected] = values["loop_correct_count"][selected]
+        self.cell_loop_pass_count[selected] = values["loop_pass_count"][selected]
+        self.cell_player_motion[selected] = values["player_motion"][selected]
+        self.cell_player_power[selected] = values["player_power"][selected]
+        self.cell_player_task[selected] = values["player_task"][selected]
 
     def _initialize_lanes(self, mask: np.ndarray) -> None:
         current_x = self.native.xscroll_hi.astype(
@@ -422,21 +447,26 @@ class MarioJerkTask:
                 snapshot.seen_scroll_transitions
             )
 
-    def go_explore_cell_keys(
-        self, observations: np.ndarray
-    ) -> tuple[tuple[int, int, int, int, int, bytes], ...]:
-        """Return area-scoped, tile-bucketed quantized visual observations."""
-        frame_bytes = go_explore_frame_bytes(observations)
-        if len(frame_bytes) != self.n_envs:
+    def go_explore_cell_keys(self, observations: np.ndarray) -> tuple[bytes, ...]:
+        """Return compact route-aware semantic cell keys."""
+        if len(observations) != self.n_envs:
             raise ValueError("Go-Explore requires one cell observation per lane")
         return tuple(
-            (
-                int(self.previous_level_hi[lane]),
-                int(self.previous_level_lo[lane]),
-                int(self.cell_area_id[lane]),
+            GO_EXPLORE_CELL_KEY_STRUCT.pack(
+                int(self.previous_level_hi[lane]) & 0xFF,
+                int(self.previous_level_lo[lane]) & 0xFF,
+                int(self.cell_area_id[lane]) & 0xFF,
+                int(self.cell_area_pointer[lane]) & 0xFF,
                 int(self.native.x_pos[lane]) // GO_EXPLORE_CELL_X_BUCKET_PIXELS,
                 int(self.cell_y_pos[lane]) // GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
-                frame_bytes[lane],
+                go_explore_route_phase(
+                    loop_command_active=bool(self.cell_loop_command_active[lane]),
+                    loop_correct_count=int(self.cell_loop_correct_count[lane]),
+                    loop_pass_count=int(self.cell_loop_pass_count[lane]),
+                    player_task=int(self.cell_player_task[lane]),
+                ),
+                int(self.cell_player_motion[lane] == int(PlayerMotion.GROUND)),
+                int(self.cell_player_power[lane]) & 0xFF,
             )
             for lane in range(self.n_envs)
         )
@@ -671,6 +701,16 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--lanes", type=int, default=N_ENVS)
     parser.add_argument("--max-episode-steps", type=int, default=MAX_EPISODE_STEPS)
     parser.add_argument("--stall-steps", type=int, default=STALL_STEPS)
+    parser.add_argument(
+        "--noop-reset-max",
+        type=int,
+        default=0,
+        metavar="FRAMES",
+        help=(
+            "maximum seeded random raw emulator frames applied after ordinary "
+            "state resets (default: 0, disabled)"
+        ),
+    )
     parser.add_argument("--checkpoint-every", type=int, default=CHECKPOINT_FREQ)
     parser.add_argument("--log-every", type=int, default=LOG_INTERVAL_STEPS)
     shared = parser.add_argument_group("shared search tuning")
@@ -834,6 +874,7 @@ def _run_training(
         max_episode_steps=args.max_episode_steps,
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
+        noop_reset_max=args.noop_reset_max,
         action_set=args.action_set,
     )
     started_at = time.perf_counter()
@@ -1085,6 +1126,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--transitions must be divisible by --lanes")
     if (
         args.stall_steps < 0
+        or args.noop_reset_max < 0
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
         or (args.step_cost is not None and args.step_cost < 0.0)

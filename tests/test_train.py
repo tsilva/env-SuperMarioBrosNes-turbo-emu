@@ -10,7 +10,7 @@ import pytest
 from gymnasium import spaces
 
 from supermariobrosnes_turbo import training as train_module
-from supermariobrosnes_turbo import ACTION_SETS
+from supermariobrosnes_turbo import ACTION_SETS, PlayerMotion, PlayerTask
 from supermariobrosnes_turbo.jerk import (
     ActionRun,
     JERK_POLICY_MEMBER,
@@ -23,13 +23,14 @@ from supermariobrosnes_turbo.jerk import (
     truncate_runs,
 )
 from supermariobrosnes_turbo.training import (
-    GO_EXPLORE_CELL_FRAME_SHAPE,
+    GO_EXPLORE_CELL_INFO_KEYS,
     GO_EXPLORE_CELL_KEY_BYTES,
+    GO_EXPLORE_CELL_KEY_STRUCT,
     GO_EXPLORE_CELL_X_BUCKET_PIXELS,
     GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
     MarioJerkTask,
     REWARD_MODE_SCORE_FIRST,
-    go_explore_frame_bytes,
+    go_explore_route_phase,
     mark_new_scroll_transitions,
     episode_boundary,
     exploit_probability,
@@ -76,6 +77,7 @@ def test_jerk_task_uses_minimal_native_observation_and_default_action_set(
     assert task.native.config["obs_copy"] == "unsafe_view"
     assert task.native.config["frame_stack"] == 1
     assert task.native.config["maxpool_last_two"] is False
+    assert task.native.config["noop_reset_max"] == 0
     assert task.native.config["info_filter"] == "none"
 
 
@@ -83,6 +85,7 @@ def test_jerk_task_accepts_a_state_general_down_action_set(monkeypatch) -> None:
     class FakeNative:
         def __init__(self, *args, **kwargs) -> None:
             del args
+            self.config = kwargs
             self.action_preset = kwargs["use_restricted_actions"]
             self.action_meanings = ACTION_SETS[self.action_preset]
 
@@ -97,13 +100,15 @@ def test_jerk_task_accepts_a_state_general_down_action_set(monkeypatch) -> None:
         max_episode_steps=100,
         stall_steps=10,
         step_cost=0.1,
+        noop_reset_max=120,
         action_set="standard",
     )
 
     assert task.action_names == ACTION_SETS["standard"]
+    assert task.native.config["noop_reset_max"] == 120
 
 
-def test_go_explore_task_uses_native_masked_downscaled_observations(
+def test_go_explore_task_uses_minimal_observation_and_semantic_infos(
     monkeypatch,
 ) -> None:
     class FakeNative:
@@ -123,36 +128,29 @@ def test_go_explore_task_uses_native_masked_downscaled_observations(
         max_episode_steps=100,
         stall_steps=10,
         step_cost=0.1,
-        visual_cell_observations=True,
+        go_explore_cells=True,
     )
 
-    assert task.native.config["obs_crop"] == (32, 0, 0, 0)
-    assert task.native.config["obs_crop_mode"] == "mask"
-    assert task.native.config["obs_resize"] == GO_EXPLORE_CELL_FRAME_SHAPE
-    assert task.native.config["obs_resize_algorithm"] == "area"
+    assert task.native.config["obs_crop"] == (0, 223, 0, 239)
+    assert "obs_crop_mode" not in task.native.config
+    assert "obs_resize" not in task.native.config
     assert task.native.config["obs_grayscale"] is True
     assert task.native.config["frame_stack"] == 1
     assert task.native.config["info_filter"] == {
         "mode": "all",
-        "keys": ["area_id", "y_pos"],
+        "keys": list(GO_EXPLORE_CELL_INFO_KEYS),
     }
 
 
-def test_go_explore_frame_bytes_quantize_each_lane_without_hashing() -> None:
-    observations = np.zeros((3, 1, *GO_EXPLORE_CELL_FRAME_SHAPE), dtype=np.uint8)
-    observations[1, 0, 3, 4] = 31
-    observations[2, 0, 3, 4] = 32
-
-    encoded = go_explore_frame_bytes(observations)
-
-    assert len(encoded) == 3
-    assert all(len(frame) == GO_EXPLORE_CELL_KEY_BYTES for frame in encoded)
-    assert encoded[0] == encoded[1]
-    assert encoded[0] != encoded[2]
-    quantized = np.frombuffer(encoded[2], dtype=np.uint8).reshape(
-        GO_EXPLORE_CELL_FRAME_SHAPE
+def test_go_explore_route_phase_is_compact_and_caps_counters() -> None:
+    phase = go_explore_route_phase(
+        loop_command_active=True,
+        loop_correct_count=99,
+        loop_pass_count=2,
+        player_task=int(PlayerTask.VERTICAL_PIPE_ENTRY),
     )
-    assert quantized[3, 4] == 1
+
+    assert phase == 0b01011111
 
 
 def test_go_explore_cell_keys_include_area_and_tile_position_buckets() -> None:
@@ -165,25 +163,80 @@ def test_go_explore_cell_keys_include_area_and_tile_position_buckets() -> None:
     task.previous_level_hi = np.asarray([1, 2], dtype=np.int16)
     task.previous_level_lo = np.asarray([3, 4], dtype=np.int16)
     task.cell_area_id = np.asarray([5, 6], dtype=np.int16)
-    task.cell_y_pos = np.asarray([31, 32], dtype=np.int64)
-    observations = np.zeros((2, 1, *GO_EXPLORE_CELL_FRAME_SHAPE), dtype=np.uint8)
+    task.cell_y_pos = np.asarray([31, 32], dtype=np.int32)
+    task.cell_area_pointer = np.asarray([7, 8], dtype=np.int16)
+    task.cell_loop_command_active = np.asarray([False, True], dtype=np.bool_)
+    task.cell_loop_correct_count = np.asarray([0, 2], dtype=np.int16)
+    task.cell_loop_pass_count = np.asarray([0, 1], dtype=np.int16)
+    task.cell_player_motion = np.asarray([0, 1], dtype=np.int8)
+    task.cell_player_power = np.asarray([0, 2], dtype=np.int8)
+    task.cell_player_task = np.asarray([8, 2], dtype=np.int8)
+    observations = np.zeros((2, 1, 1, 1), dtype=np.uint8)
 
     keys = task.go_explore_cell_keys(observations)
+    unpacked = tuple(GO_EXPLORE_CELL_KEY_STRUCT.unpack(key) for key in keys)
 
-    assert keys[0][:2] == (1, 3)
-    assert keys[1][:2] == (2, 4)
-    assert keys[0][2:5] == (
+    assert unpacked[0] == (
+        1,
+        3,
         5,
+        7,
         100 // GO_EXPLORE_CELL_X_BUCKET_PIXELS,
         31 // GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+        0,
+        1,
+        0,
     )
-    assert keys[1][2:5] == (
+    assert unpacked[1] == (
+        2,
+        4,
         6,
+        8,
         2_000 // GO_EXPLORE_CELL_X_BUCKET_PIXELS,
         32 // GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+        go_explore_route_phase(
+            loop_command_active=True,
+            loop_correct_count=2,
+            loop_pass_count=1,
+            player_task=2,
+        ),
+        0,
+        2,
     )
-    assert keys[0][5] == keys[1][5]
-    assert len(keys[0]) == 6
+    assert all(len(key) == GO_EXPLORE_CELL_KEY_BYTES for key in keys)
+
+
+def test_go_explore_cell_keys_ignore_visual_but_preserve_pipe_entry_state() -> None:
+    class FakeNative:
+        x_pos = np.asarray([100], dtype=np.uint16)
+
+    task = MarioJerkTask.__new__(MarioJerkTask)
+    task.n_envs = 1
+    task.native = FakeNative()
+    task.previous_level_hi = np.asarray([1], dtype=np.int16)
+    task.previous_level_lo = np.asarray([4], dtype=np.int16)
+    task.cell_area_id = np.asarray([2], dtype=np.int16)
+    task.cell_y_pos = np.asarray([48], dtype=np.int32)
+    task.cell_area_pointer = np.asarray([9], dtype=np.int16)
+    task.cell_loop_command_active = np.asarray([False], dtype=np.bool_)
+    task.cell_loop_correct_count = np.asarray([0], dtype=np.int16)
+    task.cell_loop_pass_count = np.asarray([0], dtype=np.int16)
+    task.cell_player_motion = np.asarray([0], dtype=np.int8)
+    task.cell_player_power = np.asarray([1], dtype=np.int8)
+    task.cell_player_task = np.asarray([8], dtype=np.int8)
+
+    dark = np.zeros((1, 1, 1, 1), dtype=np.uint8)
+    bright = np.full((1, 1, 1, 1), 255, dtype=np.uint8)
+
+    grounded = task.go_explore_cell_keys(dark)
+    assert grounded == task.go_explore_cell_keys(bright)
+
+    task.native.x_pos[0] = 108
+    assert grounded != task.go_explore_cell_keys(dark)
+
+    task.native.x_pos[0] = 100
+    task.cell_player_motion[0] = int(PlayerMotion.JUMPING_OR_SWIMMING)
+    assert grounded != task.go_explore_cell_keys(dark)
 
 
 def _runs(*values: tuple[int, int]) -> tuple[ActionRun, ...]:
@@ -206,14 +259,28 @@ def test_task_snapshots_restore_emulator_and_reward_accounting() -> None:
             return None, {
                 "area_id": np.asarray([7, 0], dtype=np.int16),
                 "y_pos": np.asarray([48, 0], dtype=np.int32),
+                "area_pointer": np.asarray([9, 0], dtype=np.int16),
+                "loop_command_active": np.asarray([True, False]),
+                "loop_correct_count": np.asarray([2, 0], dtype=np.int16),
+                "loop_pass_count": np.asarray([1, 0], dtype=np.int16),
+                "player_motion": np.asarray([0, 1], dtype=np.int8),
+                "player_power": np.asarray([2, 0], dtype=np.int8),
+                "player_task": np.asarray([8, 0], dtype=np.int8),
             }
 
     task = MarioJerkTask.__new__(MarioJerkTask)
     task.n_envs = 2
     task.native = FakeNative()
-    task.visual_cell_observations = True
+    task.go_explore_cells = True
     task.cell_area_id = np.asarray([1, 2], dtype=np.int16)
-    task.cell_y_pos = np.asarray([16, 32], dtype=np.int64)
+    task.cell_y_pos = np.asarray([16, 32], dtype=np.int32)
+    task.cell_area_pointer = np.asarray([3, 4], dtype=np.int16)
+    task.cell_loop_command_active = np.asarray([False, False])
+    task.cell_loop_correct_count = np.asarray([0, 0], dtype=np.int16)
+    task.cell_loop_pass_count = np.asarray([0, 0], dtype=np.int16)
+    task.cell_player_motion = np.asarray([1, 2], dtype=np.int8)
+    task.cell_player_power = np.asarray([0, 1], dtype=np.int8)
+    task.cell_player_task = np.asarray([8, 8], dtype=np.int8)
     task.episode_steps = np.asarray([3, 4], dtype=np.int64)
     task.last_progress_step = np.asarray([2, 3], dtype=np.int64)
     task.episode_returns = np.asarray([10.0, 20.0])
@@ -241,6 +308,13 @@ def test_task_snapshots_restore_emulator_and_reward_accounting() -> None:
     assert task.previous_x.tolist() == [75, 85]
     assert task.cell_area_id.tolist() == [7, 2]
     assert task.cell_y_pos.tolist() == [48, 32]
+    assert task.cell_area_pointer.tolist() == [9, 4]
+    assert task.cell_loop_command_active.tolist() == [True, False]
+    assert task.cell_loop_correct_count.tolist() == [2, 0]
+    assert task.cell_loop_pass_count.tolist() == [1, 0]
+    assert task.cell_player_motion.tolist() == [0, 2]
+    assert task.cell_player_power.tolist() == [2, 1]
+    assert task.cell_player_task.tolist() == [8, 8]
     assert task.seen_scroll_transitions == [{(1, 2)}, {(3, 4)}]
 
 
@@ -355,13 +429,21 @@ def test_training_flags_continue_and_protect_policies_by_default() -> None:
 
     defaults = parser.parse_args(["Level1-1"])
     stopped = parser.parse_args(
-        ["Level1-1", "--stop-on-completion", "--overwrite"]
+        [
+            "Level1-1",
+            "--stop-on-completion",
+            "--overwrite",
+            "--noop-reset-max",
+            "120",
+        ]
     )
 
     assert defaults.lanes == 64
     assert defaults.algorithm == "go-explore"
+    assert defaults.noop_reset_max == 0
     assert defaults.continue_after_completion is True
     assert defaults.overwrite is False
+    assert stopped.noop_reset_max == 120
     assert stopped.continue_after_completion is False
     assert stopped.overwrite is True
 

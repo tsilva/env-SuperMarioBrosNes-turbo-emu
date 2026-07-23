@@ -164,6 +164,7 @@ def _run_training(
         max_episode_steps=args.max_episode_steps,
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
+        noop_reset_max=args.noop_reset_max,
         action_set=args.action_set,
         reward_mode=REWARD_MODE_SCORE_FIRST,
     )
@@ -462,6 +463,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--transitions must be divisible by --lanes")
     if (
         args.stall_steps < 0
+        or args.noop_reset_max < 0
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
         or args.improvement_protected_prefix_runs < 0

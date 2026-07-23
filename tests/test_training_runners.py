@@ -219,6 +219,67 @@ def test_beam_uses_go_explore_score_first_shaped_return(
     )
 
 
+@pytest.mark.parametrize(("module", "extra_args"), TRAINERS)
+def test_trainers_forward_seeded_reset_noops(
+    module, extra_args: list[str], tmp_path: Path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def task_factory(**kwargs):
+        captured.update(kwargs)
+        return _FakeSuccessTask(**kwargs)
+
+    output = tmp_path / module.__name__
+    output.mkdir()
+    monkeypatch.setattr(module, "MarioJerkTask", task_factory)
+    args = _parse_args(
+        [
+            "Level1-1",
+            "--output",
+            str(output),
+            "--overwrite",
+            "--transitions",
+            "1",
+            "--lanes",
+            "1",
+            "--log-every",
+            "10",
+            "--noop-reset-max",
+            "120",
+            *extra_args,
+        ]
+    )
+
+    module._run_training(args, _NullReporter(), threading.Event())
+
+    assert captured["noop_reset_max"] == 120
+    if module is train_go_explore:
+        policy = JerkPolicy.load(output / "Level1-1.zip")
+        assert policy.metadata["noop_reset_max"] == 120
+        assert policy.metadata["robustification"] is True
+
+
+@pytest.mark.parametrize(("module", "extra_args"), TRAINERS)
+def test_trainers_reject_negative_reset_noops(
+    module, extra_args: list[str]
+) -> None:
+    args = _parse_args(
+        [
+            "Level1-1",
+            "--transitions",
+            "1",
+            "--lanes",
+            "1",
+            "--noop-reset-max",
+            "-1",
+            *extra_args,
+        ]
+    )
+
+    with pytest.raises(SystemExit, match="non-negative"):
+        module._validate_args(args)
+
+
 def test_continued_beam_publishes_later_better_completion_and_archives_all(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -318,20 +379,19 @@ def test_both_trainers_finish_success_and_budget_paths(
         policy = JerkPolicy.load(result.policy_path)
         run_config = train_go_explore._run_config(args)
         assert policy.metadata["cell_representation"] == (
-            "level-sublevel-area-xy16-gray8x8-q3-bytes"
+            "level-sublevel-area-pointer-x8-y16-route-ground-power"
         )
-        assert policy.metadata["cell_encoding"] == "raw-bytes"
-        assert policy.metadata["cell_key_bytes"] == 64
-        assert policy.metadata["cell_x_bucket_pixels"] == 16
+        assert policy.metadata["cell_encoding"] == "packed-bytes"
+        assert policy.metadata["cell_key_bytes"] == 11
+        assert policy.metadata["cell_x_bucket_pixels"] == 8
         assert policy.metadata["cell_y_bucket_pixels"] == 16
+        assert policy.metadata["cell_route_counter_max"] == 7
         assert policy.metadata["success_guided_restore_probability"] == 0.5
-        assert run_config["go_explore_cell_frame_shape"] == [8, 8]
-        assert run_config["go_explore_cell_hud_mask"] == [32, 0, 0, 0]
-        assert run_config["go_explore_cell_quantization_bits"] == 3
-        assert run_config["go_explore_cell_encoding"] == "raw-bytes"
-        assert run_config["go_explore_cell_key_bytes"] == 64
-        assert run_config["go_explore_cell_x_bucket_pixels"] == 16
+        assert run_config["go_explore_cell_encoding"] == "packed-bytes"
+        assert run_config["go_explore_cell_key_bytes"] == 11
+        assert run_config["go_explore_cell_x_bucket_pixels"] == 8
         assert run_config["go_explore_cell_y_bucket_pixels"] == 16
+        assert run_config["go_explore_cell_route_counter_max"] == 7
         assert (
             run_config["go_explore_success_guided_restore_probability"] == 0.5
         )

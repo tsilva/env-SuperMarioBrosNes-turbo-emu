@@ -44,6 +44,10 @@ EXPECTED_EXTRA_INFO_KEYS = (
     "enemy_x_velocity",
     "enemy_y_velocity",
     "enemy_facing",
+    "area_pointer",
+    "loop_command_active",
+    "loop_correct_count",
+    "loop_pass_count",
 )
 
 
@@ -141,10 +145,16 @@ def test_reset_infos_match_processed_ram_and_public_dtypes() -> None:
         np.testing.assert_array_equal(infos["is_large"], ram[:, 0x0754] == 0)
         np.testing.assert_array_equal(infos["is_crouching"], ram[:, 0x0714] != 0)
         np.testing.assert_array_equal(infos["is_swimming"], ram[:, 0x0704] != 0)
+        np.testing.assert_array_equal(infos["area_pointer"], ram[:, 0x0750])
+        np.testing.assert_array_equal(infos["loop_command_active"], ram[:, 0x0745] != 0)
+        np.testing.assert_array_equal(infos["loop_correct_count"], ram[:, 0x06D9])
+        np.testing.assert_array_equal(infos["loop_pass_count"], ram[:, 0x06DA])
 
         assert infos["area_type"].dtype == np.int8
         assert infos["y_pos"].dtype == np.int32
         assert infos["is_large"].dtype == np.bool_
+        assert infos["area_pointer"].dtype == np.int16
+        assert infos["loop_command_active"].dtype == np.bool_
         assert infos["enemy_active"].dtype == np.bool_
         assert infos["enemy_x_pos"].dtype == np.int32
         assert infos["enemy_x_pos"].shape == (2, 6)

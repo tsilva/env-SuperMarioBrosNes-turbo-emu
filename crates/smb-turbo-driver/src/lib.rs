@@ -57,7 +57,7 @@ const fn extra_descriptor(
     }
 }
 
-pub const EXTRA_INFO_DESCRIPTORS: [ExtraInfoDescriptor; 23] = [
+pub const EXTRA_INFO_DESCRIPTORS: [ExtraInfoDescriptor; 27] = [
     extra_descriptor(0, "area_id", 1, ExtraInfoDtype::Int16, None),
     extra_descriptor(1, "area_type", 1, ExtraInfoDtype::Int8, Some("AreaType")),
     extra_descriptor(2, "y_pos", 1, ExtraInfoDtype::Int32, None),
@@ -141,6 +141,10 @@ pub const EXTRA_INFO_DESCRIPTORS: [ExtraInfoDescriptor; 23] = [
         ExtraInfoDtype::Int8,
         Some("Direction"),
     ),
+    extra_descriptor(23, "area_pointer", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(24, "loop_command_active", 1, ExtraInfoDtype::Bool, None),
+    extra_descriptor(25, "loop_correct_count", 1, ExtraInfoDtype::Int16, None),
+    extra_descriptor(26, "loop_pass_count", 1, ExtraInfoDtype::Int16, None),
 ];
 
 pub fn extra_info_descriptor(id: u8) -> Option<&'static ExtraInfoDescriptor> {
@@ -270,6 +274,10 @@ fn decode_extra_field(id: u8, ram: &[u8; 2048], output: &mut [i64]) {
                 };
             }
         }
+        23 => output[0] = i64::from(ram[0x0750]),
+        24 => output[0] = i64::from(ram[0x0745] != 0),
+        25 => output[0] = i64::from(ram[0x06d9]),
+        26 => output[0] = i64::from(ram[0x06da]),
         _ => unreachable!("validated extra info id"),
     }
 }
@@ -1819,6 +1827,20 @@ mod tests {
         assert_eq!(&output[24..30], &[-2, 0, 0, 0, 0, 0]);
         assert_eq!(&output[30..36], &[3, 0, 0, 0, 0, 0]);
         assert_eq!(&output[36..42], &[1, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn extra_info_decoder_reports_route_identity() {
+        let mut ram = [0u8; 2048];
+        ram[0x0750] = 0x42;
+        ram[0x0745] = 0x80;
+        ram[0x06d9] = 3;
+        ram[0x06da] = 2;
+        let ids = [23, 24, 25, 26];
+        let mut output = [0; 4];
+
+        assert!(decode_extra_info(&ram, &ids, &mut output));
+        assert_eq!(output, [0x42, 1, 3, 2]);
     }
 
     fn make_test_cart_with_prg(prg_rom: Vec<u8>) -> Cartridge {

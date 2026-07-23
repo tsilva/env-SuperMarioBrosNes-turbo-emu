@@ -185,6 +185,7 @@ variables are returned only when explicitly named in `info_filter["keys"]`.
 | `xscrollHi` | Legacy/default | `(num_envs,)` | `np.int_` | High/page component of horizontal scroll. |
 | `xscrollLo` | Legacy/default | `(num_envs,)` | `np.int_` | Low component of horizontal scroll. |
 | `area_id` | Extra/opt-in | `(num_envs,)` | `np.int16` | Stable internal subarea identifier. |
+| `area_pointer` | Extra/opt-in | `(num_envs,)` | `np.int16` | Current SMB area-data pointer, used to distinguish route destinations that reuse coordinates. |
 | `area_type` | Extra/opt-in | `(num_envs,)` | `np.int8` | `AreaType`: `UNKNOWN=-1`, `WATER=0`, `GROUND=1`, `UNDERGROUND=2`, `CASTLE=3`. |
 | `y_pos` | Extra/opt-in | `(num_envs,)` | `np.int32` | Combined world-space vertical position. |
 | `y_screen_pos` | Extra/opt-in | `(num_envs,)` | `np.int16` | Screen-relative vertical position. |
@@ -207,6 +208,9 @@ variables are returned only when explicitly named in `info_filter["keys"]`.
 | `enemy_x_velocity` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Signed horizontal velocities; inactive slots are `0`. |
 | `enemy_y_velocity` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Signed vertical velocities; inactive slots are `0`. |
 | `enemy_facing` | Extra/opt-in | `(num_envs, 6)` | `np.int8` | Normalized `Direction`; inactive slots are `0` (`NONE`). |
+| `loop_command_active` | Extra/opt-in | `(num_envs,)` | `np.bool_` | Whether SMB's castle loop command is active. |
+| `loop_correct_count` | Extra/opt-in | `(num_envs,)` | `np.int16` | Number of accepted steps in the active castle-loop route. |
+| `loop_pass_count` | Extra/opt-in | `(num_envs,)` | `np.int16` | Number of completed castle-loop passes. |
 
 The environment may also add lifecycle metadata independently of the selected
 game-state variables:
@@ -307,6 +311,18 @@ exploration and half sample underused cells across the best successful
 trajectory. Success return is propagated through parent-linked archived cells,
 so score improvement can mutate the whole proven route instead of only states
 near the flag.
+
+Reset-time randomization is opt-in for every trainer:
+
+```bash
+smb-turbo train Level1-1 --noop-reset-max 120
+```
+
+The value is an inclusive maximum number of seeded, lane-local raw emulator
+frames advanced with no controller input after each ordinary state reset.
+`0` is the default and disables the feature. The value is not multiplied by
+`frame_skip`; Go-Explore archived snapshot restores remain exact and do not
+receive additional NOOP frames.
 
 Omit the training state to process all 32 canonical levels in game order:
 

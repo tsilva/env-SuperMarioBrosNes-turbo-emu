@@ -23,13 +23,12 @@ from .training_ui import (
     TrainingSnapshot,
 )
 from .training import (
-    GO_EXPLORE_CELL_FRAME_SHAPE,
-    GO_EXPLORE_CELL_HUD_MASK,
+    GO_EXPLORE_CELL_ENCODING,
     GO_EXPLORE_CELL_KEY_BYTES,
-    GO_EXPLORE_CELL_QUANTIZATION_BITS,
     GO_EXPLORE_CELL_REPRESENTATION,
     GO_EXPLORE_CELL_X_BUCKET_PIXELS,
     GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+    GO_EXPLORE_ROUTE_COUNTER_MAX,
     MarioJerkTask,
     REWARD_MODE_SCORE_FIRST,
     _force_policy_overwrite,
@@ -49,17 +48,20 @@ def _overwrite_existing(args: argparse.Namespace) -> bool:
     return _force_policy_overwrite(args)
 
 
-def _policy(search: GoExploreSearch) -> JerkPolicy:
+def _policy(
+    search: GoExploreSearch, *, noop_reset_max: int = 0
+) -> JerkPolicy:
     policy = search.policy()
     policy.metadata.update(
         {
+            "noop_reset_max": int(noop_reset_max),
+            "robustification": bool(noop_reset_max),
             "cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
-            "cell_frame_shape": list(GO_EXPLORE_CELL_FRAME_SHAPE),
-            "cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
-            "cell_encoding": "raw-bytes",
+            "cell_encoding": GO_EXPLORE_CELL_ENCODING,
             "cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
             "cell_x_bucket_pixels": GO_EXPLORE_CELL_X_BUCKET_PIXELS,
             "cell_y_bucket_pixels": GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+            "cell_route_counter_max": GO_EXPLORE_ROUTE_COUNTER_MAX,
             "success_guided_restore_probability": (
                 SUCCESS_GUIDED_RESTORE_PROBABILITY
             ),
@@ -72,13 +74,11 @@ def _run_config(args: argparse.Namespace) -> dict[str, Any]:
     return {
         **vars(args),
         "go_explore_cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
-        "go_explore_cell_frame_shape": list(GO_EXPLORE_CELL_FRAME_SHAPE),
-        "go_explore_cell_hud_mask": list(GO_EXPLORE_CELL_HUD_MASK),
-        "go_explore_cell_quantization_bits": GO_EXPLORE_CELL_QUANTIZATION_BITS,
-        "go_explore_cell_encoding": "raw-bytes",
+        "go_explore_cell_encoding": GO_EXPLORE_CELL_ENCODING,
         "go_explore_cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
         "go_explore_cell_x_bucket_pixels": GO_EXPLORE_CELL_X_BUCKET_PIXELS,
         "go_explore_cell_y_bucket_pixels": GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
+        "go_explore_cell_route_counter_max": GO_EXPLORE_ROUTE_COUNTER_MAX,
         "go_explore_success_guided_restore_probability": (
             SUCCESS_GUIDED_RESTORE_PROBABILITY
         ),
@@ -167,9 +167,10 @@ def _run_training(
         max_episode_steps=args.max_episode_steps,
         stall_steps=args.stall_steps,
         step_cost=args.step_cost,
+        noop_reset_max=args.noop_reset_max,
         action_set=args.action_set,
         reward_mode=REWARD_MODE_SCORE_FIRST,
-        visual_cell_observations=True,
+        go_explore_cells=True,
     )
     started_at = time.perf_counter()
     next_log = args.log_every
@@ -222,7 +223,11 @@ def _run_training(
                 with successes_path.open("a", encoding="utf-8") as handle:
                     handle.write(json.dumps(success_row, sort_keys=True) + "\n")
                 if completion.improved:
-                    _save_policy(_policy(search), policy_path, force=True)
+                    _save_policy(
+                        _policy(search, noop_reset_max=args.noop_reset_max),
+                        policy_path,
+                        force=True,
+                    )
 
             if completion_events:
                 if not accepted:
@@ -231,7 +236,7 @@ def _run_training(
                     accepted_lane = int(np.flatnonzero(successes)[0])
                     accepted_path = run_dir / "checkpoints" / f"{args.state}-{step}.zip"
                     _save_policy(
-                        _policy(search),
+                        _policy(search, noop_reset_max=args.noop_reset_max),
                         accepted_path,
                         force=_overwrite_existing(args),
                     )
@@ -353,7 +358,7 @@ def _run_training(
             while next_checkpoint is not None and step >= next_checkpoint:
                 assert snapshot is not None
                 checkpoint_path = _save_policy(
-                    _policy(search),
+                    _policy(search, noop_reset_max=args.noop_reset_max),
                     run_dir / "checkpoints" / f"{args.state}-{step}.zip",
                     force=_overwrite_existing(args),
                 )
@@ -369,7 +374,7 @@ def _run_training(
                 next_checkpoint += args.checkpoint_every
 
         candidate = search.best_candidate()
-        final_policy = _policy(search)
+        final_policy = _policy(search, noop_reset_max=args.noop_reset_max)
         user_stopped = stop_event.is_set()
         final_path = None
         if not user_stopped or candidate is not None:
@@ -472,6 +477,7 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise SystemExit("--transitions must be divisible by --lanes")
     if (
         args.stall_steps < 0
+        or args.noop_reset_max < 0
         or args.checkpoint_every < 0
         or args.protected_prefix_runs < 0
         or (args.step_cost is not None and args.step_cost < 0)
