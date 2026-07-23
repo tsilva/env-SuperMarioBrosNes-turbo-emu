@@ -378,6 +378,195 @@ def test_live_snapshots_support_mixed_resets_cross_lane_fanout_and_exact_replay(
         env.close()
 
 
+@pytest.mark.parametrize("num_threads", [1, 4])
+def test_live_snapshot_restore_is_bit_exact_and_lane_local(num_threads: int) -> None:
+    info_keys = [
+        "x_pos",
+        "score",
+        "time",
+        "y_pos",
+        "player_motion",
+        "enemy_active",
+        "enemy_x_pos",
+    ]
+    config = {
+        "state_catalog": ("Level1-1", "Level1-2"),
+        "num_envs": 4,
+        "num_threads": num_threads,
+        "frame_skip": 3,
+        "frame_stack": 4,
+        "obs_grayscale": False,
+        "obs_layout": "hwc",
+        "maxpool_last_two": True,
+        "noop_reset_max": 17,
+        "sticky_action_prob": 0.5,
+        "reward_clip": (-0.5, 0.5),
+        "render_mode": "rgb_array",
+        "info_filter": {"keys": info_keys},
+    }
+    env = make_env(**config)
+    control = make_env(**config)
+
+    def actions_for(step: int) -> np.ndarray:
+        actions = noop(4)
+        right = NES_BUTTONS.index("RIGHT")
+        left = NES_BUTTONS.index("LEFT")
+        button_a = NES_BUTTONS.index("A")
+        button_b = NES_BUTTONS.index("B")
+        actions[0, right if step % 7 else left] = 1
+        actions[0, button_a] = step % 3 == 0
+        actions[0, button_b] = step % 4 != 0
+        actions[1, right] = step % 5 != 0
+        actions[1, button_a] = step % 2 == 0
+        actions[2, left] = step % 3 == 1
+        actions[2, button_b] = step % 2 == 1
+        actions[3, right] = 1
+        actions[3, button_a] = step % 6 == 0
+        return actions
+
+    def freeze_lane(
+        target: SuperMarioBrosNesTurboVecEnv,
+        result: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, object]],
+        lane: int,
+    ) -> dict[str, object]:
+        obs, rewards, terminated, truncated, infos = result
+        frame = target.get_images()[lane]
+        assert frame is not None
+        return {
+            "obs": obs[lane].copy(),
+            "reward": np.array(rewards[lane], copy=True),
+            "terminated": np.array(terminated[lane], copy=True),
+            "truncated": np.array(truncated[lane], copy=True),
+            "infos": {
+                key: np.array(value[lane], copy=True)
+                for key, value in infos.items()
+            },
+            "ram": target.ram()[lane].copy(),
+            "rgb": frame,
+            "state_index": np.array(
+                target.active_state_indices()[lane], copy=True
+            ),
+        }
+
+    def assert_frozen_equal(actual: dict[str, object], expected: dict[str, object]) -> None:
+        assert actual.keys() == expected.keys()
+        for key in actual.keys() - {"infos"}:
+            np.testing.assert_array_equal(actual[key], expected[key], err_msg=key)
+        actual_infos = actual["infos"]
+        expected_infos = expected["infos"]
+        assert isinstance(actual_infos, dict)
+        assert isinstance(expected_infos, dict)
+        assert actual_infos.keys() == expected_infos.keys()
+        for key in actual_infos:
+            np.testing.assert_array_equal(
+                actual_infos[key], expected_infos[key], err_msg=f"infos[{key!r}]"
+            )
+
+    try:
+        reset_options = {
+            "state_indices": np.asarray([0, 1, 0, 1], dtype=np.int32)
+        }
+        seeds = [101, 202, 303, 404]
+        env.reset(seed=seeds, options=reset_options)
+        control.reset(seed=seeds, options=reset_options)
+        for step in range(9):
+            env.step(actions_for(step))
+            control.step(actions_for(step))
+
+        # Activating the lazy RGB cache before capture proves that it is refreshed
+        # from the restored machine rather than leaking a later rendered frame.
+        captured_rgb = env.get_images()[0]
+        assert captured_rgb is not None
+        control.get_images()
+        captured_obs = env._public_obs_view()[0].copy()
+        captured_ram = env.ram()[0].copy()
+        captured_state_index = int(env.active_state_indices()[0])
+        handles = env.capture_snapshots(
+            np.asarray([True, False, False, False], dtype=np.bool_)
+        )
+        assert handles[0] is not None
+
+        expected_replay: list[dict[str, object]] = []
+        for step in range(9, 33):
+            actions = actions_for(step)
+            expected_replay.append(freeze_lane(env, env.step(actions), 0))
+            control.step(actions)
+
+        unselected_obs = env._public_obs_view()[1].copy()
+        unselected_ram = env.ram()[1].copy()
+        unselected_rgb = env.get_images()[1]
+        assert unselected_rgb is not None
+        unselected_state_index = int(env.active_state_indices()[1])
+
+        restore_mask = np.asarray([True, False, False, False], dtype=np.bool_)
+        restored_obs, restored_infos = env.reset(
+            options={
+                "reset_mask": restore_mask,
+                "state_indices": np.asarray([-1, -1, -1, -1], dtype=np.int32),
+                "snapshots": handles,
+            }
+        )
+        np.testing.assert_array_equal(restored_obs[0], captured_obs)
+        np.testing.assert_array_equal(env.ram()[0], captured_ram)
+        np.testing.assert_array_equal(env.get_images()[0], captured_rgb)
+        assert int(env.active_state_indices()[0]) == captured_state_index
+        assert restored_infos["start_source"][0] == "snapshot"
+
+        # The masked restore must not alter any observable or hidden stochastic
+        # state in an unselected lane. The untouched control lane makes later RNG
+        # corruption observable through sticky-action decisions.
+        np.testing.assert_array_equal(restored_obs[1], unselected_obs)
+        np.testing.assert_array_equal(env.ram()[1], unselected_ram)
+        np.testing.assert_array_equal(env.get_images()[1], unselected_rgb)
+        assert int(env.active_state_indices()[1]) == unselected_state_index
+
+        for offset, expected in enumerate(expected_replay, start=9):
+            actions = actions_for(offset)
+            actual_result = env.step(actions)
+            control_result = control.step(actions)
+            assert_frozen_equal(freeze_lane(env, actual_result, 0), expected)
+            assert_frozen_equal(
+                freeze_lane(env, actual_result, 1),
+                freeze_lane(control, control_result, 1),
+            )
+
+        # Snapshot reuse must also rewind the lane RNG used by a later random
+        # reset-NOOP count, not only the sticky-action RNG used during replay.
+        env.reset(
+            options={
+                "reset_mask": restore_mask,
+                "state_indices": np.asarray([-1, -1, -1, -1], dtype=np.int32),
+                "snapshots": handles,
+            }
+        )
+        first_random_reset, _ = env.reset(
+            options={
+                "reset_mask": restore_mask,
+                "state_indices": np.asarray([0, -1, -1, -1], dtype=np.int32),
+            }
+        )
+        first_random_reset = first_random_reset[0].copy()
+        first_random_reset_ram = env.ram()[0].copy()
+        env.reset(
+            options={
+                "reset_mask": restore_mask,
+                "state_indices": np.asarray([-1, -1, -1, -1], dtype=np.int32),
+                "snapshots": handles,
+            }
+        )
+        second_random_reset, _ = env.reset(
+            options={
+                "reset_mask": restore_mask,
+                "state_indices": np.asarray([0, -1, -1, -1], dtype=np.int32),
+            }
+        )
+        np.testing.assert_array_equal(second_random_reset[0], first_random_reset)
+        np.testing.assert_array_equal(env.ram()[0], first_random_reset_ram)
+    finally:
+        env.close()
+        control.close()
+
+
 def test_live_snapshot_lifecycle_owner_and_async_validation_are_atomic() -> None:
     env = make_env(num_envs=2, frame_skip=1)
     mask = np.asarray([True, False], dtype=np.bool_)
