@@ -143,25 +143,35 @@ def test_go_explore_reports_archive_memory_including_native_snapshots() -> None:
     assert search.archive_memory_bytes >= initial_bytes + 8_192
 
 
-def test_go_explore_updates_archive_memory_without_rescanning_archive(
+def test_go_explore_updates_archive_memory_from_cached_cell_estimates(
     monkeypatch,
 ) -> None:
     search = _search(explore_steps=1)
-    search.initialize(("root",), ("root-snapshot",))
-    original_deep_sizeof = go_explore_module._deep_sizeof
-    scanned_archive = False
+    search.initialize(
+        ("root",),
+        (SimpleNamespace(native=SimpleNamespace(nbytes=4_096)),),
+    )
+    original_estimator = go_explore_module._archive_cell_memory_bytes
+    estimated_keys: list[str] = []
 
-    def tracked_deep_sizeof(value, seen=None):
-        nonlocal scanned_archive
-        scanned_archive |= value is search.archive
-        return original_deep_sizeof(value, seen)
+    def tracked_estimator(cell):
+        estimated_keys.append(cell.key)
+        return original_estimator(cell)
 
-    monkeypatch.setattr(go_explore_module, "_deep_sizeof", tracked_deep_sizeof)
+    monkeypatch.setattr(
+        go_explore_module,
+        "_archive_cell_memory_bytes",
+        tracked_estimator,
+    )
+    initial_bytes = search.archive_memory_bytes
     search.next_actions()
-    search.observe([1.0], [False], ["new"], progresses=[16.0])
-    search.commit_archive(("new-snapshot",))
+    search.observe([1.0], [False], ["root"], progresses=[16.0])
+    search.commit_archive(
+        (SimpleNamespace(native=SimpleNamespace(nbytes=8_192)),)
+    )
 
-    assert not scanned_archive
+    assert estimated_keys == ["root"]
+    assert search.archive_memory_bytes >= initial_bytes + 4_096
 
 
 def test_go_explore_tracks_recent_new_cells_per_visit() -> None:

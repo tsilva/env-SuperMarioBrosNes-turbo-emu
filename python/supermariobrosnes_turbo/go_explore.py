@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Hashable, Mapping, Sequence
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field
 import math
 import sys
 from typing import Any
@@ -17,38 +17,30 @@ from .jerk import ActionRun, JerkPolicy, canonicalize_runs, run_step_count
 
 RECENT_CELL_VISIT_WINDOW = 10_000
 SUCCESS_GUIDED_RESTORE_PROBABILITY = 0.5
+_ACTION_RUN_ESTIMATED_BYTES = (
+    sys.getsizeof(ActionRun(0, 1)) + sys.getsizeof(1)
+)
 
 
-def _deep_sizeof(value: Any, seen: set[int] | None = None) -> int:
-    """Estimate retained Python and native bytes without double-counting objects."""
-    visited = set() if seen is None else seen
-    identity = id(value)
-    if identity in visited:
-        return 0
-    visited.add(identity)
-
+def _snapshot_memory_bytes(value: Any) -> int:
+    """Estimate one snapshot without traversing its fixed-size state graph."""
     size = sys.getsizeof(value)
-    if isinstance(value, np.ndarray):
-        return size if value.flags.owndata else size + int(value.nbytes)
-
-    native_nbytes = getattr(value, "nbytes", None)
-    if isinstance(native_nbytes, (int, np.integer)):
-        return size + int(native_nbytes)
-
-    if is_dataclass(value) and not isinstance(value, type):
-        return size + sum(
-            _deep_sizeof(getattr(value, item.name), visited) for item in fields(value)
-        )
-    if isinstance(value, Mapping):
-        return size + sum(
-            _deep_sizeof(key, visited) + _deep_sizeof(item, visited)
-            for key, item in value.items()
-        )
-    if isinstance(value, (list, tuple, set, frozenset)):
-        return size + sum(_deep_sizeof(item, visited) for item in value)
     attributes = getattr(value, "__dict__", None)
     if isinstance(attributes, Mapping):
-        return size + _deep_sizeof(attributes, visited)
+        size += sys.getsizeof(attributes)
+
+    native = getattr(value, "native", None)
+    native_nbytes = getattr(native, "nbytes", None)
+    if isinstance(native_nbytes, (int, np.integer)):
+        size += sys.getsizeof(native) + int(native_nbytes)
+    else:
+        direct_nbytes = getattr(value, "nbytes", None)
+        if isinstance(direct_nbytes, (int, np.integer)):
+            size += int(direct_nbytes)
+
+    transitions = getattr(value, "seen_scroll_transitions", None)
+    if isinstance(transitions, (set, frozenset)):
+        size += sys.getsizeof(transitions)
     return size
 
 
@@ -119,10 +111,33 @@ class GoExploreCell:
     visits: int = 0
     selections: int = 0
     updates: int = 0
+    _memory_bytes: int = field(default=0, repr=False, compare=False)
 
     @property
     def step_count(self) -> int:
         return self.program_steps
+
+
+def _archive_cell_memory_bytes(cell: GoExploreCell) -> int:
+    """Estimate retained cell bytes in time independent of trajectory length."""
+    attributes = getattr(cell, "__dict__", None)
+    return (
+        sys.getsizeof(cell)
+        + (sys.getsizeof(attributes) if isinstance(attributes, Mapping) else 0)
+        + sys.getsizeof(cell.key)
+        + _snapshot_memory_bytes(cell.snapshot)
+        + sys.getsizeof(cell.runs)
+        + len(cell.runs) * _ACTION_RUN_ESTIMATED_BYTES
+        + sys.getsizeof(cell.episode_return)
+        + sys.getsizeof(cell.progress)
+        + sys.getsizeof(cell.program_steps)
+        + sys.getsizeof(cell.parent_key)
+        + sys.getsizeof(cell.best_success_return)
+        + sys.getsizeof(cell.success_selections)
+        + sys.getsizeof(cell.visits)
+        + sys.getsizeof(cell.selections)
+        + sys.getsizeof(cell.updates)
+    )
 
 
 @dataclass(frozen=True)
@@ -206,7 +221,7 @@ class GoExploreSearch:
         self.improvement_count = 0
         self.first_success_return: float | None = None
         self._archive: dict[Hashable, GoExploreCell] = {}
-        self._archive_memory_bytes = _deep_sizeof(self._archive)
+        self._archive_memory_bytes = sys.getsizeof(self._archive)
         self._archive_selection_count = 0
         self._archive_visit_count = 0
         self._archive_update_count = 0
@@ -304,7 +319,8 @@ class GoExploreSearch:
                 raise ValueError("Go-Explore initialization snapshots cannot be empty")
             cell = self._archive.get(key)
             if cell is None:
-                self._archive[key] = GoExploreCell(
+                dict_size_before = sys.getsizeof(self._archive)
+                cell = GoExploreCell(
                     key=key,
                     snapshot=snapshot,
                     runs=(),
@@ -312,11 +328,17 @@ class GoExploreSearch:
                     progress=0.0,
                     visits=1,
                 )
+                cell._memory_bytes = _archive_cell_memory_bytes(cell)
+                self._archive[key] = cell
+                self._archive_memory_bytes += (
+                    sys.getsizeof(self._archive)
+                    - dict_size_before
+                    + cell._memory_bytes
+                )
             else:
                 cell.visits += 1
             self._archive_visit_count += 1
             self._lanes[lane] = _GoExploreLaneState(path_cell_keys=[key])
-        self._archive_memory_bytes = _deep_sizeof(self._archive)
 
     @staticmethod
     def _append_action(state: _GoExploreLaneState, action: int) -> None:
@@ -472,7 +494,13 @@ class GoExploreSearch:
                 cell.best_success_return is None
                 or episode_return > cell.best_success_return
             ):
+                previous_return_bytes = sys.getsizeof(cell.best_success_return)
                 cell.best_success_return = episode_return
+                return_bytes_delta = (
+                    sys.getsizeof(cell.best_success_return) - previous_return_bytes
+                )
+                cell._memory_bytes += return_bytes_delta
+                self._archive_memory_bytes += return_bytes_delta
         if promote:
             self._elite_success_cell_keys = lineage
             for key in lineage:
@@ -662,15 +690,16 @@ class GoExploreSearch:
                     parent_key=pending.parent_key,
                     visits=pending.visits,
                 )
+                cell._memory_bytes = _archive_cell_memory_bytes(cell)
                 self._archive[pending.key] = cell
                 self._archive_memory_bytes += (
                     sys.getsizeof(self._archive)
                     - dict_size_before
-                    + _deep_sizeof(cell)
+                    + cell._memory_bytes
                 )
                 self._archive_visit_count += pending.visits
                 continue
-            previous_size = _deep_sizeof(existing)
+            previous_size = existing._memory_bytes
             existing.snapshot = snapshot
             existing.runs = pending.runs
             existing.episode_return = pending.episode_return
@@ -679,7 +708,8 @@ class GoExploreSearch:
             existing.parent_key = pending.parent_key
             existing.updates += 1
             self._archive_update_count += 1
-            self._archive_memory_bytes += _deep_sizeof(existing) - previous_size
+            existing._memory_bytes = _archive_cell_memory_bytes(existing)
+            self._archive_memory_bytes += existing._memory_bytes - previous_size
         self._pending = {}
 
     def _select_cell(self, lane: int) -> GoExploreCell:
