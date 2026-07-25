@@ -29,6 +29,8 @@ from supermariobrosnes_turbo.training import (
     GO_EXPLORE_CELL_X_BUCKET_PIXELS,
     GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
     MarioJerkTask,
+    REWARD_FUNCTION_SCORE_FIRST,
+    REWARD_FUNCTION_SPEEDRUN,
     REWARD_MODE_SCORE_FIRST,
     go_explore_route_phase,
     mark_new_scroll_transitions,
@@ -424,6 +426,21 @@ def test_score_first_reward_makes_time_only_a_score_tiebreaker() -> None:
     assert 1_000.0 - 1_000 * step_cost > 1_000.0 - 1_200 * step_cost
 
 
+def test_speedrun_reward_ignores_progress_and_score_and_penalizes_time_and_death() -> (
+    None
+):
+    rewards = shape_step_rewards(
+        np.asarray([500, 0, 999]),
+        np.asarray([0, 10_000, 50_000]),
+        np.asarray([False, False, True]),
+        step_cost=1.0,
+        reward_mode=REWARD_FUNCTION_SPEEDRUN,
+    )
+
+    np.testing.assert_allclose(rewards, [-1.0, -1.0, -26.0])
+    assert -100.0 > -120.0
+
+
 def test_training_flags_continue_and_protect_policies_by_default() -> None:
     parser = train_module.build_parser()
 
@@ -448,7 +465,7 @@ def test_training_flags_continue_and_protect_policies_by_default() -> None:
     assert stopped.overwrite is True
 
 
-def test_algorithm_defaults_make_beam_and_go_explore_score_first() -> None:
+def test_algorithm_defaults_make_beam_score_first_and_go_explore_speedrun() -> None:
     parser = train_module.build_parser()
     jerk = parser.parse_args(["Level1-1", "--algorithm", "jerk"])
     beam = parser.parse_args(["Level1-1", "--algorithm", "beam"])
@@ -462,26 +479,37 @@ def test_algorithm_defaults_make_beam_and_go_explore_score_first() -> None:
     assert beam.step_cost == pytest.approx(
         score_first_step_cost(beam.max_episode_steps)
     )
-    assert go_explore.step_cost == pytest.approx(
-        score_first_step_cost(go_explore.max_episode_steps)
+    assert go_explore.step_cost == 1.0
+    assert go_explore.reward_function == REWARD_FUNCTION_SPEEDRUN
+
+
+def test_speedrun_reward_id_selects_unit_time_cost() -> None:
+    parser = train_module.build_parser()
+    args = parser.parse_args(
+        ["Level1-1", "--reward-function", REWARD_FUNCTION_SPEEDRUN]
     )
+
+    train_module._apply_algorithm_defaults(parser, args)
+
+    assert args.reward_function == REWARD_FUNCTION_SPEEDRUN
+    assert args.step_cost == 1.0
 
 
 def test_only_default_canonical_or_explicit_runs_force_policy_overwrite() -> None:
     parser = train_module.build_parser()
     default = parser.parse_args(["Level1-1"])
-    custom_default = parser.parse_args(
-        ["Level1-1", "--output", "runs/custom"]
-    )
+    custom_default = parser.parse_args(["Level1-1", "--output", "runs/custom"])
     beam = parser.parse_args(["Level1-1", "--algorithm", "beam"])
-    forced_beam = parser.parse_args(
-        ["Level1-1", "--algorithm", "beam", "--overwrite"]
+    forced_beam = parser.parse_args(["Level1-1", "--algorithm", "beam", "--overwrite"])
+    score_first = parser.parse_args(
+        ["Level1-1", "--reward-function", REWARD_FUNCTION_SCORE_FIRST]
     )
 
     assert train_module._force_policy_overwrite(default)
     assert not train_module._force_policy_overwrite(custom_default)
     assert not train_module._force_policy_overwrite(beam)
     assert train_module._force_policy_overwrite(forced_beam)
+    assert not train_module._force_policy_overwrite(score_first)
 
 
 def test_active_best_candidate_carries_observed_progress() -> None:
@@ -557,9 +585,7 @@ def test_training_log_helpers_are_readable_and_emit_exact_play_commands() -> Non
     )
 
 
-def test_training_refuses_existing_policy_without_force(
-    tmp_path, monkeypatch
-) -> None:
+def test_training_refuses_existing_policy_without_force(tmp_path, monkeypatch) -> None:
     output = tmp_path / "run"
     output.mkdir()
     policy_path = output / "Level1-1.zip"
@@ -569,9 +595,7 @@ def test_training_refuses_existing_policy_without_force(
     )
 
     with pytest.raises(SystemExit, match="pass --overwrite"):
-        train_module.main(
-            ["Level1-1", "--algorithm", "jerk", "--output", str(output)]
-        )
+        train_module.main(["Level1-1", "--algorithm", "jerk", "--output", str(output)])
 
     assert policy_path.read_bytes() == b"existing policy"
 
@@ -593,7 +617,9 @@ def test_policy_save_requires_force_to_replace_existing_file(tmp_path) -> None:
     assert JerkPolicy.load(policy_path).action_runs == _runs((1, 2))
 
 
-def test_training_continues_on_completion_unless_disabled(tmp_path, monkeypatch) -> None:
+def test_training_continues_on_completion_unless_disabled(
+    tmp_path, monkeypatch
+) -> None:
     class FakeTask:
         instances: list["FakeTask"] = []
 
@@ -792,7 +818,7 @@ def test_jerk_local_parent_cut_uses_run_boundaries() -> None:
         max_prefix_shorten_runs=16,
         deep_mutation_probability=0.0,
     )
-    program = _runs(*( (index % 2, 2) for index in range(40) ))
+    program = _runs(*((index % 2, 2) for index in range(40)))
     search._retained[program] = _candidate(program, 1.0, progress=100.0)
     search._start_lane(0)
 

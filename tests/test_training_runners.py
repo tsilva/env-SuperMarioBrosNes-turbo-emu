@@ -172,9 +172,7 @@ def test_default_go_explore_run_overwrites_existing_canonical_policy(
         ]
     )
 
-    result = train_go_explore._run_training(
-        args, _NullReporter(), threading.Event()
-    )
+    result = train_go_explore._run_training(args, _NullReporter(), threading.Event())
 
     assert result.accepted
     assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "go-explore"
@@ -208,14 +206,71 @@ def test_beam_uses_go_explore_score_first_shaped_return(
         ]
     )
 
-    result = train_beam._run_training(
-        args, _NullReporter(), threading.Event()
-    )
+    result = train_beam._run_training(args, _NullReporter(), threading.Event())
 
     assert result.accepted
     assert captured["reward_mode"] == train.REWARD_MODE_SCORE_FIRST
     assert captured["step_cost"] == pytest.approx(
         train.score_first_step_cost(args.max_episode_steps)
+    )
+
+
+def test_go_explore_forwards_and_identifies_speedrun_reward(
+    tmp_path: Path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def task_factory(**kwargs):
+        captured.update(kwargs)
+        return _FakeSuccessTask(**kwargs)
+
+    output = tmp_path / "speedrun"
+    output.mkdir()
+    monkeypatch.setattr(train_go_explore, "MarioJerkTask", task_factory)
+    args = _parse_args(
+        [
+            "Level1-1",
+            "--reward-function",
+            "speedrun",
+            "--output",
+            str(output),
+            "--transitions",
+            "1",
+            "--lanes",
+            "1",
+            "--log-every",
+            "10",
+        ]
+    )
+
+    result = train_go_explore._run_training(args, _NullReporter(), threading.Event())
+    policy = JerkPolicy.load(output / "Level1-1.zip")
+
+    assert result.accepted
+    assert captured["reward_mode"] == train.REWARD_FUNCTION_SPEEDRUN
+    assert captured["step_cost"] == 1.0
+    assert result.final_row["reward_function"] == "speedrun"
+    assert policy.metadata["reward_function"] == "speedrun"
+    assert (
+        train_go_explore._run_config(args)["go_explore_reward_function"] == "speedrun"
+    )
+
+
+def test_go_explore_alternate_reward_uses_identifiable_default_directory() -> None:
+    score_first = SimpleNamespace(
+        state="Level1-1",
+        output=None,
+        reward_function=train.REWARD_FUNCTION_SCORE_FIRST,
+    )
+    speedrun = SimpleNamespace(
+        state="Level1-1",
+        output=None,
+        reward_function=train.REWARD_FUNCTION_SPEEDRUN,
+    )
+
+    assert train_go_explore._run_directory(speedrun) == Path("runs/Level1-1")
+    assert train_go_explore._run_directory(score_first) == Path(
+        "runs/Level1-1-score-first"
     )
 
 
@@ -260,9 +315,7 @@ def test_trainers_forward_seeded_reset_noops(
 
 
 @pytest.mark.parametrize(("module", "extra_args"), TRAINERS)
-def test_trainers_reject_negative_reset_noops(
-    module, extra_args: list[str]
-) -> None:
+def test_trainers_reject_negative_reset_noops(module, extra_args: list[str]) -> None:
     args = _parse_args(
         [
             "Level1-1",
@@ -314,9 +367,7 @@ def test_continued_beam_publishes_later_better_completion_and_archives_all(
         ]
     )
 
-    result = train_beam._run_training(
-        args, _NullReporter(), threading.Event()
-    )
+    result = train_beam._run_training(args, _NullReporter(), threading.Event())
 
     policy = JerkPolicy.load(output / "Level1-1.zip")
     successes = [
@@ -387,14 +438,15 @@ def test_both_trainers_finish_success_and_budget_paths(
         assert policy.metadata["cell_y_bucket_pixels"] == 16
         assert policy.metadata["cell_route_counter_max"] == 7
         assert policy.metadata["success_guided_restore_probability"] == 0.5
+        assert policy.metadata["reward_function"] == "speedrun"
+        assert final_row["reward_function"] == "speedrun"
+        assert run_config["go_explore_reward_function"] == "speedrun"
         assert run_config["go_explore_cell_encoding"] == "packed-bytes"
         assert run_config["go_explore_cell_key_bytes"] == 11
         assert run_config["go_explore_cell_x_bucket_pixels"] == 8
         assert run_config["go_explore_cell_y_bucket_pixels"] == 16
         assert run_config["go_explore_cell_route_counter_max"] == 7
-        assert (
-            run_config["go_explore_success_guided_restore_probability"] == 0.5
-        )
+        assert run_config["go_explore_success_guided_restore_probability"] == 0.5
 
 
 @pytest.mark.parametrize(("module", "extra_args"), TRAINERS)

@@ -125,6 +125,18 @@ def test_campaign_executes_every_level_in_isolated_output_directories(
     assert result.final_row["campaign_failed_states"] == ["Level1-2"]
 
 
+def test_non_default_reward_campaign_uses_reward_specific_directories() -> None:
+    args = argparse.Namespace(
+        algorithm="go-explore",
+        output=None,
+        reward_function="score-first",
+    )
+
+    level_args = training_campaign._level_args(args, "Level2-3")
+
+    assert level_args.output == Path("runs/Level2-3-score-first")
+
+
 def test_campaign_stops_before_starting_the_next_level_after_safe_stop(
     tmp_path: Path,
 ) -> None:

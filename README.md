@@ -242,9 +242,19 @@ Go-Explore and the `standard` action set by default. When an explicit state is
 supplied, it consumes the transition budget as an anytime improvement search,
 keeping the best completed trajectory locked and publishing only higher-return
 completions; pass `--stop-on-completion` to stop after the first completed path.
-Go-Explore ranks raw game-score gains first and charges each step
-`1 / (max_episode_steps + 1)`, so higher score always wins while fewer steps
-break equal-score ties. Every completion is appended to `successes.jsonl`.
+Go-Explore uses the score-blind `speedrun` reward by default: it charges one
+point per step, gives no progress or score reward, and treats life loss as
+failure, so successful trajectories rank strictly by earliest completion.
+Select the score-first alternative by ID with:
+
+```bash
+smb-turbo train Level1-1 --reward-function score-first
+```
+
+The default speedrun output is `runs/Level1-1/Level1-1.zip`; the non-default
+score-first output is `runs/Level1-1-score-first/Level1-1.zip`. The reward ID is
+also recorded in the run configuration, metrics, and policy metadata. Every
+completion is appended to `successes.jsonl`.
 
 A new default Go-Explore run replaces the existing canonical run; custom outputs
 and explicit Beam or JERK runs remain protected unless `--overwrite` is passed.
@@ -288,9 +298,10 @@ smb-turbo train Level1-1 --algorithm beam --overwrite
 smb-turbo play Level1-1
 ```
 
-Beam ranks completed trajectories with the same score-first return as Go-Explore,
-retains incomplete alternatives by furthest progress, and systematically moves
-splice mutations from the tail toward the root while replaying the proven suffix.
+Beam ranks completed trajectories with the same return as Go-Explore's
+`score-first` reward, retains incomplete alternatives by furthest progress, and
+systematically moves splice mutations from the tail toward the root while
+replaying the proven suffix.
 A compatible `--initial-policy` with a smaller action table is remapped by action
 name into the selected table, so historical `basic` policies can seed the
 `standard` search without restricting it.
@@ -302,10 +313,11 @@ Go-Explore cells are keyed by level, sublevel, and the raw bytes of the native
 8x8 grayscale frame after HUD masking and 3-bit quantization; horizontal position
 is not part of the cell key. Keeping the 64-byte visual value directly avoids
 application-level hash collisions while remaining negligible beside a snapshot.
-Go-Explore ranks paths with raw game-score gains first and charges each step
-`1 / (max_episode_steps + 1)` by default, so the entire episode's time charge is
-less than one score point. Higher score therefore always wins, while fewer steps
-break ties; an explicit `--step-cost` overrides that default.
+The optional `score-first` reward ranks paths with raw game-score gains first
+and charges each step `1 / (max_episode_steps + 1)`, so the entire episode's
+time charge is less than one score point. Higher score therefore always wins,
+while fewer steps break ties; an explicit `--step-cost` overrides the selected
+reward function's default.
 After the first completion, half of archived restores continue novelty-weighted
 exploration and half sample underused cells across the best successful
 trajectory. Success return is propagated through parent-linked archived cells,

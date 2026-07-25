@@ -120,6 +120,12 @@ def _level_args(args: argparse.Namespace, state: str) -> argparse.Namespace:
     level_args.state = state
     if args.output is not None:
         level_args.output = Path(args.output) / state
+    elif args.algorithm == "go-explore":
+        from .training import REWARD_FUNCTION_SPEEDRUN
+
+        if args.reward_function != REWARD_FUNCTION_SPEEDRUN:
+            default = run_directory_for_state(state)
+            level_args.output = default.with_name(f"{state}-{args.reward_function}")
     return level_args
 
 

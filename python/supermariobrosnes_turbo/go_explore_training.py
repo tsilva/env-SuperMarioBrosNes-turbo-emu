@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+from pathlib import Path
 import threading
 import time
 from typing import Any
@@ -30,7 +31,7 @@ from .training import (
     GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
     GO_EXPLORE_ROUTE_COUNTER_MAX,
     MarioJerkTask,
-    REWARD_MODE_SCORE_FIRST,
+    REWARD_FUNCTION_SPEEDRUN,
     _force_policy_overwrite,
     _play_command,
     _protect_existing_policies,
@@ -48,23 +49,35 @@ def _overwrite_existing(args: argparse.Namespace) -> bool:
     return _force_policy_overwrite(args)
 
 
+def _run_directory(args: argparse.Namespace) -> Path:
+    """Separate non-default reward policies from the canonical run."""
+    if args.output is not None:
+        return Path(args.output)
+    default = run_directory_for_state(args.state)
+    if args.reward_function == REWARD_FUNCTION_SPEEDRUN:
+        return default
+    return default.with_name(f"{args.state}-{args.reward_function}")
+
+
 def _policy(
-    search: GoExploreSearch, *, noop_reset_max: int = 0
+    search: GoExploreSearch,
+    *,
+    reward_function: str,
+    noop_reset_max: int = 0,
 ) -> JerkPolicy:
     policy = search.policy()
     policy.metadata.update(
         {
             "noop_reset_max": int(noop_reset_max),
             "robustification": bool(noop_reset_max),
+            "reward_function": reward_function,
             "cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
             "cell_encoding": GO_EXPLORE_CELL_ENCODING,
             "cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
             "cell_x_bucket_pixels": GO_EXPLORE_CELL_X_BUCKET_PIXELS,
             "cell_y_bucket_pixels": GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
             "cell_route_counter_max": GO_EXPLORE_ROUTE_COUNTER_MAX,
-            "success_guided_restore_probability": (
-                SUCCESS_GUIDED_RESTORE_PROBABILITY
-            ),
+            "success_guided_restore_probability": (SUCCESS_GUIDED_RESTORE_PROBABILITY),
         }
     )
     return policy
@@ -73,6 +86,7 @@ def _policy(
 def _run_config(args: argparse.Namespace) -> dict[str, Any]:
     return {
         **vars(args),
+        "go_explore_reward_function": args.reward_function,
         "go_explore_cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
         "go_explore_cell_encoding": GO_EXPLORE_CELL_ENCODING,
         "go_explore_cell_key_bytes": GO_EXPLORE_CELL_KEY_BYTES,
@@ -86,11 +100,16 @@ def _run_config(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _metric_row(
-    search: GoExploreSearch, *, elapsed: float, accepted: bool
+    search: GoExploreSearch,
+    *,
+    reward_function: str,
+    elapsed: float,
+    accepted: bool,
 ) -> dict[str, Any]:
     candidate = search.best_candidate()
     return {
         "algorithm": "go-explore",
+        "reward_function": reward_function,
         "cell_representation": GO_EXPLORE_CELL_REPRESENTATION,
         "timesteps": search.global_step,
         "episodes": search.completed_episodes,
@@ -122,7 +141,7 @@ def _metric_row(
 
 
 def _initial_snapshot(args: argparse.Namespace) -> TrainingSnapshot:
-    run_dir = args.output or run_directory_for_state(args.state)
+    run_dir = _run_directory(args)
     return TrainingSnapshot(
         algorithm="Go-Explore",
         state=args.state,
@@ -144,7 +163,7 @@ def _run_training(
     reporter: TrainingReporter,
     stop_event: threading.Event,
 ) -> TrainingResult:
-    run_dir = args.output or run_directory_for_state(args.state)
+    run_dir = _run_directory(args)
     policy_path = run_dir / f"{args.state}.zip"
     metrics_path = run_dir / "episodes.jsonl"
     successes_path = run_dir / "successes.jsonl"
@@ -169,7 +188,7 @@ def _run_training(
         step_cost=args.step_cost,
         noop_reset_max=args.noop_reset_max,
         action_set=args.action_set,
-        reward_mode=REWARD_MODE_SCORE_FIRST,
+        reward_mode=args.reward_function,
         go_explore_cells=True,
     )
     started_at = time.perf_counter()
@@ -224,7 +243,11 @@ def _run_training(
                     handle.write(json.dumps(success_row, sort_keys=True) + "\n")
                 if completion.improved:
                     _save_policy(
-                        _policy(search, noop_reset_max=args.noop_reset_max),
+                        _policy(
+                            search,
+                            reward_function=args.reward_function,
+                            noop_reset_max=args.noop_reset_max,
+                        ),
                         policy_path,
                         force=True,
                     )
@@ -236,13 +259,20 @@ def _run_training(
                     accepted_lane = int(np.flatnonzero(successes)[0])
                     accepted_path = run_dir / "checkpoints" / f"{args.state}-{step}.zip"
                     _save_policy(
-                        _policy(search, noop_reset_max=args.noop_reset_max),
+                        _policy(
+                            search,
+                            reward_function=args.reward_function,
+                            noop_reset_max=args.noop_reset_max,
+                        ),
                         accepted_path,
                         force=_overwrite_existing(args),
                     )
                     elapsed = time.perf_counter() - started_at
                     success_row = _metric_row(
-                        search, elapsed=elapsed, accepted=accepted
+                        search,
+                        reward_function=args.reward_function,
+                        elapsed=elapsed,
+                        accepted=accepted,
                     )
                     reporter.update(
                         training_ui.snapshot_from_row(
@@ -329,7 +359,12 @@ def _run_training(
             ui_row = None
             snapshot = None
             if events or routine_due or log_due or checkpoint_due:
-                ui_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
+                ui_row = _metric_row(
+                    search,
+                    reward_function=args.reward_function,
+                    elapsed=elapsed,
+                    accepted=accepted,
+                )
                 snapshot = training_ui.snapshot_from_row(
                     algorithm="Go-Explore",
                     state=args.state,
@@ -358,7 +393,11 @@ def _run_training(
             while next_checkpoint is not None and step >= next_checkpoint:
                 assert snapshot is not None
                 checkpoint_path = _save_policy(
-                    _policy(search, noop_reset_max=args.noop_reset_max),
+                    _policy(
+                        search,
+                        reward_function=args.reward_function,
+                        noop_reset_max=args.noop_reset_max,
+                    ),
                     run_dir / "checkpoints" / f"{args.state}-{step}.zip",
                     force=_overwrite_existing(args),
                 )
@@ -374,13 +413,22 @@ def _run_training(
                 next_checkpoint += args.checkpoint_every
 
         candidate = search.best_candidate()
-        final_policy = _policy(search, noop_reset_max=args.noop_reset_max)
+        final_policy = _policy(
+            search,
+            reward_function=args.reward_function,
+            noop_reset_max=args.noop_reset_max,
+        )
         user_stopped = stop_event.is_set()
         final_path = None
         if not user_stopped or candidate is not None:
             final_path = _save_policy(final_policy, policy_path, force=True)
         elapsed = time.perf_counter() - started_at
-        final_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
+        final_row = _metric_row(
+            search,
+            reward_function=args.reward_function,
+            elapsed=elapsed,
+            accepted=accepted,
+        )
         stop_reason = "user" if user_stopped else "success" if accepted else "budget"
         final_row.update(
             {
@@ -494,7 +542,7 @@ def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     except ValueError as exc:
         parser.error(str(exc))
 
-    run_dir = args.output or run_directory_for_state(args.state)
+    run_dir = _run_directory(args)
     _protect_existing_policies(run_dir, force=_overwrite_existing(args))
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")

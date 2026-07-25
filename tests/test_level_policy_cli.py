@@ -78,9 +78,7 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
     with pytest.raises(SystemExit):
         parser.parse_args(["Level1-1", "--timesteps", "100"])
 
-    with_down = parser.parse_args(
-        ["Level8-4", "--action-set", "standard"]
-    )
+    with_down = parser.parse_args(["Level8-4", "--action-set", "standard"])
     assert with_down.action_set == "standard"
 
 
@@ -99,6 +97,12 @@ def test_algorithm_specific_options_are_rejected() -> None:
     with pytest.raises(SystemExit):
         training._apply_algorithm_defaults(parser, go_explore_args)
 
+    reward_args = parser.parse_args(
+        ["Level1-1", "--algorithm", "beam", "--reward-function", "speedrun"]
+    )
+    with pytest.raises(SystemExit):
+        training._apply_algorithm_defaults(parser, reward_args)
+
 
 def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
     parser = training.build_parser()
@@ -107,6 +111,7 @@ def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
     training._apply_algorithm_defaults(parser, args)
 
     assert args.go_explore_explore_steps == 128
+    assert args.reward_function == training.REWARD_FUNCTION_SPEEDRUN
     assert args.action_set == "standard"
     assert args.beam_width is None
     assert args.retained_limit is None
@@ -221,7 +226,9 @@ def test_train_main_dispatches_beam(monkeypatch) -> None:
     from supermariobrosnes_turbo import beam_training
 
     monkeypatch.setattr(training, "resolve_state_name", lambda state, **_kwargs: state)
-    monkeypatch.setattr(beam_training, "run", lambda args, _parser: int(args.algorithm == "beam"))
+    monkeypatch.setattr(
+        beam_training, "run", lambda args, _parser: int(args.algorithm == "beam")
+    )
 
     assert training.main(["Level1-1", "--algorithm", "beam"]) == 1
 
@@ -252,9 +259,7 @@ def test_train_without_state_dispatches_all_canonical_levels(monkeypatch) -> Non
         training_campaign,
         "run",
         lambda args, _parser: (
-            selected_defaults.append(
-                (args.action_set, args.continue_after_completion)
-            )
+            selected_defaults.append((args.action_set, args.continue_after_completion))
             or int(args.state is None)
         ),
     )

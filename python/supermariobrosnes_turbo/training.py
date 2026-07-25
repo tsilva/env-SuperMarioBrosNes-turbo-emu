@@ -62,8 +62,12 @@ RUN_DURATION_MAX = 32
 RETAINED_LIMIT = 256
 FALLBACK_ACTION = "noop"
 STEP_COST = 0.1
-REWARD_MODE_PROGRESS_SCORE = "progress-score"
-REWARD_MODE_SCORE_FIRST = "score-first"
+REWARD_FUNCTION_PROGRESS_SCORE = "progress-score"
+REWARD_FUNCTION_SCORE_FIRST = "score-first"
+REWARD_FUNCTION_SPEEDRUN = "speedrun"
+# Backwards-compatible names for callers that still describe these as modes.
+REWARD_MODE_PROGRESS_SCORE = REWARD_FUNCTION_PROGRESS_SCORE
+REWARD_MODE_SCORE_FIRST = REWARD_FUNCTION_SCORE_FIRST
 INVALID_XSCROLL_MIN = 0xFF00
 SCROLL_TRANSITION_MIN_DROP = 128
 SCROLL_TRANSITION_BUCKET = 64
@@ -74,9 +78,7 @@ GO_EXPLORE_ROUTE_COUNTER_MAX = 7
 GO_EXPLORE_CELL_KEY_STRUCT = struct.Struct("<BBBBHHBBB")
 GO_EXPLORE_CELL_KEY_BYTES = GO_EXPLORE_CELL_KEY_STRUCT.size
 GO_EXPLORE_CELL_ENCODING = "packed-bytes"
-GO_EXPLORE_CELL_REPRESENTATION = (
-    "level-sublevel-area-pointer-x8-y16-route-ground-power"
-)
+GO_EXPLORE_CELL_REPRESENTATION = "level-sublevel-area-pointer-x8-y16-route-ground-power"
 GO_EXPLORE_CELL_INFO_KEYS = (
     "area_id",
     "y_pos",
@@ -88,6 +90,35 @@ GO_EXPLORE_CELL_INFO_KEYS = (
     "player_power",
     "player_task",
 )
+
+
+@dataclass(frozen=True)
+class RewardFunction:
+    """Stable, user-selectable reward-function definition."""
+
+    id: str
+    progress_weight: float
+    score_weight: float
+    default_step_cost: float | None
+
+
+REWARD_FUNCTIONS = {
+    reward.id: reward
+    for reward in (
+        RewardFunction(REWARD_FUNCTION_PROGRESS_SCORE, 1.0, 0.01, STEP_COST),
+        RewardFunction(REWARD_FUNCTION_SCORE_FIRST, 0.0, 1.0, None),
+        RewardFunction(REWARD_FUNCTION_SPEEDRUN, 0.0, 0.0, 1.0),
+    )
+}
+REWARD_FUNCTION_IDS = tuple(REWARD_FUNCTIONS)
+
+
+def reward_function(reward_id: str) -> RewardFunction:
+    """Resolve a stable reward-function ID."""
+    try:
+        return REWARD_FUNCTIONS[str(reward_id)]
+    except KeyError as exc:
+        raise ValueError(f"unknown reward function {reward_id!r}") from exc
 
 
 class _TrainingArgumentParser(argparse.ArgumentParser):
@@ -219,18 +250,12 @@ def shape_step_rewards(
     step_cost: float,
     reward_mode: str = REWARD_MODE_PROGRESS_SCORE,
 ) -> np.ndarray:
-    """Shape one step for navigation or score-primary trajectory search."""
+    """Shape one step with the selected stable reward-function ID."""
     progress = np.asarray(progress_delta, dtype=np.float64)
     score = np.asarray(score_delta, dtype=np.float64)
-    if reward_mode == REWARD_MODE_PROGRESS_SCORE:
-        shaped = progress + 0.01 * score
-    elif reward_mode == REWARD_MODE_SCORE_FIRST:
-        shaped = score
-    else:
-        raise ValueError(f"unknown reward mode {reward_mode!r}")
-    return shaped - float(step_cost) - 25.0 * np.asarray(
-        life_loss, dtype=np.float64
-    )
+    definition = reward_function(reward_mode)
+    shaped = definition.progress_weight * progress + definition.score_weight * score
+    return shaped - float(step_cost) - 25.0 * np.asarray(life_loss, dtype=np.float64)
 
 
 def score_first_step_cost(max_episode_steps: int) -> float:
@@ -239,6 +264,14 @@ def score_first_step_cost(max_episode_steps: int) -> float:
     if maximum < 1:
         raise ValueError("max_episode_steps must be positive")
     return 1.0 / (maximum + 1)
+
+
+def reward_function_step_cost(reward_id: str, max_episode_steps: int) -> float:
+    """Return the default time cost for a reward-function ID."""
+    definition = reward_function(reward_id)
+    if definition.default_step_cost is None:
+        return score_first_step_cost(max_episode_steps)
+    return definition.default_step_cost
 
 
 class MarioJerkTask:
@@ -267,19 +300,12 @@ class MarioJerkTask:
         self.stall_steps = int(stall_steps)
         self.reward_mode = str(reward_mode)
         self.go_explore_cells = bool(go_explore_cells)
-        if self.reward_mode not in {
-            REWARD_MODE_PROGRESS_SCORE,
-            REWARD_MODE_SCORE_FIRST,
-        }:
-            raise ValueError(f"unknown reward mode {self.reward_mode!r}")
-        default_step_cost = (
-            score_first_step_cost(self.max_episode_steps)
-            if self.reward_mode == REWARD_MODE_SCORE_FIRST
-            else STEP_COST
+        reward_function(self.reward_mode)
+        default_step_cost = reward_function_step_cost(
+            self.reward_mode,
+            self.max_episode_steps,
         )
-        self.step_cost = float(
-            default_step_cost if step_cost is None else step_cost
-        )
+        self.step_cost = float(default_step_cost if step_cost is None else step_cost)
         self.noop_reset_max = int(noop_reset_max)
         if self.step_cost < 0.0:
             raise ValueError("JERK step_cost must be non-negative")
@@ -457,9 +483,7 @@ class MarioJerkTask:
             self.completed_base[lane] = snapshot.completed_base
             self.max_global_x[lane] = snapshot.max_global_x
             self.previous_x[lane] = snapshot.previous_x
-            self.seen_scroll_transitions[lane] = set(
-                snapshot.seen_scroll_transitions
-            )
+            self.seen_scroll_transitions[lane] = set(snapshot.seen_scroll_transitions)
 
     def go_explore_cell_keys(self, observations: np.ndarray) -> tuple[bytes, ...]:
         """Return compact route-aware semantic cell keys."""
@@ -494,9 +518,7 @@ class MarioJerkTask:
         observations, _native_rewards, native_terminated, native_truncated, infos = (
             self.native.step(action_indices)
         )
-        self._update_cell_state(
-            infos, np.ones(self.n_envs, dtype=np.bool_)
-        )
+        self._update_cell_state(infos, np.ones(self.n_envs, dtype=np.bool_))
         current_lives = self.native.lives.astype(np.int64, copy=False)
         current_level_hi = self.native.level_hi.astype(np.int64, copy=False)
         current_level_lo = self.native.level_lo.astype(np.int64, copy=False)
@@ -583,9 +605,14 @@ def exploit_probability(total_steps: int, total_timesteps: int) -> float:
 
 def _force_policy_overwrite(args: argparse.Namespace) -> bool:
     """Allow replacement only for the canonical default run or explicit force."""
+    reward_id = getattr(args, "reward_function", None)
     return bool(
         args.overwrite
-        or (args.output is None and args.algorithm == DEFAULT_ALGORITHM)
+        or (
+            args.output is None
+            and args.algorithm == DEFAULT_ALGORITHM
+            and reward_id in {None, REWARD_FUNCTION_SPEEDRUN}
+        )
     )
 
 
@@ -690,7 +717,9 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         help=f"training search algorithm (default: {DEFAULT_ALGORITHM})",
     )
     parser.add_argument(
-        "--rom", type=Path, help="ROM path; defaults to Stable Retro-compatible discovery"
+        "--rom",
+        type=Path,
+        help="ROM path; defaults to Stable Retro-compatible discovery",
     )
     parser.add_argument(
         "--state-dir",
@@ -755,9 +784,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         type=float,
         default=None,
     )
-    jerk.add_argument(
-        "--max-prefix-shorten-runs", type=int, default=None
-    )
+    jerk.add_argument("--max-prefix-shorten-runs", type=int, default=None)
     jerk.add_argument(
         "--deep-mutation-probability",
         type=float,
@@ -784,8 +811,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         type=int,
         default=None,
         help=(
-            "prefix runs protected only during post-completion improvement "
-            "(default: 0)"
+            "prefix runs protected only during post-completion improvement (default: 0)"
         ),
     )
     beam.add_argument(
@@ -798,6 +824,16 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         default=None,
         metavar="STEPS",
         help="random exploration horizon after each archived restore (default: 128)",
+    )
+    go_explore.add_argument(
+        "--reward-function",
+        choices=REWARD_FUNCTION_IDS,
+        default=None,
+        metavar="ID",
+        help=(
+            "trajectory reward function: speedrun (default), score-first, "
+            "or progress-score"
+        ),
     )
     completion = parser.add_mutually_exclusive_group()
     completion.add_argument(
@@ -843,7 +879,9 @@ def _initial_snapshot(args: argparse.Namespace) -> TrainingSnapshot:
         seed=args.seed,
         lanes=args.lanes,
         stop_rule=(
-            "first completion" if (not args.continue_after_completion) else "transition budget"
+            "first completion"
+            if (not args.continue_after_completion)
+            else "transition budget"
         ),
         output=target_policy_path,
         total_timesteps=args.transitions,
@@ -923,9 +961,7 @@ def _run_training(
                     accepted = True
                     first_success_step = step
                     accepted_lane = int(np.flatnonzero(successes)[0])
-                    accepted_path = (
-                        run_dir / "checkpoints" / f"{args.state}-{step}.zip"
-                    )
+                    accepted_path = run_dir / "checkpoints" / f"{args.state}-{step}.zip"
                     _save_policy(
                         search.policy(),
                         accepted_path,
@@ -960,7 +996,7 @@ def _run_training(
                         ),
                         force=True,
                     )
-                if (not args.continue_after_completion):
+                if not args.continue_after_completion:
                     stopped_on_completion = True
                     break
 
@@ -983,9 +1019,7 @@ def _run_training(
                     )
                     last_best = current_best
             now = time.monotonic()
-            routine_due = (
-                now - last_ui_publish >= training_ui.UPDATE_INTERVAL_SECONDS
-            )
+            routine_due = now - last_ui_publish >= training_ui.UPDATE_INTERVAL_SECONDS
             log_due = step >= next_log
             checkpoint_due = next_checkpoint is not None and step >= next_checkpoint
             ui_row = None
@@ -1059,13 +1093,7 @@ def _run_training(
         final_row["phase"] = "final"
         final_row["best_program_steps"] = final_policy.step_count
         final_row["best_program_runs"] = final_policy.run_count
-        stop_reason = (
-            "user"
-            if user_stopped
-            else "success"
-            if accepted
-            else "budget"
-        )
+        stop_reason = "user" if user_stopped else "success" if accepted else "budget"
         final_row["stop_reason"] = stop_reason
         with metrics_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(final_row, sort_keys=True) + "\n")
@@ -1183,6 +1211,7 @@ def _apply_algorithm_defaults(
     }
     go_explore_defaults = {
         "go_explore_explore_steps": GO_EXPLORE_EXPLORE_STEPS,
+        "reward_function": REWARD_FUNCTION_SPEEDRUN,
     }
     defaults_by_algorithm = {
         "jerk": jerk_defaults,
@@ -1204,11 +1233,15 @@ def _apply_algorithm_defaults(
         if getattr(args, name) is None:
             setattr(args, name, value)
     if args.step_cost is None:
-        args.step_cost = (
-            score_first_step_cost(args.max_episode_steps)
-            if args.algorithm in {"beam", "go-explore"}
-            else STEP_COST
-        )
+        if args.algorithm == "go-explore":
+            args.step_cost = reward_function_step_cost(
+                args.reward_function,
+                args.max_episode_steps,
+            )
+        elif args.algorithm == "beam":
+            args.step_cost = score_first_step_cost(args.max_episode_steps)
+        else:
+            args.step_cost = STEP_COST
 
 
 def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
@@ -1220,9 +1253,7 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         from .training_campaign import CANONICAL_LEVEL_STATES, run
 
         available = set(list_available_states(args.state_dir))
-        missing = [
-            state for state in CANONICAL_LEVEL_STATES if state not in available
-        ]
+        missing = [state for state in CANONICAL_LEVEL_STATES if state not in available]
         if missing:
             raise SystemExit(
                 "all-level training requires every canonical state; missing: "

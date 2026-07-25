@@ -111,6 +111,8 @@ class GoExploreCell:
     visits: int = 0
     selections: int = 0
     updates: int = 0
+    _selection_index: int = field(default=-1, repr=False, compare=False)
+    _selection_weight: float = field(default=0.0, repr=False, compare=False)
     _memory_bytes: int = field(default=0, repr=False, compare=False)
 
     @property
@@ -137,7 +139,76 @@ def _archive_cell_memory_bytes(cell: GoExploreCell) -> int:
         + sys.getsizeof(cell.visits)
         + sys.getsizeof(cell.selections)
         + sys.getsizeof(cell.updates)
+        + sys.getsizeof(cell._selection_index)
+        + sys.getsizeof(cell._selection_weight)
     )
+
+
+def _archive_cell_selection_weight(cell: GoExploreCell) -> float:
+    return (
+        1.0 / math.sqrt(1.0 + cell.selections)
+        + 1.0 / math.sqrt(1.0 + cell.visits)
+    )
+
+
+class _SelectionWeightTree:
+    """Incrementally maintain positive weights and sample their exact CDF."""
+
+    def __init__(self) -> None:
+        self._tree = [0.0]
+
+    def __len__(self) -> int:
+        return len(self._tree) - 1
+
+    @property
+    def memory_bytes(self) -> int:
+        return (
+            sys.getsizeof(self)
+            + sys.getsizeof(self._tree)
+            + len(self._tree) * sys.getsizeof(0.0)
+        )
+
+    def append(self, weight: float) -> None:
+        position = len(self._tree)
+        range_start = position - (position & -position)
+        subtotal = float(weight)
+        cursor = position - 1
+        while cursor > range_start:
+            subtotal += self._tree[cursor]
+            cursor -= cursor & -cursor
+        self._tree.append(subtotal)
+
+    def add(self, index: int, delta: float) -> None:
+        position = int(index) + 1
+        if position < 1 or position >= len(self._tree):
+            raise IndexError("selection weight index is out of range")
+        while position < len(self._tree):
+            self._tree[position] += float(delta)
+            position += position & -position
+
+    @property
+    def total(self) -> float:
+        subtotal = 0.0
+        position = len(self._tree) - 1
+        while position:
+            subtotal += self._tree[position]
+            position -= position & -position
+        return subtotal
+
+    def sample(self, unit: float) -> int:
+        count = len(self)
+        if count == 0:
+            raise RuntimeError("cannot sample an empty selection weight tree")
+        target = float(unit) * self.total
+        index = 0
+        bit = 1 << (count.bit_length() - 1)
+        while bit:
+            candidate = index + bit
+            if candidate <= count and self._tree[candidate] <= target:
+                index = candidate
+                target -= self._tree[candidate]
+            bit >>= 1
+        return min(index, count - 1)
 
 
 @dataclass(frozen=True)
@@ -221,7 +292,13 @@ class GoExploreSearch:
         self.improvement_count = 0
         self.first_success_return: float | None = None
         self._archive: dict[Hashable, GoExploreCell] = {}
-        self._archive_memory_bytes = sys.getsizeof(self._archive)
+        self._selection_cells: list[GoExploreCell] = []
+        self._selection_weights = _SelectionWeightTree()
+        self._archive_memory_bytes = (
+            sys.getsizeof(self._archive)
+            + sys.getsizeof(self._selection_cells)
+            + self._selection_weights.memory_bytes
+        )
         self._archive_selection_count = 0
         self._archive_visit_count = 0
         self._archive_update_count = 0
@@ -306,6 +383,28 @@ class GoExploreSearch:
     def archive(self) -> Mapping[Hashable, GoExploreCell]:
         return self._archive
 
+    def _selection_storage_bytes(self) -> int:
+        return (
+            sys.getsizeof(self._selection_cells)
+            + self._selection_weights.memory_bytes
+        )
+
+    def _register_selection_cell(self, cell: GoExploreCell) -> int:
+        storage_before = self._selection_storage_bytes()
+        cell._selection_index = len(self._selection_cells)
+        cell._selection_weight = _archive_cell_selection_weight(cell)
+        self._selection_cells.append(cell)
+        self._selection_weights.append(cell._selection_weight)
+        return self._selection_storage_bytes() - storage_before
+
+    def _update_selection_weight(self, cell: GoExploreCell) -> None:
+        weight = _archive_cell_selection_weight(cell)
+        self._selection_weights.add(
+            cell._selection_index,
+            weight - cell._selection_weight,
+        )
+        cell._selection_weight = weight
+
     def initialize(
         self,
         cell_keys: Sequence[Hashable],
@@ -328,15 +427,18 @@ class GoExploreSearch:
                     progress=0.0,
                     visits=1,
                 )
-                cell._memory_bytes = _archive_cell_memory_bytes(cell)
                 self._archive[key] = cell
+                selection_storage_delta = self._register_selection_cell(cell)
+                cell._memory_bytes = _archive_cell_memory_bytes(cell)
                 self._archive_memory_bytes += (
                     sys.getsizeof(self._archive)
                     - dict_size_before
                     + cell._memory_bytes
+                    + selection_storage_delta
                 )
             else:
                 cell.visits += 1
+                self._update_selection_weight(cell)
             self._archive_visit_count += 1
             self._lanes[lane] = _GoExploreLaneState(path_cell_keys=[key])
 
@@ -637,6 +739,7 @@ class GoExploreSearch:
             cell = self._archive.get(key)
             if cell is not None:
                 cell.visits += count
+                self._update_selection_weight(cell)
                 self._archive_visit_count += count
             pending = self._pending.get(key)
             if pending is not None:
@@ -690,12 +793,14 @@ class GoExploreSearch:
                     parent_key=pending.parent_key,
                     visits=pending.visits,
                 )
-                cell._memory_bytes = _archive_cell_memory_bytes(cell)
                 self._archive[pending.key] = cell
+                selection_storage_delta = self._register_selection_cell(cell)
+                cell._memory_bytes = _archive_cell_memory_bytes(cell)
                 self._archive_memory_bytes += (
                     sys.getsizeof(self._archive)
                     - dict_size_before
                     + cell._memory_bytes
+                    + selection_storage_delta
                 )
                 self._archive_visit_count += pending.visits
                 continue
@@ -731,18 +836,8 @@ class GoExploreSearch:
             self._success_guided_selection_count += 1
             return cell
 
-        cells = tuple(self._archive.values())
-        weights = np.asarray(
-            [
-                1.0 / math.sqrt(1.0 + cell.selections)
-                + 1.0 / math.sqrt(1.0 + cell.visits)
-                for cell in cells
-            ],
-            dtype=np.float64,
-        )
-        probabilities = weights / weights.sum()
-        index = int(rng.choice(len(cells), p=probabilities))
-        return cells[index]
+        index = self._selection_weights.sample(rng.random())
+        return self._selection_cells[index]
 
     def restart(self, mask: Sequence[bool]) -> tuple[Any | None, ...]:
         """Choose archived cells and return lane-aligned restore snapshots."""
@@ -754,6 +849,7 @@ class GoExploreSearch:
             index = int(lane)
             cell = self._select_cell(index)
             cell.selections += 1
+            self._update_selection_weight(cell)
             self._archive_selection_count += 1
             snapshots[index] = cell.snapshot
             self._lanes[index] = _GoExploreLaneState(

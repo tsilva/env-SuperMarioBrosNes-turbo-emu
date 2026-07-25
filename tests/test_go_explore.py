@@ -123,6 +123,100 @@ def test_go_explore_restores_archived_cells_after_exploration_horizon() -> None:
     assert search.archive_update_count == 0
 
 
+def test_go_explore_selection_weight_tree_matches_linear_cdf() -> None:
+    weights = [2.0, 1.0, 3.0, 4.0]
+    tree = go_explore_module._SelectionWeightTree()
+    for weight in weights:
+        tree.append(weight)
+
+    for unit in (0.0, 0.11, 0.29, 0.31, 0.67, 0.999):
+        expected = int(
+            np.searchsorted(
+                np.cumsum(weights),
+                unit * sum(weights),
+                side="right",
+            )
+        )
+        assert tree.sample(unit) == expected
+
+    tree.add(1, 4.0)
+    weights[1] += 4.0
+    assert tree.total == sum(weights)
+    for unit in (0.07, 0.25, 0.51, 0.83):
+        expected = int(
+            np.searchsorted(
+                np.cumsum(weights),
+                unit * sum(weights),
+                side="right",
+            )
+        )
+        assert tree.sample(unit) == expected
+
+
+def test_go_explore_selection_tree_matches_previous_seeded_choices() -> None:
+    count = 257
+    visits = np.arange(1, count + 1, dtype=np.int64) % 19 + 1
+    reference_selections = np.zeros(count, dtype=np.int64)
+    tree_selections = np.zeros(count, dtype=np.int64)
+    weights = (
+        1.0 / np.sqrt(1.0 + reference_selections)
+        + 1.0 / np.sqrt(1.0 + visits)
+    )
+    tree = go_explore_module._SelectionWeightTree()
+    for weight in weights:
+        tree.append(float(weight))
+    seed = np.random.SeedSequence([7, 0, 0x474F4558])
+    reference_rng = np.random.default_rng(seed)
+    tree_rng = np.random.default_rng(seed)
+
+    for _ in range(1_000):
+        weights = (
+            1.0 / np.sqrt(1.0 + reference_selections)
+            + 1.0 / np.sqrt(1.0 + visits)
+        )
+        expected = int(
+            reference_rng.choice(count, p=weights / weights.sum())
+        )
+        actual = tree.sample(tree_rng.random())
+        assert actual == expected
+        reference_selections[expected] += 1
+        old_weight = (
+            1.0 / np.sqrt(1.0 + tree_selections[actual])
+            + 1.0 / np.sqrt(1.0 + visits[actual])
+        )
+        tree_selections[actual] += 1
+        new_weight = (
+            1.0 / np.sqrt(1.0 + tree_selections[actual])
+            + 1.0 / np.sqrt(1.0 + visits[actual])
+        )
+        tree.add(actual, float(new_weight - old_weight))
+
+
+def test_go_explore_restart_updates_only_selected_cell_weight(monkeypatch) -> None:
+    search = _search(n_envs=8)
+    keys = tuple(f"cell-{index}" for index in range(search.n_envs))
+    snapshots = tuple(f"snapshot-{index}" for index in range(search.n_envs))
+    search.initialize(keys, snapshots)
+    original_weight = go_explore_module._archive_cell_selection_weight
+    evaluated_keys: list[str] = []
+
+    def tracked_weight(cell):
+        evaluated_keys.append(cell.key)
+        return original_weight(cell)
+
+    monkeypatch.setattr(
+        go_explore_module,
+        "_archive_cell_selection_weight",
+        tracked_weight,
+    )
+    restored = search.restart([True, False, False, False, False, False, False, False])
+
+    assert restored[0] in snapshots
+    assert evaluated_keys == [
+        next(cell.key for cell in search.archive.values() if cell.selections == 1)
+    ]
+
+
 def test_go_explore_reports_archive_memory_including_native_snapshots() -> None:
     search = _search(explore_steps=1)
     search.initialize(
