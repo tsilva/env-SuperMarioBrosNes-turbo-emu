@@ -7,7 +7,7 @@ import numpy as np
 
 from supermariobrosnes_turbo import go_explore as go_explore_module
 from supermariobrosnes_turbo.go_explore import GoExploreCandidate, GoExploreSearch
-from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy
+from supermariobrosnes_turbo.action_run import ActionRun, ActionRunPolicy
 
 
 ACTIONS = ("noop", "right", "a")
@@ -158,10 +158,7 @@ def test_go_explore_selection_tree_matches_previous_seeded_choices() -> None:
     visits = np.arange(1, count + 1, dtype=np.int64) % 19 + 1
     reference_selections = np.zeros(count, dtype=np.int64)
     tree_selections = np.zeros(count, dtype=np.int64)
-    weights = (
-        1.0 / np.sqrt(1.0 + reference_selections)
-        + 1.0 / np.sqrt(1.0 + visits)
-    )
+    weights = 1.0 / np.sqrt(1.0 + reference_selections) + 1.0 / np.sqrt(1.0 + visits)
     tree = go_explore_module._SelectionWeightTree()
     for weight in weights:
         tree.append(float(weight))
@@ -170,24 +167,19 @@ def test_go_explore_selection_tree_matches_previous_seeded_choices() -> None:
     tree_rng = np.random.default_rng(seed)
 
     for _ in range(1_000):
-        weights = (
-            1.0 / np.sqrt(1.0 + reference_selections)
-            + 1.0 / np.sqrt(1.0 + visits)
+        weights = 1.0 / np.sqrt(1.0 + reference_selections) + 1.0 / np.sqrt(
+            1.0 + visits
         )
-        expected = int(
-            reference_rng.choice(count, p=weights / weights.sum())
-        )
+        expected = int(reference_rng.choice(count, p=weights / weights.sum()))
         actual = tree.sample(tree_rng.random())
         assert actual == expected
         reference_selections[expected] += 1
-        old_weight = (
-            1.0 / np.sqrt(1.0 + tree_selections[actual])
-            + 1.0 / np.sqrt(1.0 + visits[actual])
+        old_weight = 1.0 / np.sqrt(1.0 + tree_selections[actual]) + 1.0 / np.sqrt(
+            1.0 + visits[actual]
         )
         tree_selections[actual] += 1
-        new_weight = (
-            1.0 / np.sqrt(1.0 + tree_selections[actual])
-            + 1.0 / np.sqrt(1.0 + visits[actual])
+        new_weight = 1.0 / np.sqrt(1.0 + tree_selections[actual]) + 1.0 / np.sqrt(
+            1.0 + visits[actual]
         )
         tree.add(actual, float(new_weight - old_weight))
 
@@ -229,9 +221,7 @@ def test_go_explore_reports_archive_memory_including_native_snapshots() -> None:
 
     search.next_actions()
     observation = search.observe([1.0], [False], ["new"], progresses=[16.0])
-    search.commit_archive(
-        (SimpleNamespace(native=SimpleNamespace(nbytes=8_192)),)
-    )
+    search.commit_archive((SimpleNamespace(native=SimpleNamespace(nbytes=8_192)),))
 
     assert observation.archive_mask.tolist() == [True]
     assert search.archive_memory_bytes >= initial_bytes + 8_192
@@ -260,9 +250,7 @@ def test_go_explore_updates_archive_memory_from_cached_cell_estimates(
     initial_bytes = search.archive_memory_bytes
     search.next_actions()
     search.observe([1.0], [False], ["root"], progresses=[16.0])
-    search.commit_archive(
-        (SimpleNamespace(native=SimpleNamespace(nbytes=8_192)),)
-    )
+    search.commit_archive((SimpleNamespace(native=SimpleNamespace(nbytes=8_192)),))
 
     assert estimated_keys == ["root"]
     assert search.archive_memory_bytes >= initial_bytes + 4_096
@@ -322,13 +310,8 @@ def test_go_explore_credits_and_samples_the_best_success_lineage(
     for key in ("root", "prefix", "winning-suffix"):
         assert search.archive[key].best_success_return == 8.0
 
-    monkeypatch.setattr(
-        go_explore_module, "SUCCESS_GUIDED_RESTORE_PROBABILITY", 1.0
-    )
-    selected = {
-        search.restart([True])[0]
-        for _ in range(30)
-    }
+    monkeypatch.setattr(go_explore_module, "SUCCESS_GUIDED_RESTORE_PROBABILITY", 1.0)
+    selected = {search.restart([True])[0] for _ in range(30)}
 
     assert selected <= {
         "root-snapshot",
@@ -375,7 +358,7 @@ def test_go_explore_policy_uses_beam_compatible_action_run_format(
     path = tmp_path / "go-explore.zip"
 
     search.policy().save(path)
-    policy = JerkPolicy.load(path)
+    policy = ActionRunPolicy.load(path)
 
     assert policy.action_runs == search.best_candidate().runs
     assert policy.metadata["search_algorithm"] == "go-explore"

@@ -7,7 +7,7 @@ import sys
 import pytest
 
 from supermariobrosnes_turbo import cli, state_playback, training
-from supermariobrosnes_turbo.jerk import (
+from supermariobrosnes_turbo.action_run import (
     policy_path_for_state,
     resolve_state_name,
     run_directory_for_state,
@@ -84,12 +84,8 @@ def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
 
 def test_algorithm_specific_options_are_rejected() -> None:
     parser = training.build_parser()
-    args = parser.parse_args(
-        ["Level1-1", "--algorithm", "beam", "--retained-limit", "3"]
-    )
-
     with pytest.raises(SystemExit):
-        training._apply_algorithm_defaults(parser, args)
+        parser.parse_args(["Level1-1", "--algorithm", "beam", "--retained-limit", "3"])
 
     go_explore_args = parser.parse_args(
         ["Level1-1", "--algorithm", "go-explore", "--beam-width", "3"]
@@ -114,7 +110,6 @@ def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
     assert args.reward_function == training.REWARD_FUNCTION_SPEEDRUN
     assert args.action_set == "standard"
     assert args.beam_width is None
-    assert args.retained_limit is None
 
 
 def test_play_parser_owns_modes_and_playback_options() -> None:

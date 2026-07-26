@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 
 from .beam import CompletionEvent
-from .jerk import ActionRun, JerkPolicy, canonicalize_runs, run_step_count
+from .action_run import ActionRun, ActionRunPolicy, canonicalize_runs, run_step_count
 
 
 RECENT_CELL_VISIT_WINDOW = 10_000
@@ -869,9 +869,9 @@ class GoExploreSearch:
     def best_candidate(self) -> GoExploreCandidate | None:
         return self._best_success or self._best_incomplete
 
-    def policy(self) -> JerkPolicy:
+    def policy(self) -> ActionRunPolicy:
         candidate = self.best_candidate()
-        return JerkPolicy(
+        return ActionRunPolicy(
             action_names=self.action_names,
             action_runs=() if candidate is None else candidate.runs,
             fallback_action=self.fallback_action,

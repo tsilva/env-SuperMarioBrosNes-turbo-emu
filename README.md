@@ -257,7 +257,7 @@ also recorded in the run configuration, metrics, and policy metadata. Every
 completion is appended to `successes.jsonl`.
 
 A new default Go-Explore run replaces the existing canonical run; custom outputs
-and explicit Beam or JERK runs remain protected unless `--overwrite` is passed.
+and explicit Beam runs remain protected unless `--overwrite` is passed.
 `Level1-1` writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained
 policy when available and switches policies as levels change. Running
 `smb-turbo play` without a state starts from `Level1-1`; pass an exact state
@@ -282,14 +282,6 @@ policy is saved when a candidate exists.
 
 The checkout-compatible `uv run python train.py Level1-1` and
 `uv run python play.py` entry points remain available.
-
-To use JERK instead of the default Go-Explore search while keeping the same
-action-run representation, episode boundary, and playback format, run:
-
-```bash
-smb-turbo train Level1-1 --algorithm jerk --overwrite
-smb-turbo play Level1-1
-```
 
 To use fixed-width Beam search instead, run:
 
@@ -362,7 +354,7 @@ playback still discovers historical algorithm-specific directories, preferring
 
 ```bash
 smb-turbo import /path/to/roms        # import the supported ROM
-smb-turbo train Level1-1              # train one state-keyed beam policy
+smb-turbo train Level1-1              # train one state-keyed Go-Explore policy
 smb-turbo train                       # train all 32 canonical levels in order
 smb-turbo play                        # play Level1-1 manually or with its policy
 uv sync --frozen --extra dev --group dev  # install development dependencies

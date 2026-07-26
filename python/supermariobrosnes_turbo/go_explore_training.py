@@ -14,7 +14,7 @@ import numpy as np
 
 from . import ACTION_SETS
 from .go_explore import GoExploreSearch, SUCCESS_GUIDED_RESTORE_PROBABILITY
-from .jerk import JerkPolicy, run_directory_for_state
+from .action_run import ActionRunPolicy, run_directory_for_state
 from . import training_ui
 from .training_ui import (
     PlainReporter,
@@ -30,7 +30,7 @@ from .training import (
     GO_EXPLORE_CELL_X_BUCKET_PIXELS,
     GO_EXPLORE_CELL_Y_BUCKET_PIXELS,
     GO_EXPLORE_ROUTE_COUNTER_MAX,
-    MarioJerkTask,
+    MarioTask,
     REWARD_FUNCTION_SPEEDRUN,
     _force_policy_overwrite,
     _play_command,
@@ -64,7 +64,7 @@ def _policy(
     *,
     reward_function: str,
     noop_reset_max: int = 0,
-) -> JerkPolicy:
+) -> ActionRunPolicy:
     policy = search.policy()
     policy.metadata.update(
         {
@@ -177,7 +177,7 @@ def _run_training(
         run_duration_mean=args.run_duration_mean,
         run_duration_max=args.run_duration_max,
     )
-    task = MarioJerkTask(
+    task = MarioTask(
         state=args.state,
         state_dir=args.state_dir,
         rom_path=args.rom,

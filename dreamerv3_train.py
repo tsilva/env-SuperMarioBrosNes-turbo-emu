@@ -45,7 +45,11 @@ from supermariobrosnes_turbo import (
     SuperMarioBrosNesTurboVecEnv,
     list_available_states,
 )
-from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy, canonicalize_runs
+from supermariobrosnes_turbo.action_run import (
+    ActionRun,
+    ActionRunPolicy,
+    canonicalize_runs,
+)
 
 
 ALGORITHM = "dreamerv3"
@@ -850,7 +854,7 @@ def create_policy(
     episodes: int,
     episode_return: float,
     config: Config,
-) -> JerkPolicy:
+) -> ActionRunPolicy:
     runs: list[ActionRun] = []
     for action in actions:
         if runs and runs[-1].action == int(action):
@@ -858,7 +862,7 @@ def create_policy(
             runs[-1] = ActionRun(previous.action, previous.duration + 1)
         else:
             runs.append(ActionRun(int(action), 1))
-    return JerkPolicy(
+    return ActionRunPolicy(
         action_names=ACTION_SETS[ACTION_SET],
         action_runs=canonicalize_runs(runs),
         fallback_action=NOOP_ACTION,
@@ -876,7 +880,7 @@ def create_policy(
     )
 
 
-def save_policy(policy: JerkPolicy, path: Path) -> None:
+def save_policy(policy: ActionRunPolicy, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
     policy.save(temporary)
@@ -927,7 +931,7 @@ def evaluate_agent(
 
 
 def verify_policy(path: Path, config: Config) -> Evaluation:
-    policy = JerkPolicy.load(path)
+    policy = ActionRunPolicy.load(path)
     actions = tuple(
         action
         for run in policy.action_runs

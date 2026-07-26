@@ -6,7 +6,11 @@ import argparse
 from pathlib import Path
 
 from . import ACTION_SETS
-from .jerk import find_policy_path_for_state, policy_path_for_state, resolve_state_name
+from .action_run import (
+    find_policy_path_for_state,
+    policy_path_for_state,
+    resolve_state_name,
+)
 from .manual_playback import (
     DEFAULT_ROM,
     SdlExternalVecPlayer,
@@ -40,7 +44,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     mode.add_argument(
         "--policy",
         metavar="SOURCE",
-        help="local JERK policy, Hugging Face repository, or Hugging Face URL",
+        help="local action-run policy, Hugging Face repository, or Hugging Face URL",
     )
     parser.add_argument(
         "--rom",

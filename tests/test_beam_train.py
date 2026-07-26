@@ -7,10 +7,9 @@ import pytest
 
 from supermariobrosnes_turbo import beam_training, training
 from supermariobrosnes_turbo.beam import BeamCandidate, BeamSearch
-from supermariobrosnes_turbo.jerk import (
+from supermariobrosnes_turbo.action_run import (
     ActionRun,
-    JerkPolicy,
-    RetainedProgram,
+    ActionRunPolicy,
     run_directory_for_state,
 )
 
@@ -59,10 +58,9 @@ def test_beam_prunes_to_width_and_keeps_success_plus_furthest_failure() -> None:
 def test_beam_expands_parent_prefix_with_systematic_action_run_branch() -> None:
     search = _search()
     parent_runs = _runs((1, 2), (2, 2))
-    search._beam[parent_runs] = RetainedProgram(
+    search._beam[parent_runs] = BeamCandidate(
         runs=parent_runs,
-        return_sum=10.0,
-        return_count=1,
+        incomplete_return=10.0,
     )
     search._parents = tuple(search._beam.values())
     search._start_lane(0)
@@ -86,7 +84,7 @@ def test_beam_observation_refreshes_parents_and_emits_compatible_policy() -> Non
 
     assert search.generation == 1
     assert search.successful_episodes == 1
-    assert isinstance(policy, JerkPolicy)
+    assert isinstance(policy, ActionRunPolicy)
     assert policy.action_runs == _runs((first, 1))
     assert policy.metadata["search_algorithm"] == "beam"
 
@@ -176,9 +174,7 @@ def test_beam_keeps_completed_return_separate_from_failed_prefix_score() -> None
     search = _search()
     runs = _runs((1, 2))
 
-    search._upsert_candidate(
-        runs, score_return=100.0, completed=False, progress=200.0
-    )
+    search._upsert_candidate(runs, score_return=100.0, completed=False, progress=200.0)
     candidate = search._upsert_candidate(
         runs, score_return=10.0, completed=True, progress=300.0
     )
@@ -216,12 +212,8 @@ def test_improvement_mode_promotes_success_and_mutates_from_root() -> None:
     assert search.best_success_return == 1.0
     assert search.coverage_total == 1
     assert search._lanes[0].parent is search.best_candidate()
-    assert {
-        job.replay_limit_runs for job in search._coverage_templates
-    } == {0}
-    assert {
-        job.resume_parent_run_index for job in search._coverage_templates
-    } == {1}
+    assert {job.replay_limit_runs for job in search._coverage_templates} == {0}
+    assert {job.resume_parent_run_index for job in search._coverage_templates} == {1}
 
     search.next_actions()
     search.observe(
@@ -323,9 +315,7 @@ def test_completed_parent_mutation_replays_its_proven_suffix() -> None:
     search._cut_depth = 2
     search._prepare_coverage()
     job = next(
-        job
-        for job in search._coverage_templates
-        if job.branch == ActionRun(4, 1)
+        job for job in search._coverage_templates if job.branch == ActionRun(4, 1)
     )
     search._lanes[0] = search._state_for_job(job)
 
@@ -351,7 +341,7 @@ def test_beam_warm_start_replays_the_seed_program_exactly_on_one_lane() -> None:
 
 
 def test_beam_remaps_basic_warm_start_into_standard_by_action_name() -> None:
-    policy = JerkPolicy(
+    policy = ActionRunPolicy(
         action_names=ACTIONS,
         action_runs=_runs((1, 2), (6, 1)),
         fallback_action=0,
@@ -366,7 +356,7 @@ def test_beam_remaps_basic_warm_start_into_standard_by_action_name() -> None:
 
 
 def test_beam_rejects_warm_start_action_absent_from_selected_table() -> None:
-    policy = JerkPolicy(
+    policy = ActionRunPolicy(
         action_names=("noop", "left"),
         action_runs=_runs((1, 1)),
         fallback_action=0,

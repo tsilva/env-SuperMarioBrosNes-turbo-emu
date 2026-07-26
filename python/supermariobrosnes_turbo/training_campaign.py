@@ -12,7 +12,7 @@ import threading
 from types import ModuleType
 
 from . import training_ui
-from .jerk import run_directory_for_state
+from .action_run import run_directory_for_state
 from .training_ui import (
     PlainReporter,
     TrainingEvent,
@@ -110,9 +110,7 @@ def _algorithm_module(algorithm: str) -> ModuleType:
         from . import go_explore_training
 
         return go_explore_training
-    from . import training
-
-    return training
+    raise ValueError(f"unknown training algorithm {algorithm!r}")
 
 
 def _level_args(args: argparse.Namespace, state: str) -> argparse.Namespace:

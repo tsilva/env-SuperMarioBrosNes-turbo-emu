@@ -59,7 +59,7 @@ from .benchmark_sps import (
     stable_retro_buttons,
 )
 from .env import VISIBLE_HEIGHT, VISIBLE_WIDTH
-from .jerk import find_policy_path_for_state, load_jerk_checkpoint
+from .action_run import find_policy_path_for_state, load_action_run_checkpoint
 
 
 DEFAULT_HF_FILENAME = "final_model.zip"
@@ -300,7 +300,7 @@ class SdlPolicyPlayer:
         self.requested_action_set = args.action_set
         self.model_path = resolve_model_path(args.model, args.filename, args.cache_dir)
         apply_checkpoint_defaults(args, self.model_path)
-        self.model = load_jerk_checkpoint(self.model_path)
+        self.model = load_action_run_checkpoint(self.model_path)
         self._validate_model(self.model)
         self.initial_model = self.model
         self.initial_model_path = self.model_path
@@ -414,7 +414,7 @@ class SdlPolicyPlayer:
         )
         if model_path is None:
             return False
-        model = load_jerk_checkpoint(model_path)
+        model = load_action_run_checkpoint(model_path)
         self._validate_model(model)
         model.reset()
         self._configure_model_actions(model)
@@ -682,10 +682,10 @@ class SdlPolicyPlayer:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Play a JERK Mario action sequence from disk or Hugging Face.",
+        description="Play a Mario action-run policy from disk or Hugging Face.",
     )
     parser.add_argument(
-        "model", help="Local JERK .zip/.json, HF repo id, or Hugging Face URL"
+        "model", help="Local action-run .zip/.json, HF repo id, or Hugging Face URL"
     )
     parser.add_argument(
         "--filename", default=None, help="Checkpoint filename inside an HF repo"

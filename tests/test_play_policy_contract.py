@@ -7,13 +7,17 @@ import numpy as np
 import pytest
 
 from supermariobrosnes_turbo import ACTION_SETS
-from supermariobrosnes_turbo.jerk import ActionRun, JerkPolicy, policy_path_for_state
+from supermariobrosnes_turbo.action_run import (
+    ActionRun,
+    ActionRunPolicy,
+    policy_path_for_state,
+)
 
 from supermariobrosnes_turbo import manual_playback
 from supermariobrosnes_turbo import policy_playback as play_policy
 
 
-def test_jerk_checkpoint_uses_native_lightweight_contract() -> None:
+def test_action_run_checkpoint_uses_native_lightweight_contract() -> None:
     args = play_policy.parse_args(["final_model.zip"])
 
     play_policy.apply_checkpoint_defaults(args, Path("final_model.zip"))
@@ -172,7 +176,7 @@ def test_level_counters_map_to_named_policy() -> None:
 def test_player_activates_policy_for_new_level(tmp_path: Path) -> None:
     target_path = policy_path_for_state("Level1-2", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
-    JerkPolicy(
+    ActionRunPolicy(
         action_names=ACTION_SETS["basic"],
         action_runs=(ActionRun(2, 1), ActionRun(3, 1)),
         fallback_action=0,
@@ -199,7 +203,7 @@ def test_player_infers_each_automatic_level_policy_action_set(
 ) -> None:
     target_path = policy_path_for_state("Level8-4", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
-    JerkPolicy(
+    ActionRunPolicy(
         action_names=ACTION_SETS["standard"],
         action_runs=(ActionRun(7, 1),),
         fallback_action=0,
@@ -226,7 +230,7 @@ def test_player_rejects_automatic_policy_outside_explicit_action_set(
 ) -> None:
     target_path = policy_path_for_state("Level8-4", runs_root=tmp_path)
     target_path.parent.mkdir(parents=True)
-    JerkPolicy(
+    ActionRunPolicy(
         action_names=ACTION_SETS["standard"],
         action_runs=(ActionRun(7, 1),),
         fallback_action=0,

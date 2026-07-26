@@ -8,9 +8,9 @@ from typing import Any
 
 import numpy as np
 
-from .jerk import (
+from .action_run import (
     ActionRun,
-    JerkPolicy,
+    ActionRunPolicy,
     canonicalize_runs,
     run_step_count,
     truncate_runs,
@@ -801,9 +801,9 @@ class BeamSearch:
             default=None,
         )
 
-    def policy(self) -> JerkPolicy:
+    def policy(self) -> ActionRunPolicy:
         candidate = self.best_candidate()
-        return JerkPolicy(
+        return ActionRunPolicy(
             action_names=self.action_names,
             action_runs=() if candidate is None else candidate.runs,
             fallback_action=self.fallback_action,

@@ -5,14 +5,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-import json
 import logging
 import os
 from pathlib import Path
 import shlex
 import struct
-import threading
-import time
 from typing import Any
 import uuid
 
@@ -26,24 +23,14 @@ from . import (
     list_available_states,
 )
 from .env import VISIBLE_HEIGHT, VISIBLE_WIDTH
-from .jerk import (
-    JerkPolicy,
-    JerkSearch,
-    policy_path_for_state,
+from .action_run import (
+    ActionRunPolicy,
     resolve_state_name,
-    run_directory_for_state,
 )
 from . import training_ui
-from .training_ui import (
-    PlainReporter,
-    TrainingEvent,
-    TrainingReporter,
-    TrainingResult,
-    TrainingSnapshot,
-)
 
 
-LOGGER = logging.getLogger("jerk_train")
+LOGGER = logging.getLogger("training")
 ACTION_SET = "standard"
 DEFAULT_ALGORITHM = "go-explore"
 TOTAL_TIMESTEPS = 10_000_000
@@ -52,14 +39,9 @@ MAX_EPISODE_STEPS = 4_500
 STALL_STEPS = 300
 CHECKPOINT_FREQ = 0
 LOG_INTERVAL_STEPS = 10_000
-ARCHIVE_REPLAY_PROBABILITY_INITIAL = 0.25
-ARCHIVE_REPLAY_PROBABILITY_MAX = 0.9
 PROTECTED_PREFIX_RUNS = 8
-MAX_PREFIX_SHORTEN_RUNS = 16
-DEEP_MUTATION_PROBABILITY = 0.25
 RUN_DURATION_MEAN = 4.0
 RUN_DURATION_MAX = 32
-RETAINED_LIMIT = 256
 FALLBACK_ACTION = "noop"
 STEP_COST = 0.1
 REWARD_FUNCTION_PROGRESS_SCORE = "progress-score"
@@ -274,8 +256,8 @@ def reward_function_step_cost(reward_id: str, max_episode_steps: int) -> float:
     return definition.default_step_cost
 
 
-class MarioJerkTask:
-    """Vectorized state task matching rlab's JERK reward and failure contract."""
+class MarioTask:
+    """Vectorized state task shared by action-run search algorithms."""
 
     def __init__(
         self,
@@ -308,7 +290,7 @@ class MarioJerkTask:
         self.step_cost = float(default_step_cost if step_cost is None else step_cost)
         self.noop_reset_max = int(noop_reset_max)
         if self.step_cost < 0.0:
-            raise ValueError("JERK step_cost must be non-negative")
+            raise ValueError("step_cost must be non-negative")
         if self.noop_reset_max < 0:
             raise ValueError("noop_reset_max must be non-negative")
         observation_options: dict[str, Any] = {"obs_crop": OBSERVATION_FREE_CROP}
@@ -596,13 +578,6 @@ class MarioJerkTask:
         self.native.close()
 
 
-def exploit_probability(total_steps: int, total_timesteps: int) -> float:
-    return min(
-        ARCHIVE_REPLAY_PROBABILITY_MAX,
-        ARCHIVE_REPLAY_PROBABILITY_INITIAL + total_steps / max(total_timesteps, 1),
-    )
-
-
 def _force_policy_overwrite(args: argparse.Namespace) -> bool:
     """Allow replacement only for the canonical default run or explicit force."""
     reward_id = getattr(args, "reward_function", None)
@@ -616,7 +591,7 @@ def _force_policy_overwrite(args: argparse.Namespace) -> bool:
     )
 
 
-def _save_policy(policy: JerkPolicy, path: Path, *, force: bool = False) -> Path:
+def _save_policy(policy: ActionRunPolicy, path: Path, *, force: bool = False) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.parent / f".{path.stem}.{uuid.uuid4().hex}.zip"
     policy.save(temporary)
@@ -643,31 +618,6 @@ def _protect_existing_policies(run_dir: Path, *, force: bool) -> None:
             f"refusing to overwrite existing policy {existing}; "
             "pass --overwrite to replace policies in this run directory"
         )
-
-
-def _metric_row(
-    search: JerkSearch, *, elapsed: float, accepted: bool
-) -> dict[str, Any]:
-    candidate = search.best_candidate()
-    return {
-        "timesteps": search.global_step,
-        "episodes": search.completed_episodes,
-        "retained_count": search.retained_count,
-        "locked_count": search.locked_count,
-        "incomplete_retained_count": search.incomplete_retained_count,
-        "successful_episodes": search.successful_episodes,
-        "archive_replay_probability": search.archive_replay_probability,
-        "archive_selected_prefix_return_mean": (
-            search.archive_selected_prefix_return_mean
-        ),
-        "best_program_steps": candidate.step_count if candidate else 0,
-        "best_program_runs": len(candidate.runs) if candidate else 0,
-        "best_mean_reward": candidate.mean_return if candidate else 0.0,
-        "best_progress": candidate.progress if candidate else 0.0,
-        "best_completed": candidate.completed if candidate else False,
-        "accepted": accepted,
-        "loop_fps": search.global_step / max(elapsed, 1e-9),
-    }
 
 
 def _format_box(title: str, rows: list[tuple[str, str]]) -> str:
@@ -712,7 +662,7 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--algorithm",
-        choices=("jerk", "beam", "go-explore"),
+        choices=("beam", "go-explore"),
         default=DEFAULT_ALGORITHM,
         help=f"training search algorithm (default: {DEFAULT_ALGORITHM})",
     )
@@ -768,29 +718,10 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
         type=float,
         default=None,
         help=(
-            "per-step return charge; defaults to 0.1 for JERK and "
-            "1 / (max episode steps + 1) for beam/Go-Explore"
+            "per-step return charge; defaults to the selected reward function "
+            "for Go-Explore and 1 / (max episode steps + 1) for beam"
         ),
     )
-
-    jerk = parser.add_argument_group("JERK search tuning")
-    jerk.add_argument(
-        "--archive-replay-probability-initial",
-        type=float,
-        default=None,
-    )
-    jerk.add_argument(
-        "--archive-replay-probability-max",
-        type=float,
-        default=None,
-    )
-    jerk.add_argument("--max-prefix-shorten-runs", type=int, default=None)
-    jerk.add_argument(
-        "--deep-mutation-probability",
-        type=float,
-        default=None,
-    )
-    jerk.add_argument("--retained-limit", type=int, default=None)
 
     beam = parser.add_argument_group("beam search tuning")
     beam.add_argument("--beam-width", type=int, default=None)
@@ -866,331 +797,10 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     return parser
 
 
-def _initial_snapshot(args: argparse.Namespace) -> TrainingSnapshot:
-    run_dir = args.output or run_directory_for_state(args.state)
-    target_policy_path = (
-        policy_path_for_state(args.state)
-        if args.output is None
-        else run_dir / f"{args.state}.zip"
-    )
-    return TrainingSnapshot(
-        algorithm="JERK",
-        state=args.state,
-        seed=args.seed,
-        lanes=args.lanes,
-        stop_rule=(
-            "first completion"
-            if (not args.continue_after_completion)
-            else "transition budget"
-        ),
-        output=target_policy_path,
-        total_timesteps=args.transitions,
-        action_set=f"{args.action_set} ({len(ACTION_SETS[args.action_set])} actions)",
-    )
-
-
-def _run_training(
-    args: argparse.Namespace,
-    reporter: TrainingReporter,
-    stop_event: threading.Event,
-) -> TrainingResult:
-    run_dir = args.output or run_directory_for_state(args.state)
-    target_policy_path = (
-        policy_path_for_state(args.state)
-        if args.output is None
-        else run_dir / f"{args.state}.zip"
-    )
-    metrics_path = run_dir / "episodes.jsonl"
-    action_names = tuple(ACTION_SETS[args.action_set])
-    search = JerkSearch(
-        n_envs=args.lanes,
-        seed=args.seed,
-        total_timesteps=args.transitions,
-        action_names=action_names,
-        fallback_action=args.fallback_action,
-        archive_replay_probability_initial=args.archive_replay_probability_initial,
-        archive_replay_probability_max=args.archive_replay_probability_max,
-        protected_prefix_runs=args.protected_prefix_runs,
-        max_prefix_shorten_runs=args.max_prefix_shorten_runs,
-        deep_mutation_probability=args.deep_mutation_probability,
-        run_duration_mean=args.run_duration_mean,
-        run_duration_max=args.run_duration_max,
-        retained_limit=args.retained_limit,
-    )
-    task = MarioJerkTask(
-        state=args.state,
-        state_dir=args.state_dir,
-        rom_path=args.rom,
-        seed=args.seed,
-        n_envs=args.lanes,
-        max_episode_steps=args.max_episode_steps,
-        stall_steps=args.stall_steps,
-        step_cost=args.step_cost,
-        noop_reset_max=args.noop_reset_max,
-        action_set=args.action_set,
-    )
-    started_at = time.perf_counter()
-    next_log = args.log_every
-    next_checkpoint = args.checkpoint_every if args.checkpoint_every > 0 else None
-    accepted = False
-    accepted_lane: int | None = None
-    first_success_step: int | None = None
-    stopped_on_completion = False
-    last_best: tuple[bool, float, float] | None = None
-    initial_snapshot = _initial_snapshot(args)
-    last_ui_publish = float("-inf")
-    reporter.start(initial_snapshot)
-    try:
-        task.reset()
-        while search.global_step < args.transitions and not stop_event.is_set():
-            actions = search.next_actions()
-            _observations, rewards, failure_dones, records, successes = task.step(
-                actions
-            )
-            search_dones = failure_dones | successes
-            search.observe(
-                rewards,
-                search_dones,
-                records,
-                progresses=getattr(task, "max_global_x", None),
-            )
-            step = search.global_step
-
-            if np.any(successes):
-                if not accepted:
-                    accepted = True
-                    first_success_step = step
-                    accepted_lane = int(np.flatnonzero(successes)[0])
-                    accepted_path = run_dir / "checkpoints" / f"{args.state}-{step}.zip"
-                    _save_policy(
-                        search.policy(),
-                        accepted_path,
-                        force=_force_policy_overwrite(args),
-                    )
-                    elapsed = time.perf_counter() - started_at
-                    success_row = _metric_row(
-                        search, elapsed=elapsed, accepted=accepted
-                    )
-                    reporter.update(
-                        training_ui.snapshot_from_row(
-                            algorithm="JERK",
-                            state=args.state,
-                            seed=args.seed,
-                            lanes=args.lanes,
-                            stop_rule=initial_snapshot.stop_rule,
-                            output=target_policy_path,
-                            total_timesteps=args.transitions,
-                            row={**success_row, "elapsed": elapsed},
-                            status="Level completed",
-                        ),
-                        TrainingEvent(
-                            "success",
-                            "Level completed",
-                            elapsed,
-                            (
-                                ("State", args.state),
-                                ("Transition", f"{step:,}"),
-                                ("Lane", f"{accepted_lane:,}"),
-                                ("Checkpoint", str(accepted_path)),
-                            ),
-                        ),
-                        force=True,
-                    )
-                if not args.continue_after_completion:
-                    stopped_on_completion = True
-                    break
-
-            task.reset_lanes(search_dones)
-
-            elapsed = time.perf_counter() - started_at
-            event = None
-            if records:
-                candidate = search.best_candidate()
-                current_best = (
-                    False if candidate is None else candidate.completed,
-                    0.0 if candidate is None else candidate.progress,
-                    0.0 if candidate is None else candidate.mean_return,
-                )
-                if current_best != last_best and candidate is not None:
-                    event = TrainingEvent(
-                        "new-best",
-                        f"Best path updated: return {candidate.mean_return:,.1f} · x {candidate.progress:,.0f}",
-                        elapsed,
-                    )
-                    last_best = current_best
-            now = time.monotonic()
-            routine_due = now - last_ui_publish >= training_ui.UPDATE_INTERVAL_SECONDS
-            log_due = step >= next_log
-            checkpoint_due = next_checkpoint is not None and step >= next_checkpoint
-            ui_row = None
-            snapshot = None
-            if event is not None or routine_due or log_due or checkpoint_due:
-                ui_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
-                snapshot = training_ui.snapshot_from_row(
-                    algorithm="JERK",
-                    state=args.state,
-                    seed=args.seed,
-                    lanes=args.lanes,
-                    stop_rule=initial_snapshot.stop_rule,
-                    output=target_policy_path,
-                    total_timesteps=args.transitions,
-                    row={**ui_row, "elapsed": elapsed},
-                )
-                reporter.update(snapshot, event)
-                last_ui_publish = now
-
-            if log_due:
-                assert ui_row is not None and snapshot is not None
-                row = ui_row
-                with metrics_path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(row, sort_keys=True) + "\n")
-                if isinstance(reporter, PlainReporter):
-                    reporter.update(
-                        snapshot,
-                        force=True,
-                    )
-                while next_log <= step:
-                    next_log += args.log_every
-
-            while next_checkpoint is not None and step >= next_checkpoint:
-                assert snapshot is not None
-                checkpoint_path = _save_policy(
-                    search.policy(),
-                    run_dir / "checkpoints" / f"{args.state}-{step}.zip",
-                    force=_force_policy_overwrite(args),
-                )
-                reporter.update(
-                    snapshot,
-                    TrainingEvent(
-                        "checkpoint",
-                        f"Checkpoint saved: {checkpoint_path}",
-                        elapsed,
-                    ),
-                    force=True,
-                )
-                next_checkpoint += args.checkpoint_every
-
-        final_candidate = search.best_candidate()
-        final_policy = JerkPolicy(
-            action_names=search.action_names,
-            action_runs=() if final_candidate is None else final_candidate.runs,
-            fallback_action=search.fallback_action,
-        )
-        user_stopped = stop_event.is_set()
-        final_path = None
-        if not user_stopped or final_candidate is not None:
-            final_path = _save_policy(
-                final_policy,
-                target_policy_path,
-                force=_force_policy_overwrite(args),
-            )
-        elapsed = time.perf_counter() - started_at
-        final_row = _metric_row(search, elapsed=elapsed, accepted=accepted)
-        final_row["accepted_lane"] = accepted_lane
-        final_row["first_success_step"] = first_success_step
-        final_row["budget_exhausted"] = search.global_step >= args.transitions
-        final_row["stopped_on_completion"] = stopped_on_completion
-        final_row["phase"] = "final"
-        final_row["best_program_steps"] = final_policy.step_count
-        final_row["best_program_runs"] = final_policy.run_count
-        stop_reason = "user" if user_stopped else "success" if accepted else "budget"
-        final_row["stop_reason"] = stop_reason
-        with metrics_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(final_row, sort_keys=True) + "\n")
-    finally:
-        task.close()
-
-    play_command = (
-        None
-        if final_path is None
-        else _play_command(
-            args.state,
-            final_path,
-            default_output=args.output is None,
-            rom_path=args.rom,
-            action_set=args.action_set,
-        )
-    )
-    result = TrainingResult(
-        algorithm="JERK",
-        stop_reason=stop_reason,
-        exit_code=130 if stop_reason == "user" else 0 if accepted else 1,
-        accepted=accepted,
-        elapsed=elapsed,
-        timesteps=search.global_step,
-        episodes=search.completed_episodes,
-        final_row=final_row,
-        policy_path=final_path,
-        play_command=play_command,
-        error_message=(
-            None
-            if accepted or stop_reason == "user"
-            else f"JERK exhausted {args.transitions} transitions without a {args.state} success event"
-        ),
-    )
-    reporter.update(
-        training_ui.snapshot_from_row(
-            algorithm="JERK",
-            state=args.state,
-            seed=args.seed,
-            lanes=args.lanes,
-            stop_rule=initial_snapshot.stop_rule,
-            output=target_policy_path,
-            total_timesteps=args.transitions,
-            row={**final_row, "elapsed": elapsed},
-            status="Stopped" if stop_reason == "user" else "Complete",
-        ),
-        TrainingEvent(
-            "stop" if stop_reason == "user" else "complete",
-            "Training stopped safely" if stop_reason == "user" else "Training finished",
-            elapsed,
-        ),
-        force=True,
-    )
-    return result
-
-
-def _validate_args(args: argparse.Namespace) -> None:
-    if (
-        min(
-            args.transitions,
-            args.lanes,
-            args.max_episode_steps,
-            args.max_prefix_shorten_runs,
-            args.run_duration_max,
-            args.retained_limit,
-            args.log_every,
-        )
-        <= 0
-    ):
-        raise SystemExit("JERK training sizes must be positive")
-    if args.transitions % args.lanes:
-        raise SystemExit("--transitions must be divisible by --lanes")
-    if (
-        args.stall_steps < 0
-        or args.noop_reset_max < 0
-        or args.checkpoint_every < 0
-        or args.protected_prefix_runs < 0
-        or (args.step_cost is not None and args.step_cost < 0.0)
-    ):
-        raise SystemExit("JERK non-negative sizes must not be negative")
-    if args.run_duration_mean < 1.0:
-        raise SystemExit("--run-duration-mean must be at least one")
-    if not 0.0 <= args.deep_mutation_probability <= 1.0:
-        raise SystemExit("--deep-mutation-probability must be in [0, 1]")
-
-
 def _apply_algorithm_defaults(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
 ) -> None:
-    jerk_defaults = {
-        "archive_replay_probability_initial": ARCHIVE_REPLAY_PROBABILITY_INITIAL,
-        "archive_replay_probability_max": ARCHIVE_REPLAY_PROBABILITY_MAX,
-        "max_prefix_shorten_runs": MAX_PREFIX_SHORTEN_RUNS,
-        "deep_mutation_probability": DEEP_MUTATION_PROBABILITY,
-        "retained_limit": RETAINED_LIMIT,
-    }
     from .beam_training import (
         BEAM_REFRESH_EPISODES,
         BEAM_DEEPEN_AFTER_GENERATIONS,
@@ -1214,7 +824,6 @@ def _apply_algorithm_defaults(
         "reward_function": REWARD_FUNCTION_SPEEDRUN,
     }
     defaults_by_algorithm = {
-        "jerk": jerk_defaults,
         "beam": beam_defaults,
         "go-explore": go_explore_defaults,
     }
@@ -1238,10 +847,8 @@ def _apply_algorithm_defaults(
                 args.reward_function,
                 args.max_episode_steps,
             )
-        elif args.algorithm == "beam":
-            args.step_cost = score_first_step_cost(args.max_episode_steps)
         else:
-            args.step_cost = STEP_COST
+            args.step_cost = score_first_step_cost(args.max_episode_steps)
 
 
 def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
@@ -1272,45 +879,7 @@ def main(argv: list[str] | None = None, *, prog: str | None = None) -> int:
         from .go_explore_training import run
 
         return run(args, parser)
-    _validate_args(args)
-    try:
-        ui_mode = training_ui.resolve_ui_mode(args.ui)
-    except ValueError as exc:
-        parser.error(str(exc))
-
-    run_dir = args.output or run_directory_for_state(args.state)
-    _protect_existing_policies(
-        run_dir,
-        force=_force_policy_overwrite(args),
-    )
-    run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "episodes.jsonl").write_text("", encoding="utf-8")
-    (run_dir / "run_config.json").write_text(
-        json.dumps(vars(args), default=str, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-    stop_event = threading.Event()
-    if ui_mode == "tui":
-        try:
-            result = training_ui.run_training_app(
-                _initial_snapshot(args),
-                lambda reporter, shared_stop: _run_training(
-                    args, reporter, shared_stop
-                ),
-                stop_event=stop_event,
-            )
-        except BaseException as error:
-            training_ui.report_failure_traceback(error)
-            return 1
-    else:
-        with training_ui.safe_sigint(stop_event):
-            result = _run_training(args, PlainReporter(LOGGER), stop_event)
-
-    training_ui.print_summary(result, LOGGER)
-    if result.error_message is not None:
-        raise RuntimeError(result.error_message)
-    return result.exit_code
+    raise AssertionError(f"unhandled training algorithm {args.algorithm!r}")
 
 
 if __name__ == "__main__":

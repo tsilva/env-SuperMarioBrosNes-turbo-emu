@@ -13,7 +13,7 @@ import numpy as np
 
 from . import ACTION_SETS
 from .beam import BeamSearch
-from .jerk import ActionRun, JerkPolicy, run_directory_for_state
+from .action_run import ActionRun, ActionRunPolicy, run_directory_for_state
 from . import training_ui
 from .training_ui import (
     PlainReporter,
@@ -25,7 +25,7 @@ from .training_ui import (
 from .training import (
     N_ENVS,
     REWARD_MODE_SCORE_FIRST,
-    MarioJerkTask,
+    MarioTask,
     _force_policy_overwrite,
     _play_command,
     _protect_existing_policies,
@@ -42,7 +42,7 @@ BRANCH_DURATIONS = (1, 2, 4, 8, 16, 32)
 
 
 def _remap_policy_runs(
-    policy: JerkPolicy, target_action_names: tuple[str, ...]
+    policy: ActionRunPolicy, target_action_names: tuple[str, ...]
 ) -> tuple[ActionRun, ...]:
     """Map a compatible policy into the selected action table by name."""
     target_indices = {name: index for index, name in enumerate(target_action_names)}
@@ -151,11 +151,11 @@ def _run_training(
         deepening_after_generations=args.beam_deepen_after_generations,
     )
     if args.initial_policy is not None:
-        initial_policy = JerkPolicy.load(args.initial_policy)
+        initial_policy = ActionRunPolicy.load(args.initial_policy)
         search.seed_program(
             _remap_policy_runs(initial_policy, search.action_names)
         )
-    task = MarioJerkTask(
+    task = MarioTask(
         state=args.state,
         state_dir=args.state_dir,
         rom_path=args.rom,

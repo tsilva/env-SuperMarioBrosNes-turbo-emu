@@ -110,7 +110,7 @@ class TrainingResult:
 
 
 class TrainingReporter(Protocol):
-    """Reporter contract shared by the independent JERK and beam loops."""
+    """Reporter contract shared by the independent training loops."""
 
     def start(self, snapshot: TrainingSnapshot) -> None: ...
 

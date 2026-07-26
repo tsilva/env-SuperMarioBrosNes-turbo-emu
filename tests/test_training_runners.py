@@ -11,7 +11,10 @@ import pytest
 from supermariobrosnes_turbo import training as train
 from supermariobrosnes_turbo import beam_training as train_beam
 from supermariobrosnes_turbo import go_explore_training as train_go_explore
-from supermariobrosnes_turbo.jerk import JerkPolicy, policy_path_for_state
+from supermariobrosnes_turbo.action_run import (
+    ActionRunPolicy,
+    policy_path_for_state,
+)
 
 
 class _FakeFailureTask:
@@ -117,7 +120,6 @@ class _NullReporter:
 
 
 TRAINERS = [
-    (train, ["--algorithm", "jerk"]),
     (
         train_beam,
         [
@@ -156,7 +158,7 @@ def test_default_go_explore_run_overwrites_existing_canonical_policy(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(train_go_explore, "MarioJerkTask", _FakeSuccessTask)
+    monkeypatch.setattr(train_go_explore, "MarioTask", _FakeSuccessTask)
     policy_path = policy_path_for_state("Level1-1")
     policy_path.parent.mkdir(parents=True)
     policy_path.write_bytes(b"old policy")
@@ -175,7 +177,9 @@ def test_default_go_explore_run_overwrites_existing_canonical_policy(
     result = train_go_explore._run_training(args, _NullReporter(), threading.Event())
 
     assert result.accepted
-    assert JerkPolicy.load(policy_path).metadata["search_algorithm"] == "go-explore"
+    assert (
+        ActionRunPolicy.load(policy_path).metadata["search_algorithm"] == "go-explore"
+    )
 
 
 def test_beam_uses_go_explore_score_first_shaped_return(
@@ -189,7 +193,7 @@ def test_beam_uses_go_explore_score_first_shaped_return(
 
     output = tmp_path / "score-first-beam"
     output.mkdir()
-    monkeypatch.setattr(train_beam, "MarioJerkTask", task_factory)
+    monkeypatch.setattr(train_beam, "MarioTask", task_factory)
     args = _parse_args(
         [
             "Level1-1",
@@ -226,7 +230,7 @@ def test_go_explore_forwards_and_identifies_speedrun_reward(
 
     output = tmp_path / "speedrun"
     output.mkdir()
-    monkeypatch.setattr(train_go_explore, "MarioJerkTask", task_factory)
+    monkeypatch.setattr(train_go_explore, "MarioTask", task_factory)
     args = _parse_args(
         [
             "Level1-1",
@@ -244,7 +248,7 @@ def test_go_explore_forwards_and_identifies_speedrun_reward(
     )
 
     result = train_go_explore._run_training(args, _NullReporter(), threading.Event())
-    policy = JerkPolicy.load(output / "Level1-1.zip")
+    policy = ActionRunPolicy.load(output / "Level1-1.zip")
 
     assert result.accepted
     assert captured["reward_mode"] == train.REWARD_FUNCTION_SPEEDRUN
@@ -286,7 +290,7 @@ def test_trainers_forward_seeded_reset_noops(
 
     output = tmp_path / module.__name__
     output.mkdir()
-    monkeypatch.setattr(module, "MarioJerkTask", task_factory)
+    monkeypatch.setattr(module, "MarioTask", task_factory)
     args = _parse_args(
         [
             "Level1-1",
@@ -309,7 +313,7 @@ def test_trainers_forward_seeded_reset_noops(
 
     assert captured["noop_reset_max"] == 120
     if module is train_go_explore:
-        policy = JerkPolicy.load(output / "Level1-1.zip")
+        policy = ActionRunPolicy.load(output / "Level1-1.zip")
         assert policy.metadata["noop_reset_max"] == 120
         assert policy.metadata["robustification"] is True
 
@@ -338,7 +342,7 @@ def test_continued_beam_publishes_later_better_completion_and_archives_all(
 ) -> None:
     output = tmp_path / "continued-beam"
     output.mkdir()
-    monkeypatch.setattr(train_beam, "MarioJerkTask", _FakeImprovingSuccessTask)
+    monkeypatch.setattr(train_beam, "MarioTask", _FakeImprovingSuccessTask)
     args = _parse_args(
         [
             "Level1-1",
@@ -369,7 +373,7 @@ def test_continued_beam_publishes_later_better_completion_and_archives_all(
 
     result = train_beam._run_training(args, _NullReporter(), threading.Event())
 
-    policy = JerkPolicy.load(output / "Level1-1.zip")
+    policy = ActionRunPolicy.load(output / "Level1-1.zip")
     successes = [
         json.loads(line)
         for line in output.joinpath("successes.jsonl").read_text().splitlines()
@@ -403,7 +407,7 @@ def test_both_trainers_finish_success_and_budget_paths(
 ) -> None:
     output = tmp_path / f"{module.__name__}-{expected_reason}"
     output.mkdir()
-    monkeypatch.setattr(module, "MarioJerkTask", task_class)
+    monkeypatch.setattr(module, "MarioTask", task_class)
     args = _parse_args(
         [
             "Level1-1",
@@ -427,7 +431,7 @@ def test_both_trainers_finish_success_and_budget_paths(
     final_row = json.loads(output.joinpath("episodes.jsonl").read_text())
     assert final_row["stop_reason"] == expected_reason
     if module is train_go_explore:
-        policy = JerkPolicy.load(result.policy_path)
+        policy = ActionRunPolicy.load(result.policy_path)
         run_config = train_go_explore._run_config(args)
         assert policy.metadata["cell_representation"] == (
             "level-sublevel-area-pointer-x8-y16-route-ground-power"
@@ -455,7 +459,7 @@ def test_safe_stop_without_candidate_writes_final_metrics_but_no_policy(
 ) -> None:
     output = tmp_path / module.__name__
     output.mkdir()
-    monkeypatch.setattr(module, "MarioJerkTask", _FakeFailureTask)
+    monkeypatch.setattr(module, "MarioTask", _FakeFailureTask)
     args = _parse_args(
         [
             "Level1-1",
@@ -490,7 +494,7 @@ def test_safe_stop_with_candidate_saves_replayable_policy(
 ) -> None:
     output = tmp_path / module.__name__
     output.mkdir()
-    monkeypatch.setattr(module, "MarioJerkTask", _FakeFailureTask)
+    monkeypatch.setattr(module, "MarioTask", _FakeFailureTask)
     args = _parse_args(
         [
             "Level1-1",
@@ -519,37 +523,3 @@ def test_safe_stop_with_candidate_saves_replayable_policy(
     final_row = json.loads(output.joinpath("episodes.jsonl").read_text())
     assert final_row["stop_reason"] == "user"
     assert final_row["best_program_steps"] > 0
-
-
-def test_periodic_metric_schema_is_unchanged_and_only_final_has_stop_reason(
-    tmp_path: Path, monkeypatch
-) -> None:
-    output = tmp_path / "periodic"
-    output.mkdir()
-    monkeypatch.setattr(train, "MarioJerkTask", _FakeFailureTask)
-    args = _parse_args(
-        [
-            "Level1-1",
-            "--algorithm",
-            "jerk",
-            "--output",
-            str(output),
-            "--transitions",
-            "2",
-            "--lanes",
-            "1",
-            "--log-every",
-            "1",
-        ]
-    )
-
-    result = train._run_training(args, _NullReporter(), threading.Event())
-    rows = [
-        json.loads(line)
-        for line in output.joinpath("episodes.jsonl").read_text().splitlines()
-    ]
-
-    assert result.stop_reason == "budget"
-    assert len(rows) == 3
-    assert all("stop_reason" not in row for row in rows[:-1])
-    assert rows[-1]["stop_reason"] == "budget"
