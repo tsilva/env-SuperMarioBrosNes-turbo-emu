@@ -8,6 +8,7 @@ from importlib import resources
 import json
 import os
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, Union
 
 import numpy as np
@@ -540,7 +541,11 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     lane count and the machine's available parallelism.
     """
 
-    metadata = {"render_modes": ["rgb_array"], "autoreset_mode": AutoresetMode.DISABLED}
+    metadata = {
+        "render_modes": ["rgb_array"],
+        "autoreset_mode": AutoresetMode.DISABLED,
+        "turbo_api_version": 1,
+    }
     supports_live_snapshots = True
     _BUTTON_COMBOS = STABLE_RETRO_BUTTON_COMBOS
 
@@ -657,6 +662,16 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         )
         self.obs_layout = _normalize_obs_layout(obs_layout)
         self.obs_copy, self._copy_obs, self._unsafe_view = _normalize_obs_copy(obs_copy)
+        self.observation_ownership = (
+            "owned"
+            if self.obs_copy == "copy"
+            else "unsafe_view" if self.obs_copy == "unsafe_view" else "safe_view"
+        )
+        self.observation_buffer_depth = (
+            None
+            if self.obs_copy == "copy"
+            else 1 if self.obs_copy == "unsafe_view" else 2
+        )
         self._info_mode, self._info_keys = _normalize_info_filter(info_filter)
         selected_extra_names = (
             set()
@@ -711,6 +726,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.num_envs = self._core.num_envs
         self.num_threads = self._core.num_threads
         self.num_buttons = len(NES_BUTTONS)
+        self.buttons = tuple(NES_BUTTONS)
         self._action_mode = action_mode
         self._mask_to_controller_bytes = self._build_mask_to_controller_bytes()
         self.button_combos = [list(combo) for combo in self._BUTTON_COMBOS]
@@ -764,6 +780,32 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.render_mode = render_mode
         self.viewer = None
         self.closed = False
+        self.live_snapshots_deterministic = True
+        self.capabilities = MappingProxyType(
+            {
+                "supported_action_modes": (
+                    "all",
+                    "filtered",
+                    "discrete",
+                    "multi_discrete",
+                    "custom_discrete",
+                ),
+                "supported_observation_layouts": ("chw", "hwc"),
+                "supported_resize_algorithms": ("nearest", "bilinear", "area"),
+                "supported_observation_copy_modes": (
+                    "copy",
+                    "safe_view",
+                    "unsafe_view",
+                ),
+                "supports_maxpool_last_two": True,
+                "supports_sticky_action_prob": True,
+                "supports_reward_clipping": True,
+                "supports_noop_reset": True,
+                "supports_state_catalog": True,
+                "supports_live_snapshots": True,
+                "supports_per_lane_rgb": True,
+            }
+        )
         self._pending_seed: int | Sequence[int | None] | None = None
         self._pending_options: dict[str, Any] | list[dict[str, Any]] | None = None
         self._step_pending = False
@@ -809,6 +851,41 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             end = offset + descriptor["width"]
             self._extra_info_offsets[descriptor["name"]] = (offset, end)
             offset = end
+        if self._info_mode == "none":
+            signal_specs: dict[str, Mapping[str, Any]] = {}
+        else:
+            selected_keys = (
+                set(AVAILABLE_INFO_KEYS)
+                if self._info_keys is None
+                else set(self._info_keys)
+            )
+            signal_specs = {
+                key: {
+                    "dtype": np.dtype(np.int_),
+                    "shape": (),
+                    "available_on_reset": True,
+                    "available_on_step": True,
+                }
+                for key, _attr_name in _BASE_INFO_ARRAYS
+                if key in selected_keys
+            }
+            for descriptor in self._selected_extra_descriptors:
+                signal_specs[descriptor["name"]] = {
+                    "dtype": descriptor["dtype"],
+                    "shape": (
+                        ()
+                        if descriptor["width"] == 1
+                        else (descriptor["width"],)
+                    ),
+                    "available_on_reset": True,
+                    "available_on_step": True,
+                }
+        self.signal_schema = MappingProxyType(
+            {
+                name: MappingProxyType(dict(spec))
+                for name, spec in signal_specs.items()
+            }
+        )
         self._active_state_indices = np.empty((self.num_envs,), dtype=np.int32)
         self._info_all_lanes_mask = np.ones((self.num_envs,), dtype=np.bool_)
         self._rgb_frames: np.ndarray | None = (
@@ -1331,13 +1408,23 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._core.rgb_frames_into(self._rgb_frames)
         return [self._rgb_frames[index].copy() for index in range(self.num_envs)]
 
+    def render_lane(self, lane: int) -> np.ndarray | None:
+        if self.closed:
+            raise RuntimeError("cannot render a closed environment")
+        if isinstance(lane, (bool, np.bool_)):
+            raise TypeError("lane must be an integer")
+        try:
+            lane_index = int(lane)
+        except (TypeError, ValueError):
+            raise TypeError("lane must be an integer") from None
+        if lane_index != lane:
+            raise TypeError("lane must be an integer")
+        if not 0 <= lane_index < self.num_envs:
+            raise IndexError(f"lane must be in [0, {self.num_envs - 1}]")
+        return self.get_images()[lane_index]
+
     def render(self) -> np.ndarray | None:
-        frames = [frame for frame in self.get_images() if frame is not None]
-        if not frames:
-            return None
-        if len(frames) == 1:
-            return frames[0]
-        return np.concatenate(frames, axis=0)
+        return self.render_lane(0)
 
 def _normalize_state_value(state: Any) -> Any:
     name = getattr(state, "name", None)

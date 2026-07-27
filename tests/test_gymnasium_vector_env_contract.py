@@ -68,6 +68,7 @@ def test_public_surface_is_manual_reset_only() -> None:
     ):
         assert not hasattr(SuperMarioBrosNesTurboVecEnv, name)
     assert SuperMarioBrosNesTurboVecEnv.metadata["autoreset_mode"] is AutoresetMode.DISABLED
+    assert SuperMarioBrosNesTurboVecEnv.metadata["turbo_api_version"] == 1
     with pytest.raises(TypeError, match="done_on"):
         SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", done_on=[])
     with pytest.raises(TypeError, match="autoreset_mode"):
@@ -690,6 +691,30 @@ def test_rgb_render_is_independent_of_policy_preprocessing() -> None:
         assert obs.shape == (1, 1, 84, 84)
         assert frames is not None
         assert frames.shape == (224, 240, 3)
+    finally:
+        env.close()
+
+
+def test_turbo_api_v1_capabilities_signals_ownership_and_per_lane_rendering() -> None:
+    env = make_env(num_envs=2, render_mode="rgb_array", obs_copy="safe_view")
+    try:
+        env.reset(seed=17)
+        assert env.observation_ownership == "safe_view"
+        assert env.observation_buffer_depth == 2
+        assert env.live_snapshots_deterministic is True
+        assert env.capabilities["supported_action_modes"] == (
+            "all",
+            "filtered",
+            "discrete",
+            "multi_discrete",
+            "custom_discrete",
+        )
+        assert "x_pos" in env.signal_schema
+        images = env.get_images()
+        assert len(images) == env.num_envs
+        assert all(image is not None and image.shape == (224, 240, 3) for image in images)
+        np.testing.assert_array_equal(env.render_lane(1), images[1])
+        np.testing.assert_array_equal(env.render(), images[0])
     finally:
         env.close()
 
