@@ -165,8 +165,12 @@ def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_availabl
     for required in (
         "default_rom_path",
         "supports_live_snapshots",
+        "snapshot_codec_api_version",
+        "snapshot_codec_id",
         "capture_snapshots",
-        '"snapshots": [handles[0], handles[0]]',
+        "encode_snapshots",
+        "decode_snapshots",
+        '"snapshots": [decoded_handles[0], decoded_handles[0]]',
         'restored_infos["start_source"]',
         "np.testing.assert_array_equal(expected, actual)",
         "canonical SMB ROM is unavailable",

@@ -547,6 +547,16 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         "turbo_api_version": 1,
     }
     supports_live_snapshots = True
+    snapshot_codec_api_version = 1
+    snapshot_codec_id = "supermariobrosnes-turbo.portable-v1"
+    snapshot_codec_metadata = MappingProxyType(
+        {
+            "api_version": snapshot_codec_api_version,
+            "codec_id": snapshot_codec_id,
+            "payload_kind": "portable_bytes",
+            "restore_semantics": ("episode_start", "continuation"),
+        }
+    )
     _BUTTON_COMBOS = STABLE_RETRO_BUTTON_COMBOS
 
     def __init__(
@@ -1395,6 +1405,58 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         if not np.all(self._initialized[mask]):
             raise RuntimeError("cannot capture a lane before its initial reset")
         return tuple(self._core.capture_snapshots(self._obs, mask))
+
+    def encode_snapshots(
+        self,
+        snapshots: Sequence[Any | None],
+    ) -> tuple[bytes | None, ...]:
+        if self.closed:
+            raise RuntimeError("cannot encode snapshots from a closed environment")
+        if isinstance(snapshots, (str, bytes, bytearray, memoryview)) or not isinstance(
+            snapshots, Sequence
+        ):
+            raise TypeError("snapshots must be a lane-aligned sequence")
+        if len(snapshots) != self.num_envs:
+            raise ValueError(f"snapshots must have length {self.num_envs}")
+        payloads: list[bytes | None] = []
+        for lane, snapshot in enumerate(snapshots):
+            if snapshot is None:
+                payloads.append(None)
+                continue
+            try:
+                payload = snapshot.to_bytes()
+            except (AttributeError, TypeError):
+                raise TypeError(
+                    f"snapshots[{lane}] is not a Mario live snapshot handle"
+                ) from None
+            payloads.append(bytes(payload))
+        return tuple(payloads)
+
+    def decode_snapshots(
+        self,
+        payloads: Sequence[bytes | bytearray | memoryview | None],
+    ) -> tuple[Any | None, ...]:
+        if self.closed:
+            raise RuntimeError("cannot decode snapshots into a closed environment")
+        if self._step_pending:
+            raise RuntimeError(
+                "cannot decode snapshots while an asynchronous step is pending"
+            )
+        if isinstance(payloads, (str, bytes, bytearray, memoryview)) or not isinstance(
+            payloads, Sequence
+        ):
+            raise TypeError("payloads must be a lane-aligned sequence")
+        if len(payloads) != self.num_envs:
+            raise ValueError(f"payloads must have length {self.num_envs}")
+        normalized: list[bytes | None] = []
+        for lane, payload in enumerate(payloads):
+            if payload is None:
+                normalized.append(None)
+            elif isinstance(payload, (bytes, bytearray, memoryview)):
+                normalized.append(bytes(payload))
+            else:
+                raise TypeError(f"payloads[{lane}] must be bytes-like or None")
+        return tuple(self._core.decode_snapshots(normalized))
 
     def close(self) -> None:
         self.closed = True

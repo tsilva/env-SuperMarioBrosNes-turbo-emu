@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Add Snapshot Codec API v1 with versioned portable bytes for exact
+  cross-process and cross-host restoration of emulator, observation-stack,
+  reset-catalog, sticky-action, and lane RNG state.
+- Keep live snapshot handles session-local while allowing explicitly encoded
+  snapshots to be decoded into a compatible environment instance.
 
 ## 0.5.0 - 2026-07-27
 

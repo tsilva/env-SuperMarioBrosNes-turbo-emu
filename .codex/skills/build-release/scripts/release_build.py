@@ -732,6 +732,8 @@ print({EXTENSION_NAME}.__file__)
 assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
 assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
 assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.supports_live_snapshots is True
+assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_api_version == 1
+assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_id == "supermariobrosnes-turbo.portable-v1"
 assert len(INFO_KEYS) == 10
 assert len(EXTRA_INFO_KEYS) > 0
 assert AVAILABLE_INFO_KEYS == INFO_KEYS + EXTRA_INFO_KEYS
@@ -787,11 +789,15 @@ else:
         assert handles[0] is not None
         assert handles[0].nbytes > 0
         assert handles[1] is None
+        payloads = env.encode_snapshots(handles)
+        assert payloads[0].startswith(b"SMBVEC1\\0")
+        assert payloads[1] is None
+        decoded_handles = env.decode_snapshots(payloads)
 
         reset_options = {{
             "reset_mask": np.asarray([True, True], dtype=np.bool_),
             "state_indices": np.asarray([-1, -1], dtype=np.int32),
-            "snapshots": [handles[0], handles[0]],
+            "snapshots": [decoded_handles[0], decoded_handles[0]],
         }}
         restored, restored_infos = env.reset(options=reset_options)
         np.testing.assert_array_equal(restored[0], restored[1])

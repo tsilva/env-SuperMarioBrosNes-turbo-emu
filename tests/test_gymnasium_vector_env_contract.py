@@ -379,6 +379,83 @@ def test_live_snapshots_support_mixed_resets_cross_lane_fanout_and_exact_replay(
         env.close()
 
 
+def test_portable_snapshot_codec_restores_exactly_across_environment_instances() -> None:
+    source = make_env(
+        state_catalog=("Level1-1", "Level1-2"),
+        num_envs=2,
+        frame_skip=1,
+        frame_stack=2,
+        sticky_action_prob=0.35,
+    )
+    destination = make_env(
+        state_catalog=("Level1-1", "Level1-2"),
+        num_envs=2,
+        frame_skip=1,
+        frame_stack=2,
+        sticky_action_prob=0.35,
+    )
+    try:
+        source.reset(
+            seed=[101, 202],
+            options={"state_indices": np.asarray([0, 1], dtype=np.int32)},
+        )
+        for step in range(12):
+            actions = noop(2)
+            actions[:, NES_BUTTONS.index("RIGHT")] = 1
+            actions[step % 2, NES_BUTTONS.index("A")] = 1
+            source.step(actions)
+
+        mask = np.ones((2,), dtype=np.bool_)
+        handles = source.capture_snapshots(mask)
+        payloads = source.encode_snapshots(handles)
+        assert source.snapshot_codec_api_version == 1
+        assert source.snapshot_codec_id == "supermariobrosnes-turbo.portable-v1"
+        assert source.snapshot_codec_metadata["payload_kind"] == "portable_bytes"
+        assert all(payload is not None and payload.startswith(b"SMBVEC1\0") for payload in payloads)
+
+        decoded = destination.decode_snapshots(payloads)
+        state_indices = np.full((2,), -1, dtype=np.int32)
+        source_obs, _ = source.reset(
+            options={
+                "reset_mask": mask,
+                "state_indices": state_indices,
+                "snapshots": handles,
+            }
+        )
+        destination_obs, _ = destination.reset(
+            options={
+                "reset_mask": mask,
+                "state_indices": state_indices,
+                "snapshots": decoded,
+            }
+        )
+        np.testing.assert_array_equal(destination_obs, source_obs)
+        np.testing.assert_array_equal(destination.ram(), source.ram())
+        np.testing.assert_array_equal(
+            destination.active_state_indices(), source.active_state_indices()
+        )
+
+        for step in range(24):
+            actions = noop(2)
+            actions[:, NES_BUTTONS.index("RIGHT")] = 1
+            actions[(step + 1) % 2, NES_BUTTONS.index("A")] = 1
+            source_result = source.step(actions)
+            destination_result = destination.step(actions)
+            for source_value, destination_value in zip(
+                source_result[:4], destination_result[:4], strict=True
+            ):
+                np.testing.assert_array_equal(destination_value, source_value)
+
+        corrupted = list(payloads)
+        assert corrupted[0] is not None
+        corrupted[0] = corrupted[0][:-1]
+        with pytest.raises(ValueError, match="truncated"):
+            destination.decode_snapshots(corrupted)
+    finally:
+        source.close()
+        destination.close()
+
+
 @pytest.mark.parametrize("num_threads", [1, 4])
 def test_live_snapshot_restore_is_bit_exact_and_lane_local(num_threads: int) -> None:
     info_keys = [

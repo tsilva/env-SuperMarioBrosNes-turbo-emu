@@ -8,7 +8,7 @@ use numpy::{
 };
 use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyModule;
+use pyo3::types::{PyBytes, PyModule};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use std::sync::Arc;
 use std::thread;
@@ -43,6 +43,10 @@ impl MarioLiveSnapshot {
     #[getter]
     fn nbytes(&self) -> usize {
         self.snapshot.nbytes()
+    }
+
+    fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
+        PyBytes::new_bound(py, &self.snapshot.encode_portable())
     }
 
     fn __reduce__(&self) -> PyResult<()> {
@@ -499,6 +503,34 @@ impl RetroVecEnv {
             .inner
             .capture_snapshots(obs_slice, mask_slice)
             .map_err(PyRuntimeError::new_err)?;
+        snapshots
+            .into_iter()
+            .map(|snapshot| {
+                snapshot
+                    .map(|snapshot| {
+                        Py::new(
+                            py,
+                            MarioLiveSnapshot {
+                                owner: Arc::clone(&self.snapshot_owner),
+                                snapshot,
+                            },
+                        )
+                    })
+                    .transpose()
+            })
+            .collect()
+    }
+
+    pub fn decode_snapshots<'py>(
+        &self,
+        py: Python<'py>,
+        payloads: Vec<Option<Vec<u8>>>,
+    ) -> PyResult<Vec<Option<Py<MarioLiveSnapshot>>>> {
+        self.validate_vec_len(payloads.len(), "payloads")?;
+        let snapshots = self
+            .inner
+            .decode_snapshots(&payloads)
+            .map_err(PyValueError::new_err)?;
         snapshots
             .into_iter()
             .map(|snapshot| {

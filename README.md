@@ -148,7 +148,20 @@ observations, infos = env.reset(
 env.close()
 ```
 
-Handles are reusable, session-local, and intentionally not pickleable. A
+Handles are reusable, session-local, and intentionally not pickleable. Snapshot
+Codec API v1 explicitly converts them to versioned portable bytes and binds
+decoded handles to a compatible destination environment:
+
+```python
+payloads = env.encode_snapshots(captured)
+restored_handles = another_env.decode_snapshots(payloads)
+observations, infos = another_env.reset(
+    options={"reset_mask": capture_mask, "snapshots": restored_handles},
+)
+```
+
+The immutable `snapshot_codec_metadata` declaration identifies
+`supermariobrosnes-turbo.portable-v1` and its supported restore semantics. A
 single masked reset can mix snapshot starts with ordinary `state_indices`;
 `infos["start_source"]` distinguishes `"snapshot"` from `"environment"`.
 

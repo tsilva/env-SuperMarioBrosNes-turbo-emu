@@ -9,6 +9,7 @@ use smb_turbo_driver::{decode_extra_info, selected_extra_info_width};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub(crate) const PARALLEL_ENV_THRESHOLD: usize = 4;
+const PORTABLE_VEC_SNAPSHOT_MAGIC: &[u8; 8] = b"SMBVEC1\0";
 const DEFAULT_MASK_CROP_TOP: usize = 32;
 const DEFAULT_AREA_SRC_WIDTH: usize = VISIBLE_FRAME_WIDTH;
 const DEFAULT_AREA_SRC_HEIGHT: usize = VISIBLE_FRAME_HEIGHT - DEFAULT_MASK_CROP_TOP;
@@ -152,6 +153,55 @@ pub struct LiveSnapshot {
 impl LiveSnapshot {
     pub fn nbytes(&self) -> usize {
         std::mem::size_of::<Self>() + self.env.core.heap_nbytes() + self.observation.capacity()
+    }
+
+    pub fn encode_portable(&self) -> Vec<u8> {
+        let machine = self.env.encode_portable_state();
+        let mut output =
+            Vec::with_capacity(32 + machine.len().saturating_add(self.observation.len()));
+        output.extend_from_slice(PORTABLE_VEC_SNAPSHOT_MAGIC);
+        output.extend_from_slice(&self.active_state_index.to_le_bytes());
+        output.push(self.last_action);
+        output.extend_from_slice(&self.rng.state.to_le_bytes());
+        output.extend_from_slice(&(self.observation.len() as u32).to_le_bytes());
+        output.extend_from_slice(&(machine.len() as u32).to_le_bytes());
+        output.extend_from_slice(&self.observation);
+        output.extend_from_slice(&machine);
+        output
+    }
+
+    fn decode_portable(
+        template: &NesEmulator,
+        payload: &[u8],
+        expected_observation_len: usize,
+    ) -> Result<Self, String> {
+        let mut input = VecSnapshotReader::new(payload);
+        input.expect(PORTABLE_VEC_SNAPSHOT_MAGIC, "magic")?;
+        let active_state_index = input.i32("active_state_index")?;
+        let last_action = input.u8("last_action")?;
+        let rng_state = input.u64("rng_state")?;
+        if rng_state == 0 {
+            return Err("portable snapshot rng_state must be non-zero".to_string());
+        }
+        let observation_len = input.u32("observation_len")? as usize;
+        let machine_len = input.u32("machine_len")? as usize;
+        if observation_len != expected_observation_len {
+            return Err(format!(
+                "portable snapshot observation length {observation_len} does not match environment length {expected_observation_len}"
+            ));
+        }
+        let observation = input.take(observation_len, "observation")?.to_vec();
+        let machine = input.take(machine_len, "machine")?;
+        input.finish()?;
+        let mut env = template.clone();
+        env.decode_portable_state(machine)?;
+        Ok(Self {
+            env,
+            active_state_index,
+            last_action,
+            rng: XorShift64 { state: rng_state },
+            observation,
+        })
     }
 }
 
@@ -367,6 +417,47 @@ impl MarioVecEnv {
                 })
             })
             .collect())
+    }
+
+    pub fn decode_snapshots(
+        &self,
+        payloads: &[Option<Vec<u8>>],
+    ) -> Result<Vec<Option<LiveSnapshot>>, String> {
+        let config = self.config;
+        if payloads.len() != config.num_envs {
+            return Err(format!(
+                "portable snapshot payloads must contain {} lanes, got {}",
+                config.num_envs,
+                payloads.len()
+            ));
+        }
+        payloads
+            .iter()
+            .enumerate()
+            .map(|(env_idx, payload)| {
+                let Some(payload) = payload else {
+                    return Ok(None);
+                };
+                let snapshot = LiveSnapshot::decode_portable(
+                    &self.envs[env_idx],
+                    payload,
+                    config.obs_len_per_env(),
+                )?;
+                let valid_state_index = if self.state_catalog.is_empty() {
+                    snapshot.active_state_index == -1
+                } else {
+                    snapshot.active_state_index >= 0
+                        && (snapshot.active_state_index as usize) < self.state_catalog.len()
+                };
+                if !valid_state_index {
+                    return Err(format!(
+                        "portable snapshot lane {env_idx} has incompatible active_state_index {}",
+                        snapshot.active_state_index
+                    ));
+                }
+                Ok(Some(snapshot))
+            })
+            .collect()
     }
 
     pub fn reset_mixed_into(
@@ -974,6 +1065,77 @@ impl XorShift64 {
             return 0;
         }
         (self.next_u64() % upper_exclusive as u64) as usize
+    }
+}
+
+struct VecSnapshotReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> VecSnapshotReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn take(&mut self, count: usize, field: &str) -> Result<&'a [u8], String> {
+        let end = self
+            .offset
+            .checked_add(count)
+            .ok_or_else(|| format!("portable snapshot {field} length overflow"))?;
+        let value = self.bytes.get(self.offset..end).ok_or_else(|| {
+            format!(
+                "portable snapshot is truncated at {field}: need {count} bytes, have {}",
+                self.bytes.len().saturating_sub(self.offset)
+            )
+        })?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn expect(&mut self, expected: &[u8], field: &str) -> Result<(), String> {
+        if self.take(expected.len(), field)? != expected {
+            return Err(format!("portable snapshot has invalid {field}"));
+        }
+        Ok(())
+    }
+
+    fn u8(&mut self, field: &str) -> Result<u8, String> {
+        Ok(self.take(1, field)?[0])
+    }
+
+    fn u32(&mut self, field: &str) -> Result<u32, String> {
+        let bytes: [u8; 4] = self
+            .take(4, field)?
+            .try_into()
+            .expect("snapshot reader returned the requested field width");
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    fn i32(&mut self, field: &str) -> Result<i32, String> {
+        let bytes: [u8; 4] = self
+            .take(4, field)?
+            .try_into()
+            .expect("snapshot reader returned the requested field width");
+        Ok(i32::from_le_bytes(bytes))
+    }
+
+    fn u64(&mut self, field: &str) -> Result<u64, String> {
+        let bytes: [u8; 8] = self
+            .take(8, field)?
+            .try_into()
+            .expect("snapshot reader returned the requested field width");
+        Ok(u64::from_le_bytes(bytes))
+    }
+
+    fn finish(&self) -> Result<(), String> {
+        if self.offset != self.bytes.len() {
+            return Err(format!(
+                "portable snapshot has {} trailing bytes",
+                self.bytes.len() - self.offset
+            ));
+        }
+        Ok(())
     }
 }
 

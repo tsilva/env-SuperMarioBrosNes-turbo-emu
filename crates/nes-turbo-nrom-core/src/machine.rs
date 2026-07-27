@@ -31,6 +31,8 @@ pub const DEFAULT_GRAY_RESIZE_WIDTH: usize = 84;
 pub const DEFAULT_GRAY_RESIZE_HEIGHT: usize = 84;
 pub const DEFAULT_GRAY_RESIZE_PIXELS: usize =
     DEFAULT_GRAY_RESIZE_WIDTH * DEFAULT_GRAY_RESIZE_HEIGHT;
+const PORTABLE_CORE_STATE_MAGIC: &[u8; 8] = b"NROMST1\0";
+const PORTABLE_MACHINE_STATE_MAGIC: &[u8; 8] = b"NROMGM1\0";
 
 pub trait PpuTiming: Clone + Send + Sync + 'static {
     const SPRITE0_HIT_DOT: Option<usize>;
@@ -1840,6 +1842,152 @@ impl<T: PpuTiming> NromCore<T> {
         Ok(())
     }
 
+    /// Encode all mutable mapper-0 machine state without embedding ROM bytes or
+    /// renderer caches. The payload is stable across process and host
+    /// boundaries for this codec version.
+    pub fn encode_portable_state(&self) -> Vec<u8> {
+        let mut output = Vec::with_capacity(4_512);
+        output.extend_from_slice(PORTABLE_CORE_STATE_MAGIC);
+        output.extend_from_slice(&[self.cpu.a, self.cpu.x, self.cpu.y, self.cpu.sp]);
+        output.extend_from_slice(&self.cpu.pc.to_le_bytes());
+        output.push(self.cpu.p);
+        output.extend_from_slice(&self.ram);
+        output.extend_from_slice(&[
+            self.controller_state,
+            self.controller_shift,
+            u8::from(self.controller_strobe),
+        ]);
+        output.extend_from_slice(&self.extra_cycles.to_le_bytes());
+
+        output.extend_from_slice(&[
+            self.ppu.ctrl,
+            self.ppu.mask,
+            self.ppu.status,
+            self.ppu.oam_addr,
+        ]);
+        output.extend_from_slice(&self.ppu.oam);
+        output.extend_from_slice(&self.ppu.vram);
+        output.extend_from_slice(&self.ppu.palette);
+        output.push(self.ppu.data_buffer);
+        output.extend_from_slice(&self.ppu.addr.to_le_bytes());
+        output.extend_from_slice(&self.ppu.temp_addr.to_le_bytes());
+        output.extend_from_slice(&self.ppu.scroll_addr.to_le_bytes());
+        output.extend_from_slice(&self.ppu.render_addr.to_le_bytes());
+        output.push(u8::from(self.ppu.first_write));
+        output.push(self.ppu.fine_x);
+        output.extend_from_slice(&self.ppu.scroll_x_px.to_le_bytes());
+        output.extend_from_slice(&self.ppu.scroll_y_px.to_le_bytes());
+        output.push(self.ppu.scroll_x_low);
+        match self.ppu.scroll_override_x_px {
+            Some(value) => {
+                output.push(1);
+                output.extend_from_slice(&value.to_le_bytes());
+            }
+            None => {
+                output.push(0);
+                output.extend_from_slice(&0_u16.to_le_bytes());
+            }
+        }
+        output.extend_from_slice(&(self.ppu.frame_dot as u32).to_le_bytes());
+        output.extend_from_slice(&(self.ppu.next_event_dot as u32).to_le_bytes());
+        output.extend_from_slice(&self.ppu.frame.to_le_bytes());
+        output.push(u8::from(self.ppu.nmi_pending));
+        output
+    }
+
+    /// Restore a payload created by [`Self::encode_portable_state`] into the
+    /// already-constructed ROM-specific core. Static ROM and rendering tables
+    /// stay owned by the destination instance.
+    pub fn decode_portable_state(&mut self, state: &[u8]) -> Result<(), String> {
+        let mut input = PortableStateReader::new(state);
+        input.expect(PORTABLE_CORE_STATE_MAGIC, "core magic")?;
+        let mut restored = self.clone();
+
+        restored.cpu.a = input.u8("cpu.a")?;
+        restored.cpu.x = input.u8("cpu.x")?;
+        restored.cpu.y = input.u8("cpu.y")?;
+        restored.cpu.sp = input.u8("cpu.sp")?;
+        restored.cpu.pc = input.u16("cpu.pc")?;
+        restored.cpu.p = input.u8("cpu.p")?;
+        restored.ram.copy_from_slice(input.take(2048, "ram")?);
+        restored.controller_state = input.u8("controller_state")?;
+        restored.controller_shift = input.u8("controller_shift")?;
+        restored.controller_strobe = input.boolean("controller_strobe")?;
+        restored.extra_cycles = input.u16("extra_cycles")?;
+
+        restored.ppu.ctrl = input.u8("ppu.ctrl")?;
+        restored.ppu.mask = input.u8("ppu.mask")?;
+        restored.ppu.status = input.u8("ppu.status")?;
+        restored.ppu.oam_addr = input.u8("ppu.oam_addr")?;
+        restored
+            .ppu
+            .oam
+            .copy_from_slice(input.take(256, "ppu.oam")?);
+        restored
+            .ppu
+            .vram
+            .copy_from_slice(input.take(2048, "ppu.vram")?);
+        restored
+            .ppu
+            .palette
+            .copy_from_slice(input.take(32, "ppu.palette")?);
+        restored.ppu.data_buffer = input.u8("ppu.data_buffer")?;
+        restored.ppu.addr = input.u16("ppu.addr")?;
+        restored.ppu.temp_addr = input.u16("ppu.temp_addr")?;
+        restored.ppu.scroll_addr = input.u16("ppu.scroll_addr")?;
+        restored.ppu.render_addr = input.u16("ppu.render_addr")?;
+        restored.ppu.first_write = input.boolean("ppu.first_write")?;
+        restored.ppu.fine_x = input.u8("ppu.fine_x")?;
+        restored.ppu.scroll_x_px = input.u16("ppu.scroll_x_px")?;
+        restored.ppu.scroll_y_px = input.u16("ppu.scroll_y_px")?;
+        restored.ppu.scroll_x_low = input.u8("ppu.scroll_x_low")?;
+        restored.ppu.scroll_override_x_px = match input.u8("ppu.scroll_override_x_px.tag")? {
+            0 => {
+                let ignored = input.u16("ppu.scroll_override_x_px.value")?;
+                if ignored != 0 {
+                    return Err(
+                        "portable state ppu.scroll_override_x_px has a non-zero absent value"
+                            .to_string(),
+                    );
+                }
+                None
+            }
+            1 => Some(input.u16("ppu.scroll_override_x_px.value")?),
+            value => {
+                return Err(format!(
+                    "portable state ppu.scroll_override_x_px has invalid tag {value}"
+                ));
+            }
+        };
+        restored.ppu.frame_dot = input.u32("ppu.frame_dot")? as usize;
+        restored.ppu.next_event_dot = input.u32("ppu.next_event_dot")? as usize;
+        restored.ppu.frame = input.u64("ppu.frame")?;
+        restored.ppu.nmi_pending = input.boolean("ppu.nmi_pending")?;
+        input.finish()?;
+
+        if restored.ppu.frame_dot >= PPU_DOTS_PER_FRAME {
+            return Err(format!(
+                "portable state ppu.frame_dot {} is outside the frame",
+                restored.ppu.frame_dot
+            ));
+        }
+        if restored.ppu.next_event_dot > PPU_DOTS_PER_FRAME {
+            return Err(format!(
+                "portable state ppu.next_event_dot {} is outside the frame",
+                restored.ppu.next_event_dot
+            ));
+        }
+        restored.ppu.refresh_gray_palette_cache();
+        *restored
+            .ppu
+            .gray_bg_quad_cache
+            .frame
+            .get_mut()
+            .expect("renderer cache lock must be available during restore") = None;
+        *self = restored;
+        Ok(())
+    }
+
     #[inline]
     pub fn write_rgb_frame(&self, dst: &mut [u8]) {
         self.ppu.write_rgb_frame(dst);
@@ -3275,6 +3423,28 @@ impl<G: NromGame> NromMachine<G> {
         Ok(())
     }
 
+    pub fn encode_portable_state(&self) -> Vec<u8> {
+        let core = self.core.encode_portable_state();
+        let mut output = Vec::with_capacity(PORTABLE_MACHINE_STATE_MAGIC.len() + 1 + core.len());
+        output.extend_from_slice(PORTABLE_MACHINE_STATE_MAGIC);
+        output.push(u8::from(self.done));
+        output.extend_from_slice(&core);
+        output
+    }
+
+    pub fn decode_portable_state(&mut self, state: &[u8]) -> Result<(), String> {
+        let mut input = PortableStateReader::new(state);
+        input.expect(PORTABLE_MACHINE_STATE_MAGIC, "machine magic")?;
+        let done = input.boolean("machine.done")?;
+        let core_state = input.remaining();
+        let mut core = self.core.clone();
+        core.decode_portable_state(core_state)?;
+        self.core = core;
+        self.done = done;
+        G::synchronize(&mut self.core, &mut self.signals);
+        Ok(())
+    }
+
     #[inline]
     pub fn step_frame(&mut self, controller_state: u8) -> f32 {
         if self.done {
@@ -3411,6 +3581,92 @@ impl<G: NromGame> NromMachine<G> {
                 .ppu
                 .tick_profiled(budget.pending_ppu_cycles, profiler);
         }
+    }
+}
+
+struct PortableStateReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> PortableStateReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn take(&mut self, count: usize, field: &str) -> Result<&'a [u8], String> {
+        let end = self
+            .offset
+            .checked_add(count)
+            .ok_or_else(|| format!("portable state {field} length overflow"))?;
+        let value = self.bytes.get(self.offset..end).ok_or_else(|| {
+            format!(
+                "portable state is truncated at {field}: need {count} bytes, have {}",
+                self.bytes.len().saturating_sub(self.offset)
+            )
+        })?;
+        self.offset = end;
+        Ok(value)
+    }
+
+    fn expect(&mut self, expected: &[u8], field: &str) -> Result<(), String> {
+        let actual = self.take(expected.len(), field)?;
+        if actual != expected {
+            return Err(format!("portable state has invalid {field}"));
+        }
+        Ok(())
+    }
+
+    fn u8(&mut self, field: &str) -> Result<u8, String> {
+        Ok(self.take(1, field)?[0])
+    }
+
+    fn boolean(&mut self, field: &str) -> Result<bool, String> {
+        match self.u8(field)? {
+            0 => Ok(false),
+            1 => Ok(true),
+            value => Err(format!(
+                "portable state {field} has invalid boolean {value}"
+            )),
+        }
+    }
+
+    fn u16(&mut self, field: &str) -> Result<u16, String> {
+        let bytes: [u8; 2] = self
+            .take(2, field)?
+            .try_into()
+            .expect("portable reader returned the requested field width");
+        Ok(u16::from_le_bytes(bytes))
+    }
+
+    fn u32(&mut self, field: &str) -> Result<u32, String> {
+        let bytes: [u8; 4] = self
+            .take(4, field)?
+            .try_into()
+            .expect("portable reader returned the requested field width");
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    fn u64(&mut self, field: &str) -> Result<u64, String> {
+        let bytes: [u8; 8] = self
+            .take(8, field)?
+            .try_into()
+            .expect("portable reader returned the requested field width");
+        Ok(u64::from_le_bytes(bytes))
+    }
+
+    fn remaining(&self) -> &'a [u8] {
+        &self.bytes[self.offset..]
+    }
+
+    fn finish(&self) -> Result<(), String> {
+        if self.offset != self.bytes.len() {
+            return Err(format!(
+                "portable state has {} trailing bytes",
+                self.bytes.len() - self.offset
+            ));
+        }
+        Ok(())
     }
 }
 
