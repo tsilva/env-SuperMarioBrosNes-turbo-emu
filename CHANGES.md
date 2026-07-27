@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.6.0 - 2026-07-27
+
 - Add Snapshot Codec API v1 with versioned portable bytes for exact
   cross-process and cross-host restoration of emulator, observation-stack,
   reset-catalog, sticky-action, and lane RNG state.
