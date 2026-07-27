@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.5.0 - 2026-07-27
+
 - Add the immutable Turbo Vector API v1 declaration for capabilities, signals,
   action semantics, observation ownership, state catalogs, and per-lane RGB
   rendering.
