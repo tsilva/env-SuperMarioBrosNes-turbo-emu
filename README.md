@@ -111,6 +111,25 @@ if done.any():
 **Important:** Autoreset is disabled. Selectively reset terminal lanes before
 stepping again.
 
+## Turbo Vector API v1
+
+`SuperMarioBrosNesTurboVecEnv` implements the strict Turbo Vector API v1:
+
+- `metadata["turbo_api_version"]` is `1`, and `metadata["render_modes"]`
+  advertises `rgb_array`.
+- Immutable `capabilities` and `signal_schema` declarations describe supported
+  features and the dtype, shape, and reset/step availability of every signal.
+- `buttons`, `action_mode`, `action_preset`, `action_table`,
+  `action_meanings`, and `action_table_hash` expose the resolved action
+  semantics without provider-specific probing.
+- `state_catalog` is an immutable ordered tuple. Callers select reset states
+  with an `int32` `state_indices` array and inspect the read-only active indices
+  with `active_state_indices()`; state sampling and lane routing remain
+  caller-owned.
+- `observation_ownership` and `observation_buffer_depth` declare the exact
+  lifetime of returned observations. `render_lane(index)` renders one lane,
+  `get_images()` renders all lanes, and `render()` renders lane zero.
+
 Live positions can be captured without advancing emulation and restored into
 any lane of the same environment:
 
