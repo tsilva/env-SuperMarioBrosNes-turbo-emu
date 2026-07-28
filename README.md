@@ -70,6 +70,25 @@ ROM SHA-256 is:
 f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de
 ```
 
+## 🚀 Try PPO training with GradLab
+
+Train the bundled two-minute Mario PPO demo from any directory with one
+published-package command:
+
+```bash
+uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /absolute/path/to/SuperMarioBros.nes
+```
+
+GradLab verifies and uses the raw `.nes` file in place, shows live training
+throughput and metrics, and writes a playable `final_model.zip` below `./runs`.
+It does not require a GradLab install, repository checkout, credentials, or ROM
+registration, and it prints the matching version-pinned `uvx ... play` command
+when training finishes. The demo runs 98,304 steps across 16 environments and
+is calibrated for roughly two minutes on an M1 Pro; timing varies by hardware.
+The published GradLab package currently targets macOS arm64 and Linux x86_64.
+A first invocation may additionally download GradLab, Torch, and environment
+wheels.
+
 ## 🎮 Use
 
 ```python

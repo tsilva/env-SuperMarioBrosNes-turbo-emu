@@ -6,6 +6,7 @@ Provide reinforcement-learning researchers with a high-throughput, vectorized Gy
 
 - Support only Super Mario Bros NES on mapper 0/NROM unless broader emulator scope is deliberately added and validated without regressing the specialized workload.
 - Keep ROM content out of the repository and distributions, allow users to import it through module and installed command entry points and run without supplying its path through the Stable Retro-compatible `RETRO_DATA_PATH` layout, and require canonical validation and performance comparisons to use ROM SHA-256 `f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de`.
+- Document a one-command published-GradLab PPO training demonstration that accepts a local ROM path, shows live training throughput, and keeps the training implementation and recipe outside this repository.
 - Preserve the public `supermariobrosnes_turbo` package, `SuperMarioBrosNesTurboVecEnv`, `Actions`, metadata-derived action meanings and sets, state helpers, and manual and policy playback entry points.
 - Conform to the Gymnasium `VectorEnv` reset and step return contracts, permanently report disabled autoreset, block further stepping of terminal lanes, and support selective reset through `options["reset_mask"]`.
 - Keep every vector lane deterministic under seeding and independently emulated; resetting selected lanes must leave every unselected lane's emulator state, random stream, observation history, sticky action, and counters unchanged.
