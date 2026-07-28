@@ -12,6 +12,7 @@
 /.venv/
 /.venv314/
 /.mypy_cache/
+/.matplotlib/
 /.pytest_cache/
 /.pytest-tmp/
 *.egg-info/
