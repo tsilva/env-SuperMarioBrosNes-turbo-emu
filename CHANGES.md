@@ -2,7 +2,10 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Remove the bundled Go-Explore, Beam, and DreamerV3 trainers, the
+  `smb-turbo train` command, and their training-only UI dependency.
+- Delegate training to version-pinned GradLab PPO and Go-Explore recipes
+  documented as one-command `uvx` workflows.
 
 ## 0.6.0 - 2026-07-27
 

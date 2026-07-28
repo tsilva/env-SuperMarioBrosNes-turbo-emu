@@ -6,7 +6,7 @@ import sys
 
 import pytest
 
-from supermariobrosnes_turbo import cli, state_playback, training
+from supermariobrosnes_turbo import cli, state_playback
 from supermariobrosnes_turbo.action_run import (
     policy_path_for_state,
     resolve_state_name,
@@ -39,77 +39,6 @@ def test_state_resolution_is_exact_and_supports_custom_names(tmp_path: Path) -> 
         resolve_state_name("custom", state_dir=tmp_path)
     with pytest.raises(ValueError, match="unknown state '1-1'"):
         resolve_state_name("1-1", state_dir=tmp_path)
-
-
-def test_train_parser_uses_the_state_key_and_new_flags_only() -> None:
-    parser = training.build_parser()
-    campaign_defaults = parser.parse_args([])
-    assert campaign_defaults.state is None
-    assert campaign_defaults.continue_after_completion is False
-    args = parser.parse_args(
-        [
-            "Level1-1",
-            "--transitions",
-            "100",
-            "--lanes",
-            "4",
-            "--continue-after-completion",
-            "--overwrite",
-        ]
-    )
-
-    assert args.state == "Level1-1"
-    assert args.algorithm == "go-explore"
-    assert args.transitions == 100
-    assert args.lanes == 4
-    assert args.action_set == "standard"
-    assert args.continue_after_completion
-    assert args.overwrite
-    stopped = parser.parse_args(["Level1-1", "--stop-on-completion"])
-    assert stopped.continue_after_completion is False
-    with pytest.raises(SystemExit):
-        parser.parse_args(
-            [
-                "Level1-1",
-                "--continue-after-completion",
-                "--stop-on-completion",
-            ]
-        )
-    with pytest.raises(SystemExit):
-        parser.parse_args(["Level1-1", "--timesteps", "100"])
-
-    with_down = parser.parse_args(["Level8-4", "--action-set", "standard"])
-    assert with_down.action_set == "standard"
-
-
-def test_algorithm_specific_options_are_rejected() -> None:
-    parser = training.build_parser()
-    with pytest.raises(SystemExit):
-        parser.parse_args(["Level1-1", "--algorithm", "beam", "--retained-limit", "3"])
-
-    go_explore_args = parser.parse_args(
-        ["Level1-1", "--algorithm", "go-explore", "--beam-width", "3"]
-    )
-    with pytest.raises(SystemExit):
-        training._apply_algorithm_defaults(parser, go_explore_args)
-
-    reward_args = parser.parse_args(
-        ["Level1-1", "--algorithm", "beam", "--reward-function", "speedrun"]
-    )
-    with pytest.raises(SystemExit):
-        training._apply_algorithm_defaults(parser, reward_args)
-
-
-def test_go_explore_parser_applies_trajectory_finding_defaults() -> None:
-    parser = training.build_parser()
-    args = parser.parse_args(["Level1-1", "--algorithm", "go-explore"])
-
-    training._apply_algorithm_defaults(parser, args)
-
-    assert args.go_explore_explore_steps == 128
-    assert args.reward_function == training.REWARD_FUNCTION_SPEEDRUN
-    assert args.action_set == "standard"
-    assert args.beam_width is None
 
 
 def test_play_parser_owns_modes_and_playback_options() -> None:
@@ -193,20 +122,20 @@ def test_play_prefers_legacy_beam_over_legacy_jerk(tmp_path: Path) -> None:
     assert state_playback.resolve_state_policy("Custom", runs_dir=tmp_path) == canonical
 
 
-def test_unified_cli_exposes_only_import_train_and_play() -> None:
+def test_unified_cli_exposes_only_import_and_play() -> None:
     parser = cli.build_parser()
     help_text = parser.format_help()
 
-    assert "{import,train,play}" in help_text
+    assert "{import,play}" in help_text
+    assert "train" not in help_text
     pyproject = ROOT.joinpath("pyproject.toml").read_text()
     assert 'smb-turbo = "supermariobrosnes_turbo.cli:main"' in pyproject
     assert "smb-turbo-train" not in pyproject
 
 
-@pytest.mark.parametrize("launcher", ["train.py", "play.py"])
-def test_root_launchers_delegate_to_package_cli(launcher: str) -> None:
+def test_root_play_launcher_delegates_to_package_cli() -> None:
     completed = subprocess.run(
-        [sys.executable, str(ROOT / launcher), "--help"],
+        [sys.executable, str(ROOT / "play.py"), "--help"],
         cwd=ROOT,
         check=False,
         capture_output=True,
@@ -215,91 +144,3 @@ def test_root_launchers_delegate_to_package_cli(launcher: str) -> None:
 
     assert completed.returncode == 0, completed.stderr
     assert "Level1-1" in completed.stdout
-
-
-def test_train_main_dispatches_beam(monkeypatch) -> None:
-    from supermariobrosnes_turbo import beam_training
-
-    monkeypatch.setattr(training, "resolve_state_name", lambda state, **_kwargs: state)
-    monkeypatch.setattr(
-        beam_training, "run", lambda args, _parser: int(args.algorithm == "beam")
-    )
-
-    assert training.main(["Level1-1", "--algorithm", "beam"]) == 1
-
-
-def test_train_main_dispatches_go_explore(monkeypatch) -> None:
-    from supermariobrosnes_turbo import go_explore_training
-
-    monkeypatch.setattr(training, "resolve_state_name", lambda state, **_kwargs: state)
-    monkeypatch.setattr(
-        go_explore_training,
-        "run",
-        lambda args, _parser: int(args.algorithm == "go-explore"),
-    )
-
-    assert training.main(["Level1-1"]) == 1
-
-
-def test_train_without_state_dispatches_all_canonical_levels(monkeypatch) -> None:
-    from supermariobrosnes_turbo import training_campaign
-
-    monkeypatch.setattr(
-        training,
-        "list_available_states",
-        lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
-    )
-    selected_defaults: list[tuple[str, bool]] = []
-    monkeypatch.setattr(
-        training_campaign,
-        "run",
-        lambda args, _parser: (
-            selected_defaults.append((args.action_set, args.continue_after_completion))
-            or int(args.state is None)
-        ),
-    )
-
-    assert training.main([]) == 1
-    assert selected_defaults == [("standard", False)]
-
-
-def test_all_level_training_can_explicitly_continue_after_completion(
-    monkeypatch,
-) -> None:
-    from supermariobrosnes_turbo import training_campaign
-
-    monkeypatch.setattr(
-        training,
-        "list_available_states",
-        lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
-    )
-    selected_modes: list[bool] = []
-    monkeypatch.setattr(
-        training_campaign,
-        "run",
-        lambda args, _parser: (
-            selected_modes.append(args.continue_after_completion) or 0
-        ),
-    )
-
-    assert training.main(["--continue-after-completion"]) == 0
-    assert selected_modes == [True]
-
-
-def test_all_level_training_preserves_an_explicit_action_set(monkeypatch) -> None:
-    from supermariobrosnes_turbo import training_campaign
-
-    monkeypatch.setattr(
-        training,
-        "list_available_states",
-        lambda _state_dir=None: training_campaign.CANONICAL_LEVEL_STATES,
-    )
-    selected_action_sets: list[str] = []
-    monkeypatch.setattr(
-        training_campaign,
-        "run",
-        lambda args, _parser: selected_action_sets.append(args.action_set) or 0,
-    )
-
-    assert training.main(["--action-set", "basic"]) == 0
-    assert selected_action_sets == ["basic"]

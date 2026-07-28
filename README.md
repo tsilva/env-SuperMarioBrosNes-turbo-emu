@@ -70,24 +70,36 @@ ROM SHA-256 is:
 f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de
 ```
 
-## 🚀 Try PPO training with GradLab
+## 🚀 Train with GradLab
 
-Train the bundled two-minute Mario PPO demo from any directory with one
-published-package command:
+Training recipes and implementations live in
+[GradLab](https://github.com/tsilva/rlab), keeping this repository focused on
+the environment. Run either published recipe from any directory by passing your
+raw Super Mario Bros `.nes` file directly.
+
+For a short PPO demonstration:
 
 ```bash
 uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /absolute/path/to/SuperMarioBros.nes
 ```
 
-GradLab verifies and uses the raw `.nes` file in place, shows live training
-throughput and metrics, and writes a playable `final_model.zip` below `./runs`.
-It does not require a GradLab install, repository checkout, credentials, or ROM
-registration, and it prints the matching version-pinned `uvx ... play` command
-when training finishes. The demo runs 98,304 steps across 16 environments and
-is calibrated for roughly two minutes on an M1 Pro; timing varies by hardware.
-The published GradLab package currently targets macOS arm64 and Linux x86_64.
-A first invocation may additionally download GradLab, Torch, and environment
-wheels.
+For Go-Explore trajectory discovery, capped at 20 million transitions and
+stopping locally on the first level completion:
+
+```bash
+uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom /absolute/path/to/SuperMarioBros.nes
+```
+
+GradLab verifies and uses the ROM in place, shows live progress, and writes a
+playable `final_model.zip` below `./runs`. No GradLab installation, repository
+checkout, credentials, or ROM registration is required. When training finishes
+or is stopped safely, GradLab prints the matching version-pinned `uvx ... play`
+command for that model.
+
+The PPO demo runs 98,304 steps across 16 environments and is calibrated for
+roughly two minutes on an M1 Pro; timing varies by hardware. The published
+GradLab package currently targets macOS arm64 and Linux x86_64. A first
+invocation may additionally download GradLab, Torch, and environment wheels.
 
 ## 🎮 Use
 
@@ -281,42 +293,22 @@ Researchers who intentionally need unprocessed state can call `env.ram()` for
 an immutable owned `(num_envs, 2048)` `uint8` snapshot. RAM addresses and byte
 decoding are not part of the semantic `info` contract.
 
-## 🏁 Train and play
+## 🏁 Play
 
 ```bash
-smb-turbo train Level1-1
 smb-turbo play
 ```
 
-**Training** searches observation-free `(action, duration)` programs with
-Go-Explore and the `standard` action set by default. When an explicit state is
-supplied, it consumes the transition budget as an anytime improvement search,
-keeping the best completed trajectory locked and publishing only higher-return
-completions; pass `--stop-on-completion` to stop after the first completed path.
-Go-Explore uses the score-blind `speedrun` reward by default: it charges one
-point per step, gives no progress or score reward, and treats life loss as
-failure, so successful trajectories rank strictly by earliest completion.
-Select the score-first alternative by ID with:
+Running `smb-turbo play` without a state starts from `Level1-1`; pass an exact
+state identifier to start elsewhere. It plays manually unless a compatible
+state-keyed action-run policy exists below `runs/`. As gameplay enters another
+canonical level, playback automatically switches to that level's matching
+policy when available.
 
-```bash
-smb-turbo train Level1-1 --reward-function score-first
-```
-
-The default speedrun output is `runs/Level1-1/Level1-1.zip`; the non-default
-score-first output is `runs/Level1-1-score-first/Level1-1.zip`. The reward ID is
-also recorded in the run configuration, metrics, and policy metadata. Every
-completion is appended to `successes.jsonl`.
-
-A new default Go-Explore run replaces the existing canonical run; custom outputs
-and explicit Beam runs remain protected unless `--overwrite` is passed.
-`Level1-1` writes `runs/Level1-1/Level1-1.zip`; playback uses the matching trained
-policy when available and switches policies as levels change. Running
-`smb-turbo play` without a state starts from `Level1-1`; pass an exact state
-identifier to start elsewhere. Playback defaults to 30 FPS; pass `--fps max` (or
-its `--fpx max` alias) to run without an explicit delay or renderer-vsync cap.
-Run either command with `--help` for configuration options. Policy playback
-defaults to `--view raw`, which displays RGB directly from its sole emulator
-without grayscale conversion, cropping, resizing, max-pooling, or frame stacking;
+Playback defaults to 30 FPS; pass `--fps max` (or its `--fpx max` alias) to run
+without an explicit delay or renderer-vsync cap. Policy playback defaults to
+`--view raw`, which displays RGB directly from its sole emulator without
+grayscale conversion, cropping, resizing, max-pooling, or frame stacking;
 `--view preprocessed` instead shows the transformed policy observation.
 
 State names are exact identifiers from the configured state catalog. This
@@ -324,90 +316,22 @@ includes canonical names such as `Level1-1`, packaged variants such as
 `Level2-1-clouds-easy`, and imported names such as `Custom`; shorthand and case
 normalization are intentionally unsupported.
 
-In an interactive terminal, all trainers automatically open a full-screen
-dashboard with live transition, throughput, search, best-path, and event stats.
-Redirected output and CI use the existing plain logs; pass `--ui plain` to
-select them explicitly. Press `q` or `Ctrl-C` in the dashboard for a safe stop:
-the current vector step finishes, final metrics are written, and the best
-policy is saved when a candidate exists.
+The checkout-compatible `uv run python play.py` entry point remains available.
+For compatibility, playback still discovers historical algorithm-specific
+action-run directories, preferring `runs/<State>-beam/` over
+`runs/<State>-jerk/`. These positive-duration action-run policies require no
+neural-network framework.
 
-The checkout-compatible `uv run python train.py Level1-1` and
-`uv run python play.py` entry points remain available.
-
-To use fixed-width Beam search instead, run:
-
-```bash
-smb-turbo train Level1-1 --algorithm beam --overwrite
-smb-turbo play Level1-1
-```
-
-Beam ranks completed trajectories with the same return as Go-Explore's
-`score-first` reward, retains incomplete alternatives by furthest progress, and
-systematically moves splice mutations from the tail toward the root while
-replaying the proven suffix.
-A compatible `--initial-policy` with a smaller action table is remapped by action
-name into the selected table, so historical `basic` policies can seed the
-`standard` search without restricting it.
-
-Go-Explore uses the same canonical `(action, duration)` ZIP format as Beam, so
-the regular playback command needs no algorithm-specific mode. It performs
-trajectory finding with exact archived-state restoration and no robustification.
-Go-Explore cells are keyed by level, sublevel, and the raw bytes of the native
-8x8 grayscale frame after HUD masking and 3-bit quantization; horizontal position
-is not part of the cell key. Keeping the 64-byte visual value directly avoids
-application-level hash collisions while remaining negligible beside a snapshot.
-The optional `score-first` reward ranks paths with raw game-score gains first
-and charges each step `1 / (max_episode_steps + 1)`, so the entire episode's
-time charge is less than one score point. Higher score therefore always wins,
-while fewer steps break ties; an explicit `--step-cost` overrides the selected
-reward function's default.
-After the first completion, half of archived restores continue novelty-weighted
-exploration and half sample underused cells across the best successful
-trajectory. Success return is propagated through parent-linked archived cells,
-so score improvement can mutate the whole proven route instead of only states
-near the flag.
-
-Reset-time randomization is opt-in for every trainer:
-
-```bash
-smb-turbo train Level1-1 --noop-reset-max 120
-```
-
-The value is an inclusive maximum number of seeded, lane-local raw emulator
-frames advanced with no controller input after each ordinary state reset.
-`0` is the default and disables the feature. The value is not multiplied by
-`frame_skip`; Go-Explore archived snapshot restores remain exact and do not
-receive additional NOOP frames.
-
-Omit the training state to process all 32 canonical levels in game order:
-
-```bash
-smb-turbo train
-```
-
-The transition budget applies independently to each level. Every policy and its
-artifacts are written under `runs/<State>/`; with `--output <Directory>`, each
-level instead uses `<Directory>/<State>/`. Interactive campaigns keep one TUI
-open and show separate progress bars for the current level's transitions and the
-overall 32-level campaign. By default, the campaign advances to the next level
-as soon as the current level is completed; pass `--continue-after-completion` to
-keep improving each completed level until its transition budget is exhausted. A
-level that exhausts its budget without completing is reported and the campaign
-continues to the next level; a safe stop ends the current level and does not
-start another. The default `standard` action set keeps pipe-dependent levels
-searchable; an explicit `--action-set` is respected.
-
-New default runs use `runs/<State>/` regardless of algorithm. For compatibility,
-playback still discovers historical algorithm-specific directories, preferring
-`runs/<State>-beam/` over `runs/<State>-jerk/`.
+GradLab models use GradLab's interactive player instead. Each `uvx gradlab train`
+command above prints the exact playback command for its newly trained model.
 
 ## 🧰 Commands
 
 ```bash
 smb-turbo import /path/to/roms        # import the supported ROM
-smb-turbo train Level1-1              # train one state-keyed Go-Explore policy
-smb-turbo train                       # train all 32 canonical levels in order
 smb-turbo play                        # play Level1-1 manually or with its policy
+uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /path/to/rom.nes
+uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom /path/to/rom.nes
 uv sync --frozen --extra dev --group dev  # install development dependencies
 uv run maturin develop --release      # build the optimized Rust extension
 make test                             # run Rust and Python tests

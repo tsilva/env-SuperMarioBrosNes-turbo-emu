@@ -39,7 +39,7 @@ def test_project_policy_files_exist():
     assert all((ROOT / relative).is_file() for relative in expected)
 
 
-def test_installed_commands_cover_import_train_and_play():
+def test_installed_commands_cover_import_and_play():
     pyproject = (ROOT / "pyproject.toml").read_text()
 
     assert "[project.scripts]" in pyproject
@@ -47,6 +47,23 @@ def test_installed_commands_cover_import_train_and_play():
     assert "smb-turbo-import" not in pyproject
     assert "smb-turbo-play" not in pyproject
     assert "smb-turbo-train" not in pyproject
+
+
+def test_readme_delegates_training_to_pinned_gradlab_recipes():
+    readme = (ROOT / "README.md").read_text()
+
+    assert (
+        "uvx gradlab@0.1.1 train "
+        "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom "
+        "/absolute/path/to/SuperMarioBros.nes"
+    ) in readme
+    assert (
+        "uvx gradlab@0.1.1 train "
+        "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom "
+        "/absolute/path/to/SuperMarioBros.nes"
+    ) in readme
+    assert "smb-turbo train" not in readme
+    assert "train.py" not in readme
 
 
 def test_imported_rom_is_ignored_and_excluded_from_distributions():

@@ -17,12 +17,6 @@ def _import_command(argv: list[str] | None) -> int:
     return int(command.main(argv, prog="smb-turbo import"))
 
 
-def _train_command(argv: list[str] | None) -> int:
-    from .training import main
-
-    return main(argv, prog="smb-turbo train")
-
-
 def _play_command(argv: list[str] | None) -> int:
     from .state_playback import main
 
@@ -34,7 +28,6 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     commands: tuple[tuple[str, str, Command], ...] = (
         ("import", "import the supported ROM", _import_command),
-        ("train", "train action-run policies for one or all levels", _train_command),
         ("play", "play an exact state manually or with a policy", _play_command),
     )
     for name, help_text, handler in commands:

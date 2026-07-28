@@ -46,7 +46,6 @@ def test_runtime_dependency_bounds_match_the_supported_contract():
     assert project["dependencies"] == [
         "gymnasium>=1.1,<2",
         "numpy>=1.26,<3",
-        "textual>=8.2.8,<9",
     ]
 
 
