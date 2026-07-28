@@ -373,7 +373,7 @@ def test_live_snapshots_support_mixed_resets_cross_lane_fanout_and_exact_replay(
             }
         )
         second = env.step(actions)
-        for first_value, second_value in zip(first[:4], second[:4], strict=True):
+        for first_value, second_value in zip(first[:4], second[:4]):
             np.testing.assert_array_equal(first_value, second_value)
     finally:
         env.close()
@@ -442,7 +442,7 @@ def test_portable_snapshot_codec_restores_exactly_across_environment_instances()
             source_result = source.step(actions)
             destination_result = destination.step(actions)
             for source_value, destination_value in zip(
-                source_result[:4], destination_result[:4], strict=True
+                source_result[:4], destination_result[:4]
             ):
                 np.testing.assert_array_equal(destination_value, source_value)
 

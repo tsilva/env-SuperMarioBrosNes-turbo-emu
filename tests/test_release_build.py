@@ -1,6 +1,11 @@
 import importlib.util
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.9 and 3.10.
+    import tomli as tomllib
+
 
 def _release_build_module():
     root = Path(__file__).resolve().parents[1]
@@ -30,6 +35,19 @@ def test_version_file_is_the_single_source_of_truth():
         "CHANGES.md",
     ):
         assert f'"{release_file}"' in release_script
+
+
+def test_runtime_dependency_bounds_match_the_supported_contract():
+    root = Path(__file__).resolve().parents[1]
+    project = tomllib.loads(
+        (root / "pyproject.toml").read_text(encoding="utf-8")
+    )["project"]
+
+    assert project["dependencies"] == [
+        "gymnasium>=1.1,<2",
+        "numpy>=1.26,<3",
+        "textual>=8.2.8,<9",
+    ]
 
 
 def test_version_bump_updates_only_the_project_entries_in_lockfiles(tmp_path):

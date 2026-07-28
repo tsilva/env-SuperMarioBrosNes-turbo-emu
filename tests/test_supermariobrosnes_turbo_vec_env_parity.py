@@ -117,7 +117,7 @@ def rollout(state_path):
 
 low = rollout(sys.argv[2])
 high = rollout(sys.argv[3])
-for low_value, high_value in zip(low, high, strict=True):
+for low_value, high_value in zip(low, high):
     np.testing.assert_array_equal(low_value, high_value)
 """
     result = subprocess.run(

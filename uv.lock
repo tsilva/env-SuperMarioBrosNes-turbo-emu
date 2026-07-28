@@ -1793,11 +1793,11 @@ release = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gymnasium", specifier = ">=0.29" },
+    { name = "gymnasium", specifier = ">=1.1,<2" },
     { name = "huggingface-hub", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "huggingface-hub", marker = "extra == 'playback'", specifier = ">=1.8.0" },
     { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.9.3,<2" },
-    { name = "numpy", specifier = ">=1.26" },
+    { name = "numpy", specifier = ">=1.26,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
     { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'dev'", specifier = "==1.0.1.post34" },

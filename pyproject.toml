@@ -38,8 +38,8 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-  "gymnasium>=0.29",
-  "numpy>=1.26",
+  "gymnasium>=1.1,<2",
+  "numpy>=1.26,<3",
   "textual>=8.2.8,<9",
 ]
 
