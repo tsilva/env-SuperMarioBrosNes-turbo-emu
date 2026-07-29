@@ -4,6 +4,10 @@
 
 - Nothing yet.
 
+## 0.6.2 - 2026-07-29
+
+- Fix release checks after trainer removal.
+
 ## 0.6.1 - 2026-07-29
 
 - Accept the common `use_fire_reset=False` Turbo constructor option without

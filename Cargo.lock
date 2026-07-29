@@ -363,7 +363,7 @@ dependencies = [
 
 [[package]]
 name = "supermariobrosnes-turbo"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "nes-turbo-nrom-core",
  "numpy",
