@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.6.1 - 2026-07-29
+
 - Accept the common `use_fire_reset=False` Turbo constructor option without
   changing NES reset behavior, and reject the inapplicable enabled mode.
 - Remove the redundant `state_dir` environment constructor option; packaged
