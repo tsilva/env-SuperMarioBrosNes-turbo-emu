@@ -6,7 +6,6 @@ from enum import Enum, Flag, IntEnum
 import gzip
 from importlib import resources
 import json
-import os
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Union
@@ -200,9 +199,6 @@ def _candidate_state_dirs(state_dir: str | Path | None = None) -> list[Path]:
     candidates: list[Path | None] = []
     if state_dir is not None:
         candidates.append(Path(state_dir).expanduser())
-    env_dir = os.environ.get("SUPERMARIOBROSNES_FASTENV_STATE_DIR")
-    if env_dir:
-        candidates.append(Path(env_dir).expanduser())
     candidates.append(game_data_path())
     candidates.append(_packaged_state_dir())
     candidates.append(_stable_retro_state_dir())
@@ -268,7 +264,6 @@ def _state_label(state: StateSpec, fallback: str) -> str:
 def _normalize_state_config(
     state: Any,
     state_catalog: Sequence[StateSpec] | None,
-    state_dir: str | Path | None,
 ) -> tuple[list[bytes], tuple[str, ...]]:
     if state_catalog is None:
         if state is _STATE_UNSET:
@@ -281,7 +276,7 @@ def _normalize_state_config(
         state = _normalize_state_value(state)
         if state is None:
             return [], ()
-        return [_load_initial_state(state, state_dir)], (_state_label(state, "state-0"),)
+        return [_load_initial_state(state)], (_state_label(state, "state-0"),)
 
     if state is not _STATE_UNSET:
         raise ValueError("state and state_catalog are mutually exclusive")
@@ -302,7 +297,7 @@ def _normalize_state_config(
     if duplicates:
         names = ", ".join(repr(name) for name in duplicates)
         raise ValueError(f"state_catalog contains duplicate states: {names}")
-    return [_load_initial_state(state_value, state_dir) for state_value in states], labels
+    return [_load_initial_state(state_value) for state_value in states], labels
 
 
 def _public_action_bits_to_controller_byte(action_bits: int) -> int:
@@ -575,7 +570,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         num_envs: int = 1,
         num_threads: int | None = None,
         rom_path: str | Path | None = None,
-        state_dir: str | Path | None = None,
         obs_copy: str = "copy",
         obs_resize: Sequence[int] | None = None,
         obs_crop: Sequence[int] | None = None,
@@ -588,6 +582,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         frame_stack: int = 1,
         maxpool_last_two: bool = False,
         noop_reset_max: int = 0,
+        use_fire_reset: bool = False,
         sticky_action_prob: float = 0.0,
         reward_clip: bool | Sequence[float] = False,
         info_filter: Any = "all",
@@ -606,6 +601,8 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             raise ValueError("SuperMarioBrosNesTurboVecEnv only supports the SMB data info file")
         if scenario not in (None, "scenario") and not str(scenario).endswith(".json"):
             raise ValueError("SuperMarioBrosNesTurboVecEnv only supports the SMB scenario file")
+        if use_fire_reset:
+            raise ValueError("use_fire_reset is not applicable to Super Mario Bros NES")
 
         if num_threads is not None:
             num_threads = int(num_threads)
@@ -668,7 +665,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         initial_states, state_names = _normalize_state_config(
             state,
             state_catalog,
-            state_dir,
         )
         self.obs_layout = _normalize_obs_layout(obs_layout)
         self.obs_copy, self._copy_obs, self._unsafe_view = _normalize_obs_copy(obs_copy)

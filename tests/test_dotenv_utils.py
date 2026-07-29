@@ -14,6 +14,7 @@ from scripts.benchmark_sps import DEFAULT_ACTION_SEED
 from scripts.benchmark_sps import DEFAULT_BENCHMARK_ACTIONS
 from scripts.benchmark_sps import load_preflight as native_load_preflight
 from scripts.benchmark_sps import package_metadata as native_package_metadata
+from scripts.benchmark_sps import _resolve_turbo_state_path as resolve_native_state_path
 from scripts.benchmark_sps import resolve_verified_rom_path as resolve_native_verified_rom_path
 from scripts.dotenv_utils import dotenv_value, env_or_dotenv_path
 from scripts.run_pypi_supermariobrosnes_turbo_benchmark import (
@@ -87,6 +88,16 @@ def test_direct_benchmark_entrypoints_reject_wrong_rom_sha(tmp_path: Path) -> No
 
     with pytest.raises(SystemExit, match="ROM SHA-256 mismatch"):
         resolve_native_verified_rom_path(rom_path)
+
+
+def test_native_benchmark_resolves_state_directory_before_env_construction(
+    tmp_path: Path,
+) -> None:
+    state_path = tmp_path / "Level1-1.state"
+    state_path.write_bytes(b"state")
+
+    assert resolve_native_state_path("Level1-1", tmp_path) == state_path
+    assert resolve_native_state_path("Level1-2", tmp_path) == "Level1-2"
 
 
 def test_direct_benchmark_results_record_rom_identity(

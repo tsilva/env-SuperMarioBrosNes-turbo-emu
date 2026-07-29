@@ -57,7 +57,7 @@ def noop(num_envs: int) -> np.ndarray:
 
 def test_public_surface_is_manual_reset_only() -> None:
     signature = inspect.signature(SuperMarioBrosNesTurboVecEnv)
-    for name in ("done_on", "autoreset_mode", "done_on_info"):
+    for name in ("done_on", "autoreset_mode", "done_on_info", "state_dir"):
         assert name not in signature.parameters
     for name in (
         "set_state_policy",
@@ -73,6 +73,17 @@ def test_public_surface_is_manual_reset_only() -> None:
         SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", done_on=[])
     with pytest.raises(TypeError, match="autoreset_mode"):
         SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", autoreset_mode="Disabled")
+    with pytest.raises(TypeError, match="state_dir"):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            state_dir="/tmp/states",
+        )
+    with pytest.raises(ValueError, match="use_fire_reset"):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
+            use_fire_reset=True,
+        )
 
 
 @pytest.mark.parametrize("num_threads", [0, -1])

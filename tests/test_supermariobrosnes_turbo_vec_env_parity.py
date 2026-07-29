@@ -55,12 +55,14 @@ def test_public_signature_preserves_vector_features() -> None:
         "frame_stack",
         "maxpool_last_two",
         "noop_reset_max",
+        "use_fire_reset",
         "sticky_action_prob",
         "reward_clip",
         "info_filter",
     ):
         assert name in params
-    for name in ("done_on", "autoreset_mode"):
+    assert params["use_fire_reset"].default is False
+    for name in ("done_on", "autoreset_mode", "state_dir"):
         assert name not in params
 
 

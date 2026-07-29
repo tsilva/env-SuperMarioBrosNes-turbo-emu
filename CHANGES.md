@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Accept the common `use_fire_reset=False` Turbo constructor option without
+  changing NES reset behavior, and reject the inapplicable enabled mode.
+- Remove the redundant `state_dir` environment constructor option; packaged
+  states resolve from the installed package, while callers can still provide
+  direct state paths or byte payloads.
 - Remove the bundled Go-Explore, Beam, and DreamerV3 trainers, the
   `smb-turbo train` command, and their training-only UI dependency.
 - Delegate training to version-pinned GradLab PPO and Go-Explore recipes

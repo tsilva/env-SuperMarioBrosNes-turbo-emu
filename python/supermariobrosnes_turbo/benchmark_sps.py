@@ -693,14 +693,33 @@ def create_stable_retro_vector_env(
     return StableRetroVectorEnv(env, overlay, lane_state_names, buttons)
 
 
+def _resolve_turbo_state_path(
+    state: Any,
+    state_dir: str | Path | None,
+) -> Any:
+    if state_dir is None or not isinstance(state, (str, Path)):
+        return state
+    path = Path(state).expanduser()
+    if path.is_file():
+        return path
+    filename = path.name if path.name.endswith(".state") else f"{path.name}.state"
+    candidate = Path(state_dir).expanduser() / filename
+    return candidate if candidate.is_file() else state
+
+
 def create_turbo_env(args: argparse.Namespace, rom_path: Path) -> Any:
     candidate = importlib.import_module(TURBO_IMPORT)
-    if args.state_dir is not None:
-        os.environ["SUPERMARIOBROSNES_FASTENV_STATE_DIR"] = str(args.state_dir)
     state_config = (
-        {"state": args.state}
+        {"state": _resolve_turbo_state_path(args.state, args.state_dir)}
         if args.parsed_states is None
-        else {"state_catalog": tuple(dict.fromkeys(args.parsed_states))}
+        else {
+            "state_catalog": tuple(
+                dict.fromkeys(
+                    _resolve_turbo_state_path(state, args.state_dir)
+                    for state in args.parsed_states
+                )
+            )
+        }
     )
     return candidate.SuperMarioBrosNesTurboVecEnv(
         GAME,

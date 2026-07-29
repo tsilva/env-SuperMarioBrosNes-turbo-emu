@@ -73,7 +73,7 @@ f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de
 ## 🚀 Train with GradLab
 
 Training recipes and implementations live in
-[GradLab](https://github.com/tsilva/rlab), keeping this repository focused on
+[GradLab](https://github.com/tsilva/gradlab), keeping this repository focused on
 the environment. Run either published recipe from any directory by passing your
 raw Super Mario Bros `.nes` file directly.
 
