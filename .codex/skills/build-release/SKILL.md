@@ -26,10 +26,10 @@ It promotes those notes to the target version and release date, creates a fresh
 An untagged project version is treated as a pending release; otherwise the
 default is the next patch version. Failed preparation restores the release
 files it changed. The pushed tag triggers
-`.github/workflows/release.yml`, which builds and audits macOS ARM64, macOS
-Intel, Linux x86-64, Linux ARM64, and Windows x86-64 wheels plus a source
-distribution. It publishes through PyPI trusted publishing and then creates a
-GitHub Release with the audited artifacts.
+`.github/workflows/release.yml`, which builds and audits Apple-silicon macOS
+and Linux x86-64 wheels plus a source distribution. It publishes through PyPI
+trusted publishing and then creates a GitHub Release with the audited
+artifacts.
 
 Do not upload to PyPI manually unless the user explicitly asks for a manual
 recovery path after the GitHub Actions publish path fails. Never print or commit

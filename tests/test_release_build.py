@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 try:
     import tomllib
 except ModuleNotFoundError:  # Python 3.9 and 3.10.
@@ -96,6 +98,10 @@ def test_release_wheel_builds_use_platform_scoped_cargo_caches():
     )
     release_build = _release_build_module()
 
+    assert release_build.RELEASE_PLATFORMS == (
+        "macos-arm64",
+        "linux-x86_64",
+    )
     assert "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830" in workflow
     assert "path: ${{ matrix.cargo_target_dir }}" in workflow
     assert "key: cargo-target-v2-${{ matrix.platform }}-${{ steps.source.outputs.sha }}" in workflow
@@ -104,11 +110,18 @@ def test_release_wheel_builds_use_platform_scoped_cargo_caches():
     for platform_name in release_build.RELEASE_PLATFORMS:
         assert f"platform: {platform_name}" in workflow
         assert f"cargo_target_dir: target-release-{platform_name}" in workflow
+    for platform_name in (
+        "macos-x86_64",
+        "linux-aarch64",
+        "windows-x86_64",
+    ):
+        assert f"platform: {platform_name}" not in workflow
 
-    assert release_build.cargo_target_dir("macos", root) == root / "target-release"
-    assert release_build.cargo_target_dir("linux", root) == root / "target-release-linux"
-    assert release_build.cargo_target_dir("windows-x86_64", root) == (
-        root / "target-release-windows-x86_64"
+    assert release_build.cargo_target_dir("macos-arm64", root) == (
+        root / "target-release-macos-arm64"
+    )
+    assert release_build.cargo_target_dir("linux-x86_64", root) == (
+        root / "target-release-linux-x86_64"
     )
 
 
@@ -129,10 +142,7 @@ def test_release_requires_all_documented_wheel_platforms(tmp_path):
     release_build = _release_build_module()
     names = (
         "pkg-0.3.0-cp39-abi3-macosx_14_0_arm64.whl",
-        "pkg-0.3.0-cp39-abi3-macosx_13_0_x86_64.whl",
         "pkg-0.3.0-cp39-abi3-manylinux_2_17_x86_64.whl",
-        "pkg-0.3.0-cp39-abi3-manylinux_2_17_aarch64.whl",
-        "pkg-0.3.0-cp39-abi3-win_amd64.whl",
     )
     wheels = []
     for name in names:
@@ -144,6 +154,28 @@ def test_release_requires_all_documented_wheel_platforms(tmp_path):
     assert {release_build.wheel_release_platform(wheel) for wheel in wheels} == set(
         release_build.RELEASE_PLATFORMS
     )
+
+
+@pytest.mark.parametrize(
+    "name",
+    (
+        "pkg-0.3.0-cp39-abi3-macosx_13_0_x86_64.whl",
+        "pkg-0.3.0-cp39-abi3-manylinux_2_17_aarch64.whl",
+        "pkg-0.3.0-cp39-abi3-win_amd64.whl",
+    ),
+)
+def test_release_rejects_unpublished_wheel_platforms(tmp_path, name):
+    release_build = _release_build_module()
+    supported = (
+        tmp_path / "pkg-0.3.0-cp39-abi3-macosx_14_0_arm64.whl",
+        tmp_path / "pkg-0.3.0-cp39-abi3-manylinux_2_17_x86_64.whl",
+    )
+    unpublished = tmp_path / name
+    for wheel in (*supported, unpublished):
+        wheel.touch()
+
+    with pytest.raises(SystemExit, match="contains unpublished platforms"):
+        release_build.assert_platform_coverage([*supported, unpublished])
 
 
 def test_latest_non_yanked_pypi_version_ignores_fully_yanked_latest_release():

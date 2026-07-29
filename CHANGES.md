@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Limit published binary distributions to Apple-silicon macOS and x86-64
+  Linux.
 
 ## 0.6.2 - 2026-07-29
 

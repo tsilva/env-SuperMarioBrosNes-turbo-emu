@@ -37,10 +37,7 @@ EXTENSION_NAME = "_supermariobrosnes_turbo"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+|\.dev\d+)?$")
 RELEASE_PLATFORMS = (
     "macos-arm64",
-    "macos-x86_64",
     "linux-x86_64",
-    "linux-aarch64",
-    "windows-x86_64",
 )
 
 IGNORED_DIR_NAMES_ANYWHERE = {
@@ -422,19 +419,13 @@ def wheelhouse(version: str, platform_name: str) -> Path:
 
 
 def cargo_target_dir(platform_name: str, root: Path = REPO_ROOT) -> Path:
-    legacy = {
-        "macos": "target-release",
-        "linux": "target-release-linux",
-    }
-    if platform_name in legacy:
-        return root / legacy[platform_name]
     if platform_name not in RELEASE_PLATFORMS:
         raise ValueError(f"unknown platform: {platform_name}")
     return root / f"target-release-{platform_name}"
 
 
 def linux_build_env(platform_name: str, root: Path = REPO_ROOT) -> dict[str, str]:
-    if platform_name not in {"linux-x86_64", "linux-aarch64"}:
+    if platform_name != "linux-x86_64":
         raise ValueError(f"not a Linux release platform: {platform_name}")
     arch = platform_name.removeprefix("linux-")
     target_dir = cargo_target_dir(platform_name, root).resolve()
@@ -475,8 +466,8 @@ def prepare_sources(args: argparse.Namespace) -> None:
                 "root": str(root),
                 "macos_src": str(macos_src),
                 "linux_src_clean": str(linux_src),
-                "macos_wheelhouse": str(wheelhouse(version, "macos")),
-                "linux_wheelhouse": str(wheelhouse(version, "linux")),
+                "macos_wheelhouse": str(wheelhouse(version, "macos-arm64")),
+                "linux_wheelhouse": str(wheelhouse(version, "linux-x86_64")),
             },
             indent=2,
         )
@@ -494,14 +485,14 @@ def build_commands(args: argparse.Namespace) -> None:
     validate_version(version)
     macos_src = Path(args.macos_src) if args.macos_src else Path("<macos-src>")
     linux_src = Path(args.linux_src) if args.linux_src else Path("<linux-src-clean>")
-    macos_out = wheelhouse(version, "macos")
-    linux_out = wheelhouse(version, "linux")
+    macos_out = wheelhouse(version, "macos-arm64")
+    linux_out = wheelhouse(version, "linux-x86_64")
     print("# macOS arm64")
     print(f"cd {shell_quote(macos_src)}")
     print(
         "MACOSX_DEPLOYMENT_TARGET=14.0 "
         "ARCHFLAGS='-arch arm64' "
-        f"CARGO_TARGET_DIR={shell_quote(cargo_target_dir('macos', macos_src))} "
+        f"CARGO_TARGET_DIR={shell_quote(cargo_target_dir('macos-arm64', macos_src))} "
         f"{shell_quote(PYTHON)} -m maturin build --release --out {shell_quote(macos_out)}"
     )
     print()
@@ -522,22 +513,19 @@ def build_platform(args: argparse.Namespace) -> None:
     env = os.environ.copy()
     target_dir = cargo_target_dir(args.platform)
     target_dir.mkdir(parents=True, exist_ok=True)
-    if args.platform.startswith("macos-"):
-        arch = args.platform.removeprefix("macos-")
+    if args.platform == "macos-arm64":
         env.update(
             {
-                "MACOSX_DEPLOYMENT_TARGET": "14.0" if arch == "arm64" else "13.0",
-                "ARCHFLAGS": f"-arch {arch}",
+                "MACOSX_DEPLOYMENT_TARGET": "14.0",
+                "ARCHFLAGS": "-arch arm64",
                 "CARGO_TARGET_DIR": str(target_dir),
             }
         )
         run([str(PYTHON), "-m", "maturin", "build", "--release", "--out", str(output_dir)], env=env)
         return
-    if args.platform.startswith("windows-"):
-        env["CARGO_TARGET_DIR"] = str(target_dir)
-        run([str(PYTHON), "-m", "maturin", "build", "--release", "--out", str(output_dir)], env=env)
-        return
-    env.update(linux_build_env(args.platform))
+    if args.platform != "linux-x86_64":  # pragma: no cover - argparse guards this.
+        raise ValueError(args.platform)
+    env.update(linux_build_env("linux-x86_64"))
     run(
         [str(PYTHON), "-m", "cibuildwheel", "--platform", "linux", "--output-dir", str(output_dir)],
         env=env,
@@ -638,6 +626,12 @@ def wheel_release_platform(wheel: Path) -> str | None:
 
 def assert_platform_coverage(wheels: list[Path]) -> None:
     seen = {platform for wheel in wheels if (platform := wheel_release_platform(wheel))}
+    unexpected = sorted(seen - set(RELEASE_PLATFORMS))
+    if unexpected:
+        raise SystemExit(
+            "release wheel set contains unpublished platforms: "
+            + ", ".join(unexpected)
+        )
     missing = sorted(set(RELEASE_PLATFORMS) - seen)
     if missing:
         raise SystemExit(f"release wheel set is missing platforms: {', '.join(missing)}")
@@ -645,7 +639,7 @@ def assert_platform_coverage(wheels: list[Path]) -> None:
 
 def find_wheels(version: str) -> list[Path]:
     candidates: list[Path] = []
-    for platform_name in (*RELEASE_PLATFORMS, "macos", "linux"):
+    for platform_name in RELEASE_PLATFORMS:
         candidates.extend(wheelhouse(version, platform_name).glob(f"*{version}*.whl"))
     return sorted(set(candidates))
 

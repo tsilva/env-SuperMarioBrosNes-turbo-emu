@@ -38,9 +38,9 @@ Install the prebuilt package from PyPI:
 python -m pip install supermariobrosnes-turbo
 ```
 
-Prebuilt wheels support Python `>=3.9` on macOS, Linux, and Windows without a
-Rust toolchain. See [CONTRIBUTING.md](CONTRIBUTING.md) for the source checkout
-and development setup.
+Prebuilt wheels support Python `>=3.9` on Apple-silicon macOS and x86-64 Linux
+without a Rust toolchain. See [CONTRIBUTING.md](CONTRIBUTING.md) for the source
+checkout and development setup.
 
 **ROM setup:** ROM files are not included. Set `RETRO_DATA_PATH` to a
 user-writable data directory, then import the supported ROM from a file,
