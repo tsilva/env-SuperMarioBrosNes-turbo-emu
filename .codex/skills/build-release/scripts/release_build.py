@@ -574,7 +574,7 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
         "has_package_init": f"{IMPORT_NAME}/__init__.py" in names,
         "has_env_source": f"{IMPORT_NAME}/env.py" in names,
         "has_unified_cli_source": f"{IMPORT_NAME}/cli.py" in names,
-        "has_training_source": f"{IMPORT_NAME}/training.py" in names,
+        "no_training_source": f"{IMPORT_NAME}/training.py" not in names,
         "has_playback_source": f"{IMPORT_NAME}/state_playback.py" in names,
         "has_unified_entry_point": (
             "smb-turbo=supermariobrosnes_turbo.cli:main" in entry_points.replace(" ", "")
@@ -823,7 +823,6 @@ else:
         for arguments in (
             ["--help"],
             ["import", "--help"],
-            ["train", "--help"],
             ["play", "--help"],
         ):
             run([str(command), *arguments], cwd=target)
