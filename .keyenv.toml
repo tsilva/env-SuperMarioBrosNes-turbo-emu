@@ -1,0 +1,6 @@
+[keyenv]
+version = 1
+
+[secrets.TWINE_PASSWORD]
+account = "SuperMarioBros-Nes-turbo/TWINE_PASSWORD"
+required = true
