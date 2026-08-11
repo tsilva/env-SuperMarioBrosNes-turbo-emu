@@ -21,6 +21,9 @@ The environment advertises the strict Turbo Vector API v1:
   returned observations.
 - `render_lane(index)` renders one lane, `get_images()` renders every lane, and
   `render()` renders lane zero.
+- `step()` provides synchronous vector stepping; `step_async()` and
+  `step_wait_gymnasium()` split action submission from native batched execution
+  and collection.
 
 The environment conforms to Gymnasium's vector reset and step returns. Autoreset
 is permanently disabled: stepping a terminal lane again is an error until that
@@ -39,7 +42,33 @@ lane is explicitly reset through `options["reset_mask"]`.
   create exact discrete action spaces.
 
 Observation options include grayscale or RGB, frame skip, optional max-pooling,
-crop removal or masking, resize, frame stacking, and CHW or HWC layouts.
+crop removal or masking, nearest, bilinear, or area resize, frame stacking, and
+CHW or HWC layouts. `obs_copy="copy"` returns owned arrays, `"safe_view"`
+rotates between two buffers so the previous observation survives the next
+return, and `"unsafe_view"` exposes the native working buffer that a later reset
+or step can overwrite. The resolved `observation_ownership` and
+`observation_buffer_depth` attributes make the selected lifetime explicit.
+
+## Execution and episode controls
+
+`step(actions)` is the synchronous convenience path over `step_async(actions)`
+and `step_wait_gymnasium()`. `num_threads=None` uses Rayon's process-global
+automatic thread pool. A positive `num_threads` creates a private pool capped by
+the lane count and available parallelism; `env.num_threads` reports the effective
+value.
+
+Three constructor controls provide common training perturbations without
+wrappers:
+
+- `noop_reset_max=N` advances each reset lane by a seeded random count from zero
+  through `N` raw NOOP frames. Its default is zero.
+- `sticky_action_prob=p` repeats the lane's previous raw controller action with
+  probability `p`. Its default is `0.0`.
+- `reward_clip=True` clips returned rewards to `[-1, 1]`; a `(low, high)` pair
+  supplies custom bounds. Its default is `False`.
+
+Reset-NOOP and sticky-action randomness is lane-local. Selectively resetting one
+lane does not consume or change another lane's random stream.
 
 ## States and selective reset
 
@@ -81,7 +110,8 @@ random reset-NOOP advancement is lane-local, opt-in, and disabled by default.
 ## Live snapshots
 
 Live positions can be captured without advancing emulation and restored into
-another lane of the same environment or encoded for a compatible destination:
+another lane of the same environment or encoded for a compatible destination,
+including another process or host:
 
 ```python
 import numpy as np
@@ -254,3 +284,11 @@ checkout-compatible entry point is `uv run python play.py`.
 
 GradLab models use GradLab's interactive player. Each documented GradLab train
 command prints the matching version-pinned playback command for its model.
+
+## Profiling
+
+The opt-in native profiler is disabled by default. Call `enable_profiler()` to
+start collecting native stage timings, `profiler_snapshot(top_n=64)` to return
+the current JSON-compatible report as a dictionary, `reset_profiler()` to clear
+it, and `disable_profiler()` to stop collection. Profiling is a diagnostic aid;
+throughput claims use the reproducible workloads in [BENCHMARKS.md](BENCHMARKS.md).

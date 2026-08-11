@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add repository citation metadata for research use.
+- Focus public benchmark positioning on the original Stable Retro comparison.
 - Limit published binary distributions to Apple-silicon macOS and x86-64
   Linux.
 

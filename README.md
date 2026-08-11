@@ -4,17 +4,17 @@
   **🚀 Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning 🍄**
 </div>
 
-**SuperMarioBros-Nes-turbo** is a Python library for reinforcement-learning
-researchers who need fast, deterministic Super Mario Bros NES rollouts. It
-provides independent Gymnasium vector lanes, selective reset, saved-state
-catalogs, snapshots, and configurable observations in one optimized environment.
-Supply your own supported ROM, then play immediately or use the vector API from
-Python.
+**SuperMarioBros-Nes-turbo** is a specialized Python environment for
+reinforcement-learning researchers who need fast, reproducible Super Mario Bros
+NES rollouts. It combines native Gymnasium vector lanes with deterministic
+lane-local episode control, reusable saved and live state, configurable actions
+and observations, and opt-in semantic game data. Supply your own supported ROM,
+then play immediately or use the vector API from Python.
 
 In the [verified `0.6.2` benchmarks](BENCHMARKS.md), it measured **15.63× to
 17.94×** the throughput of original
-[Stable Retro](https://github.com/Farama-Foundation/stable-retro) and **7.46× to
-8.05×** Stable Retro Turbo across the matched vector shapes.
+[Stable Retro](https://github.com/Farama-Foundation/stable-retro) across the
+matched vector shapes.
 
 ## Quick start
 
@@ -43,17 +43,48 @@ ROM files are never included in this repository or its distributions.
 
 ## Why researchers use it
 
-- **High throughput.** Rust owns batched emulation, preprocessing, rewards,
-  termination, and infos while one native call advances every lane.
-- **Deterministic lanes.** Each seeded lane has independent emulator state,
-  random state, observation history, sticky action, and counters.
-- **Explicit episode control.** Autoreset is permanently disabled; callers reset
-  only selected lanes through `options["reset_mask"]`.
-- **Training-ready data.** Configure action tables, grayscale or RGB frames,
-  crop or masking, resize, frame skip, max-pooling, frame stacking, and CHW or
-  HWC layouts.
-- **Reusable starts.** Packaged states cover `Level1-1` through `Level8-4`, and
-  live snapshots can be restored without advancing emulation.
+- **Native vector execution.** One `step()` advances every lane through batched
+  Rust emulation, preprocessing, rewards, termination, and infos. The
+  `step_async()` interface and automatic or explicit `num_threads` control are
+  available for vector runners.
+- **Deterministic episode control.** Every seeded lane owns its emulator and
+  random state. Autoreset stays disabled, `options["reset_mask"]` resets only
+  selected lanes, and `noop_reset_max`, `sticky_action_prob`, and `reward_clip`
+  provide built-in training controls.
+- **Reusable exact starts.** Select saved starts per lane with `state_indices`,
+  inspect active catalog entries, or capture live snapshots without advancing
+  emulation. Portable snapshots move exact continuation state between compatible
+  environment instances, processes, and hosts.
+- **Exact action contracts.** Use unrestricted or filtered button masks, Stable
+  Retro-compatible 36-way `Actions.DISCRETE`, `Actions.MULTI_DISCRETE`, packaged
+  named presets, or caller-supplied button tables with discoverable meanings.
+- **Configurable visual data.** Choose grayscale or RGB, frame skip, max-pooling,
+  crop removal or masking, nearest/bilinear/area resize, frame stacking, and CHW
+  or HWC layout. `obs_copy` controls ownership, while `render_lane()` returns an
+  unprocessed RGB frame for one lane.
+- **Research-ready game state.** Raw progress signals, opt-in semantic player,
+  enemy, and area data, `info_filter`, and immutable batched `ram()` snapshots
+  expose only the state a downstream task requests.
+- **Self-describing API.** Immutable `capabilities`, `signal_schema`, action
+  metadata, observation ownership, and snapshot-codec metadata let integrations
+  inspect the environment contract instead of guessing it.
+- **State-aware playback.** Manual and framework-free action-run playback use
+  exact state identifiers and automatically switch to matching canonical-level
+  policies as Mario advances.
+
+## Compared with Stable Retro
+
+[Stable Retro](https://stable-retro.farama.org/python/) is a general Gymnasium
+environment for many games and emulators. Turbo deliberately specializes its
+native vector execution, selective resets, state catalogs, portable snapshots,
+preprocessing, and semantic research data for Super Mario Bros NES while
+retaining compatible ROM discovery and action semantics where applicable. It is
+not a drop-in Stable Retro replacement.
+
+Stable Retro remains the broader choice for multi-game and multi-emulator use,
+multiplayer, RAM observations, and BK2 movie recording. Turbo supports only the
+documented SMB mapper 0/NROM workload, one player, and image observations, with
+batched RAM available separately through `ram()`; it does not record BK2 movies.
 
 ## Use from Python
 

@@ -25,6 +25,7 @@ def test_public_package_exposes_distribution_version():
 def test_project_policy_files_exist():
     expected = (
         "LICENSE",
+        "CITATION.cff",
         "NOTICE.md",
         "SECURITY.md",
         "SUPPORT.md",
@@ -93,6 +94,47 @@ def test_readme_leads_with_a_supported_first_run_path():
     assert '"Operating System :: Microsoft :: Windows"' not in pyproject
 
 
+def test_readme_documents_turbo_advantages_beyond_speed():
+    readme = (ROOT / "README.md").read_text()
+    why = readme.split("## Why researchers use it", maxsplit=1)[1].split(
+        "## Compared with Stable Retro", maxsplit=1
+    )[0]
+    comparison = readme.split("## Compared with Stable Retro", maxsplit=1)[1].split(
+        "## Use from Python", maxsplit=1
+    )[0]
+
+    for term in (
+        "step_async()",
+        "num_threads",
+        "noop_reset_max",
+        "sticky_action_prob",
+        "reward_clip",
+        "state_indices",
+        "Portable snapshots",
+        "Actions.DISCRETE",
+        "Actions.MULTI_DISCRETE",
+        "obs_copy",
+        "render_lane()",
+        "info_filter",
+        "ram()",
+        "capabilities",
+        "signal_schema",
+        "automatically switch",
+    ):
+        assert term in why
+
+    for term in (
+        "https://stable-retro.farama.org/python/",
+        "not a drop-in Stable Retro replacement",
+        "multiplayer",
+        "RAM observations",
+        "BK2 movie recording",
+        "one player",
+        "image observations",
+    ):
+        assert term in comparison
+
+
 def test_api_info_table_matches_available_info_key_order():
     api = (ROOT / "API.md").read_text()
     info_section = api.split("## Research infos", maxsplit=1)[1].split(
@@ -124,6 +166,32 @@ def test_api_snapshot_example_encodes_before_closing_source():
     )
 
 
+def test_api_documents_public_execution_and_diagnostic_controls():
+    api = (ROOT / "API.md").read_text()
+    execution = api.split("## Execution and episode controls", maxsplit=1)[1].split(
+        "## States and selective reset", maxsplit=1
+    )[0]
+    profiling = api.split("## Profiling", maxsplit=1)[1]
+
+    for term in (
+        "step_async(actions)",
+        "step_wait_gymnasium()",
+        "num_threads=None",
+        "noop_reset_max=N",
+        "sticky_action_prob=p",
+        "reward_clip=True",
+    ):
+        assert term in execution
+
+    for term in (
+        "enable_profiler()",
+        "profiler_snapshot(top_n=64)",
+        "reset_profiler()",
+        "disable_profiler()",
+    ):
+        assert term in profiling
+
+
 def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     readme = (ROOT / "README.md").read_text()
     benchmarks = (ROOT / "BENCHMARKS.md").read_text()
@@ -139,6 +207,19 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     assert f"git checkout --detach {commit}" in benchmarks
     assert "uv run turbobench compare supermario/canonical-v1" in benchmarks
     assert "independently verified" not in benchmarks
+    assert "stable-retro-turbo" not in readme.lower()
+    assert "stable-retro-turbo" not in benchmarks.lower()
+
+
+def test_citation_metadata_describes_latest_release():
+    citation = (ROOT / "CITATION.cff").read_text()
+
+    assert "cff-version: 1.2.0" in citation
+    assert 'title: "SuperMarioBros-Nes-turbo"' in citation
+    assert "family-names: Silva" in citation
+    assert "given-names: Tiago" in citation
+    assert "license: MIT" in citation
+    assert f"version: {(ROOT / 'VERSION.txt').read_text().strip()}" in citation
 
 
 def test_imported_rom_is_ignored_and_excluded_from_distributions():
