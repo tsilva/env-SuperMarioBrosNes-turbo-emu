@@ -51,6 +51,13 @@ On the canonical benchmark host:
 2. Ensure `TURBOBENCH_ASSET_ROOT` points to the private Stable
    Retro-compatible data root containing the canonical ROM and Level1-1 through
    Level1-4 states. Never print, copy, or upload the ROM.
+   On the provisioned `beast-3` host, set it explicitly in every SSH command or
+   session; do not rely on non-interactive shells loading a profile:
+
+```bash
+export TURBOBENCH_ASSET_ROOT=/home/tsilva/.local/share/turbobench/assets/stable
+```
+
 3. Install the pinned harness and run the doctor:
 
 ```bash
