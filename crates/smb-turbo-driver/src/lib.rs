@@ -9,7 +9,7 @@ pub const EXPECTED_SMB_ROM_SHA256: &str =
     "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de";
 const PPU_SPRITE0_DOT: usize = (22 + 30) * 341 + 1;
 
-pub type SmbOptions = bool;
+pub type SmbOptions = ();
 
 pub const ENEMY_SLOT_COUNT: usize = 6;
 
@@ -1722,10 +1722,10 @@ impl NromGame for SuperMarioBros {
     }
 
     #[inline]
-    fn post_step(options: &SmbOptions, signals: &SmbSignals, before: u8) -> StepResult {
+    fn post_step(_options: &SmbOptions, signals: &SmbSignals, before: u8) -> StepResult {
         StepResult {
             reward: (signals.xscroll_lo as i16 - before as i16).max(0) as f32,
-            done: signals.lives == -1 || (*options && signals.x_pos >= 3160),
+            done: signals.lives == -1,
         }
     }
 
@@ -1753,6 +1753,26 @@ fn page_crossed(a: u16, b: u16) -> bool {
 mod tests {
     use super::*;
     use nes_turbo_nrom_core::Cartridge;
+
+    #[test]
+    fn stable_retro_termination_is_final_game_over_only() {
+        let mut signals = SmbSignals {
+            lives: 1,
+            x_pos: 4_000,
+            ..SmbSignals::default()
+        };
+
+        let flag_result = <SuperMarioBros as NromGame>::post_step(&(), &signals, 0);
+        assert!(!flag_result.done);
+
+        signals.lives = 0;
+        let ordinary_life_loss = <SuperMarioBros as NromGame>::post_step(&(), &signals, 0);
+        assert!(!ordinary_life_loss.done);
+
+        signals.lives = -1;
+        let game_over = <SuperMarioBros as NromGame>::post_step(&(), &signals, 0);
+        assert!(game_over.done);
+    }
 
     #[test]
     fn extra_info_catalog_is_dense_unique_and_bounded() {
@@ -2155,7 +2175,7 @@ mod tests {
         let mut prg = vec![0xea; 32768];
         let offset = (SMB_SPRITE0_POLL_PC - 0x8000) as usize;
         prg[offset..offset + 7].copy_from_slice(&[0xad, 0x02, 0x20, 0x29, 0x40, 0xf0, 0xf9]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_SPRITE0_POLL_PC;
         emu.cpu.a = 0xff;
         emu.cpu.p = FLAG_U | FLAG_N;
@@ -2182,7 +2202,7 @@ mod tests {
         let mut prg = vec![0xea; 32768];
         let offset = (SMB_SPRITE0_POLL_PC - 0x8000) as usize;
         prg[offset..offset + 7].copy_from_slice(&[0xad, 0x02, 0x20, 0x29, 0x40, 0xf0, 0xf9]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_SPRITE0_POLL_PC;
         emu.ppu.status |= 0x40;
 
@@ -2201,8 +2221,8 @@ mod tests {
         prg[offset..offset + 12].copy_from_slice(&[
             0xad, 0x02, 0x20, 0x29, 0x40, 0xf0, 0xf9, 0xa0, 0x14, 0x88, 0xd0, 0xfd,
         ]);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for emu in [&mut fast, &mut interpreted] {
             emu.cpu.pc = SMB_SPRITE0_POLL_PC;
             emu.cpu.a = 0x7a;
@@ -2242,8 +2262,8 @@ mod tests {
         prg[offset..offset + 11].copy_from_slice(&[
             0xbd, 0x80, 0x07, 0xf0, 0x03, 0xde, 0x80, 0x07, 0xca, 0x10, 0xf5,
         ]);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for emu in [&mut fast, &mut interpreted] {
             emu.cpu.pc = SMB_TIMER_CONTROL_LOOP_PC;
             emu.cpu.a = 0x7a;
@@ -2286,7 +2306,7 @@ mod tests {
         prg[offset..offset + 11].copy_from_slice(&[
             0xbd, 0x80, 0x07, 0xf0, 0x03, 0xde, 0x80, 0x07, 0xca, 0x10, 0xf5,
         ]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_TIMER_CONTROL_LOOP_PC;
         emu.cpu.x = 0x23;
         for index in 0..=0x23usize {
@@ -2313,7 +2333,7 @@ mod tests {
         prg[offset..offset + 12].copy_from_slice(&[
             0xad, 0x02, 0x20, 0x29, 0x40, 0xf0, 0xf9, 0xa0, 0x14, 0x88, 0xd0, 0xfd,
         ]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_SPRITE0_POLL_PC;
         emu.ppu.status |= 0x40;
         emu.ppu
@@ -2334,8 +2354,8 @@ mod tests {
         prg[offset..offset + 14].copy_from_slice(&[
             0xa0, 0x04, 0xa9, 0xf8, 0x99, 0x00, 0x02, 0xc8, 0xc8, 0xc8, 0xc8, 0xd0, 0xf7, 0x60,
         ]);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for (index, value) in fast.ram.iter_mut().enumerate() {
             *value = ((index * 17 + 3) & 0xff) as u8;
         }
@@ -2379,7 +2399,7 @@ mod tests {
         prg[offset..offset + 14].copy_from_slice(&[
             0xa0, 0x04, 0xa9, 0xf8, 0x99, 0x00, 0x02, 0xc8, 0xc8, 0xc8, 0xc8, 0xd0, 0xf7, 0x60,
         ]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_OAM_CLEAR_PC;
         emu.ppu.set_dot(PPU_VBLANK_DOT - 1);
 
@@ -2404,8 +2424,8 @@ mod tests {
             0x88, 0xd0, 0xf1, 0x9d, 0xfc, 0x06, 0x48, 0x29, 0x30, 0x3d, 0x4a, 0x07, 0xf0, 0x07,
             0x68, 0x29, 0xcf, 0x9d, 0xfc, 0x06, 0x60, 0x68, 0x9d, 0x4a, 0x07, 0x60,
         ]);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for (index, value) in fast.ram.iter_mut().enumerate() {
             *value = ((index * 19 + 11) & 0xff) as u8;
         }
@@ -2489,7 +2509,7 @@ mod tests {
             0x88, 0xd0, 0xf1, 0x9d, 0xfc, 0x06, 0x48, 0x29, 0x30, 0x3d, 0x4a, 0x07, 0xf0, 0x07,
             0x68, 0x29, 0xcf, 0x9d, 0xfc, 0x06, 0x60, 0x68, 0x9d, 0x4a, 0x07, 0x60,
         ]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_CONTROLLER_READ_PC;
         emu.cpu.x = 0;
         emu.ppu
@@ -2514,8 +2534,8 @@ mod tests {
             0x90, 0x03, 0x18, 0x65, 0x00, 0x9d, 0xe4, 0x06, 0xca, 0x10, 0xe7,
         ]);
         let mut interpreted =
-            NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+            NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for idx in 0..0x800usize {
             let value = ((idx * 17 + idx / 3 + 29) & 0xff) as u8;
             interpreted.ram[idx] = value;
@@ -2563,7 +2583,7 @@ mod tests {
             0xbd, 0xe4, 0x06, 0xc5, 0x00, 0x90, 0x0f, 0xac, 0xe0, 0x06, 0x18, 0x79, 0xe1, 0x06,
             0x90, 0x03, 0x18, 0x65, 0x00, 0x9d, 0xe4, 0x06, 0xca, 0x10, 0xe7,
         ]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_SCROLL_SLOT_LOOP_PC;
         emu.cpu.x = 0x0e;
         emu.ppu.set_dot(PPU_PRERENDER_DOT - 1);
@@ -2593,8 +2613,8 @@ mod tests {
     ) {
         let mut prg = vec![0xea; 32768];
         add_digit_math_routine(&mut prg);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for (index, value) in fast.ram.iter_mut().enumerate() {
             *value = ((index * 31 + index / 7 + 19) & 0xff) as u8;
         }
@@ -2668,7 +2688,7 @@ mod tests {
     fn digit_math_fast_forward_does_not_cross_ppu_event() {
         let mut prg = vec![0xea; 32768];
         add_digit_math_routine(&mut prg);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_DIGIT_MATH_LOOP_PC;
         emu.cpu.x = 2;
         emu.cpu.y = 1;
@@ -2724,10 +2744,8 @@ mod tests {
     fn offscreen_bits_subs_fast_forward_matches_interpreter_states() {
         let mut prg = vec![0xea; 32768];
         add_offscreen_bits_subs(&mut prg);
-        let fast_template =
-            NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let interpreted_template =
-            NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let fast_template = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let interpreted_template = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
 
         let mut seed = 0x9e37_79b9_7f4a_7c15u64;
         for case in 0..128u8 {
@@ -2782,7 +2800,7 @@ mod tests {
     fn offscreen_bits_subs_fast_forward_does_not_cross_ppu_event() {
         let mut prg = vec![0xea; 32768];
         add_offscreen_bits_subs(&mut prg);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_OFFSCREEN_BITS_SUBS_PC;
         emu.ppu.set_dot(PPU_PRERENDER_DOT - 1);
         let original_cpu = emu.cpu;
@@ -2810,8 +2828,8 @@ mod tests {
     ) {
         let mut prg = vec![0xea; 32768];
         add_draw_sprite_object_routine(&mut prg);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for (index, value) in fast.ram.iter_mut().enumerate() {
             *value = ((index * 29 + index / 11 + 7) & 0xff) as u8;
         }
@@ -2867,7 +2885,7 @@ mod tests {
     fn draw_sprite_object_fast_forward_does_not_cross_ppu_event() {
         let mut prg = vec![0xea; 32768];
         add_draw_sprite_object_routine(&mut prg);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_DRAW_SPRITE_OBJECT_PC;
         emu.ppu.set_dot(PPU_PRERENDER_DOT - 1);
         let original_cpu = emu.cpu;
@@ -2897,8 +2915,8 @@ mod tests {
     ) {
         let mut prg = vec![0xea; 32768];
         add_relative_position_helper(&mut prg);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for emu in [&mut fast, &mut interpreted] {
             emu.cpu.pc = SMB_RELATIVE_POSITION_HELPER_PC;
             emu.cpu.a = 0x13;
@@ -2959,7 +2977,7 @@ mod tests {
     fn relative_position_fast_forward_does_not_cross_ppu_event() {
         let mut prg = vec![0xea; 32768];
         add_relative_position_helper(&mut prg);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_RELATIVE_POSITION_HELPER_PC;
         emu.ppu.set_dot(PPU_PRERENDER_DOT - 1);
         let original_cpu = emu.cpu;
@@ -2989,8 +3007,8 @@ mod tests {
             0x48, 0x4a, 0x4a, 0x4a, 0x4a, 0xa8, 0xb9, 0xdf, 0x9b, 0x85, 0x07, 0x68, 0x29, 0x0f,
             0x18, 0x79, 0xdd, 0x9b, 0x85, 0x06, 0x60,
         ]);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for (index, value) in fast.ram.iter_mut().enumerate() {
             *value = ((index * 23 + 7) & 0xff) as u8;
         }
@@ -3048,7 +3066,7 @@ mod tests {
             0x48, 0x4a, 0x4a, 0x4a, 0x4a, 0xa8, 0xb9, 0xdf, 0x9b, 0x85, 0x07, 0x68, 0x29, 0x0f,
             0x18, 0x79, 0xdd, 0x9b, 0x85, 0x06, 0x60,
         ]);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_BOUNDING_BOX_NIBBLE_PC;
         emu.ppu
             .set_dot(PPU_PRERENDER_DOT - SMB_BOUNDING_BOX_NIBBLE_CPU_CYCLES * 3 + 1);
@@ -3083,8 +3101,8 @@ mod tests {
     fn assert_bounding_box_helper_fast_forward_matches_interpreted(a: u8, x: u8, y: u8) {
         let mut prg = vec![0xea; 32768];
         add_bounding_box_routines(&mut prg);
-        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), true);
-        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut fast = NesEmulator::new_with_options(make_test_cart_with_prg(prg.clone()), ());
+        let mut interpreted = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         for (index, value) in fast.ram.iter_mut().enumerate() {
             *value = ((index * 29 + index / 5 + 13) & 0xff) as u8;
         }
@@ -3141,7 +3159,7 @@ mod tests {
     fn bounding_box_helper_fast_forward_does_not_cross_ppu_event() {
         let mut prg = vec![0xea; 32768];
         add_bounding_box_routines(&mut prg);
-        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), true);
+        let mut emu = NesEmulator::new_with_options(make_test_cart_with_prg(prg), ());
         emu.cpu.pc = SMB_BOUNDING_BOX_HELPER_PC;
         emu.ppu
             .set_dot(PPU_PRERENDER_DOT - SMB_BOUNDING_BOX_HELPER_MAX_CPU_CYCLES * 3 + 1);

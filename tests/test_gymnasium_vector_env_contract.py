@@ -16,6 +16,7 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from rom_helpers import require_rom
 from supermariobrosnes_turbo import (
     Actions,
+    Integrations,
     NES_BUTTONS,
     SuperMarioBrosNesTurboVecEnv,
     list_available_states,
@@ -57,8 +58,15 @@ def noop(num_envs: int) -> np.ndarray:
 
 def test_public_surface_is_manual_reset_only() -> None:
     signature = inspect.signature(SuperMarioBrosNesTurboVecEnv)
-    for name in ("done_on", "autoreset_mode", "done_on_info", "state_dir"):
+    for name in (
+        "done_on",
+        "autoreset_mode",
+        "done_on_info",
+        "state_dir",
+        "terminate_on_flag",
+    ):
         assert name not in signature.parameters
+    assert signature.parameters["render_mode"].default is None
     for name in (
         "set_state_policy",
         "set_state_sampling_weights",
@@ -83,6 +91,38 @@ def test_public_surface_is_manual_reset_only() -> None:
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
             use_fire_reset=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("option", "value", "message"),
+    [
+        ("scenario", "/tmp/custom.json", "scenario"),
+        ("info", "/tmp/custom.json", "info"),
+        ("inttype", object(), "inttype"),
+        ("render_mode", "human", "render_mode"),
+    ],
+)
+def test_ignored_compatibility_values_fail_before_rom_loading(
+    option: str,
+    value: object,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
+            **{option: value},
+        )
+
+
+@pytest.mark.parametrize("inttype", ["stable", "STABLE", 1, Integrations.STABLE])
+def test_stable_integration_forms_reach_rom_loading(inttype: object) -> None:
+    with pytest.raises(RuntimeError, match="failed to read ROM"):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
+            inttype=inttype,
         )
 
 
@@ -779,6 +819,17 @@ def test_rgb_render_is_independent_of_policy_preprocessing() -> None:
         assert obs.shape == (1, 1, 84, 84)
         assert frames is not None
         assert frames.shape == (224, 240, 3)
+    finally:
+        env.close()
+
+
+def test_rendering_is_disabled_by_default() -> None:
+    env = make_env(num_envs=2)
+    try:
+        env.reset()
+        assert env.render() is None
+        assert env.render_lane(1) is None
+        assert env.get_images() == [None, None]
     finally:
         env.close()
 

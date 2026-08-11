@@ -40,7 +40,6 @@ pub struct VecEnvConfig {
     pub frame_maxpool: bool,
     pub noop_reset_max: usize,
     pub sticky_action_prob: f64,
-    pub terminate_on_flag: bool,
     pub crop_top: usize,
     pub crop_bottom: usize,
     pub crop_left: usize,
@@ -221,7 +220,7 @@ impl MarioVecEnv {
         );
         let scratch_len = scratch_len(config);
         let envs = (0..config.num_envs)
-            .map(|_| NesEmulator::new_with_options(cart.clone(), config.terminate_on_flag))
+            .map(|_| NesEmulator::new_with_options(cart.clone(), ()))
             .collect::<Vec<_>>();
         let scratch = (0..config.num_envs)
             .map(|_| vec![0; scratch_len])
@@ -248,7 +247,7 @@ impl MarioVecEnv {
             visual_rgb_active: false,
         };
         if !env.state_catalog.is_empty() {
-            let mut validator = NesEmulator::new_with_options(cart, config.terminate_on_flag);
+            let mut validator = NesEmulator::new_with_options(cart, ());
             for state in &env.state_catalog {
                 validator.load_fceu_state(&state.data)?;
             }
@@ -2308,7 +2307,7 @@ mod tests {
                 chr_rom,
                 vertical_mirroring: true,
             },
-            true,
+            (),
         )
     }
 
@@ -2324,7 +2323,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 1.0,
-            terminate_on_flag: true,
             crop_top: 0,
             crop_bottom: 0,
             crop_left: 0,
@@ -2386,7 +2384,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 0.0,
-            terminate_on_flag: true,
             crop_top: 32,
             crop_bottom: 0,
             crop_left: 0,
@@ -2432,7 +2429,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 0.0,
-            terminate_on_flag: true,
             crop_top: 32,
             crop_bottom: 0,
             crop_left: 0,
@@ -2479,7 +2475,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 0.0,
-            terminate_on_flag: true,
             crop_top: 32,
             crop_bottom: 0,
             crop_left: 0,
@@ -2532,7 +2527,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 0.0,
-            terminate_on_flag: true,
             crop_top: 32,
             crop_bottom: 0,
             crop_left: 0,
@@ -2581,7 +2575,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 0.0,
-            terminate_on_flag: true,
             crop_top: 3,
             crop_bottom: 5,
             crop_left: 7,
@@ -2631,7 +2624,6 @@ mod tests {
             frame_maxpool: false,
             noop_reset_max: 0,
             sticky_action_prob: 0.0,
-            terminate_on_flag: true,
             crop_top: 32,
             crop_bottom: 4,
             crop_left: 10,

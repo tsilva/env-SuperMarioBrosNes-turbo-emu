@@ -19,8 +19,10 @@ The environment advertises the strict Turbo Vector API v1:
   with `active_state_indices()`.
 - `observation_ownership` and `observation_buffer_depth` declare the lifetime of
   returned observations.
-- `render_lane(index)` renders one lane, `get_images()` renders every lane, and
-  `render()` renders lane zero.
+- Rendering is opt-in. With `render_mode="rgb_array"`, `render_lane(index)`
+  renders one lane, `get_images()` renders every lane, and `render()` renders
+  lane zero. With the default `render_mode=None`, the first two methods return
+  `None` and `get_images()` returns one `None` entry per lane.
 - `step()` provides synchronous vector stepping; `step_async()` and
   `step_wait_gymnasium()` split action submission from native batched execution
   and collection.
@@ -69,6 +71,17 @@ wrappers:
 
 Reset-NOOP and sticky-action randomness is lane-local. Selectively resetting one
 lane does not consume or change another lane's random stream.
+
+Episode termination follows Stable Retro's native Super Mario Bros game-over
+condition: a lane terminates only when the raw lives counter reaches `-1`.
+Ordinary life loss, reaching a flag, and changing levels do not terminate the
+lane. Raw lives, level, progress, score, and timing signals remain available so
+downstream tasks can define those events and any additional termination rules.
+
+The compatibility arguments `scenario`, `info`, and `inttype` accept only their
+canonical Stable Retro values (`scenario.json`, `data.json`, and Stable
+integration respectively). Other values are rejected instead of being silently
+ignored.
 
 ## States and selective reset
 

@@ -6,6 +6,7 @@ from enum import Enum, Flag, IntEnum
 import gzip
 from importlib import resources
 import json
+import operator
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Union
@@ -351,15 +352,6 @@ DISCRETE_CONTROLLER_BYTES = np.asarray(
 )
 
 
-def _action_masks(actions: Sequence[Any]) -> np.ndarray:
-    masks = np.zeros((len(actions), len(NES_BUTTONS)), dtype=np.uint8)
-    for action_index, action in enumerate(actions):
-        buttons = ACTION_BUTTONS[action] if isinstance(action, str) else action
-        for button in buttons:
-            masks[action_index, BUTTON_TO_INDEX[button]] = 1
-    return masks
-
-
 def action_mask(action_name: str) -> np.ndarray:
     """Return a single SMB button mask for a named core action."""
     if action_name not in ACTION_BUTTONS:
@@ -401,17 +393,27 @@ def _normalize_action_mode(value: Any) -> str:
     return text
 
 
-def _normalize_obs_copy(obs_copy: str) -> tuple[str, bool, bool]:
+def _normalize_obs_copy(obs_copy: str) -> str:
     if isinstance(obs_copy, bool):
         raise ValueError("obs_copy must be 'copy', 'safe_view', or 'unsafe_view'")
     mode = str(obs_copy).lower()
-    if mode == "copy":
-        return mode, True, False
-    if mode == "safe_view":
-        return mode, False, False
-    if mode == "unsafe_view":
-        return mode, False, True
+    if mode in {"copy", "safe_view", "unsafe_view"}:
+        return mode
     raise ValueError("obs_copy must be 'copy', 'safe_view', or 'unsafe_view'")
+
+
+def _is_stable_integration(value: Any) -> bool:
+    name = getattr(value, "name", None)
+    if name is not None:
+        return str(name).split(".")[-1].casefold() == "stable"
+    if isinstance(value, str):
+        return value.strip().casefold() == "stable"
+    if isinstance(value, (bool, np.bool_)):
+        return False
+    try:
+        return operator.index(value) == 1
+    except TypeError:
+        return False
 
 
 def _normalize_info_keys(info_keys: Any) -> list[str] | None:
@@ -558,14 +560,14 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self,
         game: str,
         state: Any = _STATE_UNSET,
-        scenario: str | Path | None = None,
-        info: str | Path | None = None,
+        scenario: str | None = None,
+        info: str | None = None,
         use_restricted_actions: Actions | str | ActionTable = Actions.FILTERED,
         record: bool = False,
         players: int = 1,
         inttype: Any = Integrations.STABLE,
         obs_type: Any = Observations.IMAGE,
-        render_mode: str = "human",
+        render_mode: Literal["rgb_array"] | None = None,
         *,
         num_envs: int = 1,
         num_threads: int | None = None,
@@ -597,10 +599,14 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         obs_type_name = getattr(obs_type, "name", obs_type)
         if obs_type is not None and str(obs_type_name).split(".")[-1].upper() != "IMAGE":
             raise ValueError("SuperMarioBrosNesTurboVecEnv currently supports image observations only")
-        if info not in (None, "data") and not str(info).endswith(".json"):
-            raise ValueError("SuperMarioBrosNesTurboVecEnv only supports the SMB data info file")
-        if scenario not in (None, "scenario") and not str(scenario).endswith(".json"):
-            raise ValueError("SuperMarioBrosNesTurboVecEnv only supports the SMB scenario file")
+        if info not in (None, "data"):
+            raise ValueError("info must be None or 'data'; SMB signals are built in")
+        if scenario not in (None, "scenario"):
+            raise ValueError("scenario must be None or 'scenario'; SMB termination is built in")
+        if not _is_stable_integration(inttype):
+            raise ValueError("inttype must select the Stable integration")
+        if render_mode not in (None, "rgb_array"):
+            raise ValueError("render_mode must be None or 'rgb_array'")
         if use_fire_reset:
             raise ValueError("use_fire_reset is not applicable to Super Mario Bros NES")
 
@@ -631,7 +637,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             action_table = None
             action_meanings = None
             action_table_hash = None
-            custom_masks = None
             normalized_restricted_actions = Actions[action_mode]
         else:
             custom = resolve_custom_action(
@@ -644,7 +649,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             action_table = custom.table
             action_meanings = custom.meanings
             action_table_hash = custom.table_hash
-            custom_masks = custom.masks
             normalized_restricted_actions = use_restricted_actions
         self.autoreset_mode = AutoresetMode.DISABLED
         self.game = str(game)
@@ -653,21 +657,17 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self.action_table = action_table
         self.action_table_hash = action_table_hash
         self.action_mode = action_mode.lower()
-        self._custom_action_masks = custom_masks
         self._named_action_controller_bytes = (
             _named_action_controller_bytes(self.action_table)
             if self.action_table is not None
             else None
-        )
-        self._action_masks = (
-            _action_masks(self.action_table) if self.action_table is not None else None
         )
         initial_states, state_names = _normalize_state_config(
             state,
             state_catalog,
         )
         self.obs_layout = _normalize_obs_layout(obs_layout)
-        self.obs_copy, self._copy_obs, self._unsafe_view = _normalize_obs_copy(obs_copy)
+        self.obs_copy = _normalize_obs_copy(obs_copy)
         self.observation_ownership = (
             "owned"
             if self.obs_copy == "copy"
@@ -702,14 +702,12 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._output_resize_height = int(resize_height)
         if self._output_resize_width <= 0 or self._output_resize_height <= 0:
             raise ValueError("resize_width and resize_height must be > 0")
-        self._needs_python_postprocess = False
         self._core = _CoreRetroVecEnv(
             _expand_rom_path(_resolve_rom_path(str(game), rom_path)),
             num_envs,
             frame_skip,
             bool(obs_grayscale),
             frame_stack,
-            False,
             crop_top,
             crop_bottom,
             self._output_resize_width,
@@ -784,7 +782,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         )
         self.observation_space = batch_space(self.single_observation_space, self.num_envs)
         self.render_mode = render_mode
-        self.viewer = None
         self.closed = False
         self.live_snapshots_deterministic = True
         self.capabilities = MappingProxyType(
@@ -821,7 +818,6 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         self._last_action_masks: np.ndarray | None = None
         self._last_controller_bytes = np.empty((self.num_envs,), dtype=np.uint8)
         self._obs = np.empty(self._core.obs_shape(), dtype=np.uint8)
-        self._unsafe_public_obs: np.ndarray | None = None
         self._safe_public_obs = [
             np.empty((self.num_envs, *self._single_obs_shape), dtype=np.uint8),
             np.empty((self.num_envs, *self._single_obs_shape), dtype=np.uint8),

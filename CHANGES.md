@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Align native termination with Stable Retro's Mario scenario by ending only on
+  final game over, remove the private flag-completion switch, and leave life,
+  flag, and level task events to downstream systems.
+- Make vector rendering opt-in with `render_mode="rgb_array"`, default to no
+  rendering, and reject ignored scenario, info, integration, and render values.
 - Add repository citation metadata for research use.
 - Focus public benchmark positioning on the original Stable Retro comparison.
 - Limit published binary distributions to Apple-silicon macOS and x86-64

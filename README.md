@@ -19,10 +19,11 @@ matched vector shapes.
 ## Quick start
 
 Prebuilt wheels support Python `>=3.9` on Apple-silicon macOS and x86-64 Linux.
-Install the package and launch Level 1-1 with your local ROM:
+Install the CLI with [uv](https://docs.astral.sh/uv/) and launch Level 1-1 with
+your local ROM:
 
 ```bash
-python -m pip install supermariobrosnes-turbo
+uv tool install supermariobrosnes-turbo
 smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes
 ```
 
@@ -41,7 +42,7 @@ smb-turbo play
 
 ROM files are never included in this repository or its distributions.
 
-## Why researchers use it
+## What it provides
 
 - **Native vector execution.** One `step()` advances every lane through batched
   Rust emulation, preprocessing, rewards, termination, and infos. The
@@ -60,8 +61,9 @@ ROM files are never included in this repository or its distributions.
   named presets, or caller-supplied button tables with discoverable meanings.
 - **Configurable visual data.** Choose grayscale or RGB, frame skip, max-pooling,
   crop removal or masking, nearest/bilinear/area resize, frame stacking, and CHW
-  or HWC layout. `obs_copy` controls ownership, while `render_lane()` returns an
-  unprocessed RGB frame for one lane.
+  or HWC layout. `obs_copy` controls ownership. Rendering is opt-in with
+  `render_mode="rgb_array"`; otherwise `render()` and `render_lane()` return
+  `None`, and `get_images()` returns one `None` entry per lane.
 - **Research-ready game state.** Raw progress signals, opt-in semantic player,
   enemy, and area data, `info_filter`, and immutable batched `ram()` snapshots
   expose only the state a downstream task requests.
@@ -87,6 +89,12 @@ documented SMB mapper 0/NROM workload, one player, and image observations, with
 batched RAM available separately through `ram()`; it does not record BK2 movies.
 
 ## Use from Python
+
+Add the package to a uv-managed project:
+
+```bash
+uv add supermariobrosnes-turbo
+```
 
 ```python
 from supermariobrosnes_turbo import (

@@ -84,10 +84,8 @@ def test_readme_leads_with_a_supported_first_run_path():
     readme = (ROOT / "README.md").read_text()
     pyproject = (ROOT / "pyproject.toml").read_text()
 
-    assert readme.index("## Quick start") < readme.index(
-        "## Why researchers use it"
-    )
-    assert "python -m pip install supermariobrosnes-turbo" in readme
+    assert readme.index("## Quick start") < readme.index("## What it provides")
+    assert "uv tool install supermariobrosnes-turbo" in readme
     assert "smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes" in readme
     assert "discoverable SDL2 runtime" in readme
     assert "Windows PowerShell" not in readme
@@ -96,7 +94,7 @@ def test_readme_leads_with_a_supported_first_run_path():
 
 def test_readme_documents_turbo_advantages_beyond_speed():
     readme = (ROOT / "README.md").read_text()
-    why = readme.split("## Why researchers use it", maxsplit=1)[1].split(
+    why = readme.split("## What it provides", maxsplit=1)[1].split(
         "## Compared with Stable Retro", maxsplit=1
     )[0]
     comparison = readme.split("## Compared with Stable Retro", maxsplit=1)[1].split(
