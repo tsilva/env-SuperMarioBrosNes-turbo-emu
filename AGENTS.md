@@ -13,3 +13,7 @@ Before every task in this repository, use the `$specs-author` skill to read the 
 - Use `/build-release` to tag a version and build the validated cross-platform
   PyPI wheel set plus source distribution. Skill:
   `.codex/skills/build-release/SKILL.md`.
+- Use `/benchmark-latest-release` to benchmark the newest stable PyPI release
+  with the canonical TurboBench workflow, publish verified official evidence
+  to Hugging Face, and refresh the project benchmark documentation. Skill:
+  `.codex/skills/benchmark-latest-release/SKILL.md`.

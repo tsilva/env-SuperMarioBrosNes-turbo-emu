@@ -1,0 +1,4 @@
+interface:
+  display_name: "Benchmark Latest Release"
+  short_description: "Benchmark latest release and publish evidence"
+  default_prompt: "Use $benchmark-latest-release to benchmark the latest PyPI release and publish its verified TurboBench evidence to Hugging Face."
