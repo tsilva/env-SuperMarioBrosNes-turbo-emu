@@ -39,7 +39,7 @@ Stable Retro. SPS means environment steps per second.
 Each bundle contains 119 hash-bound artifacts and passed `turbobench verify`
 without errors. The IDs above identify the recorded local evidence; they are
 not download links, and this repository does not publish the bundles. The runs
-used TurboBench `1.0.0` from
+used [TurboBench 1.0.0](https://pypi.org/project/turbobench-cli/1.0.0/) from
 [source commit `d986efa72c81a7d0b5ea689ac37898d8fc38732f`](https://github.com/tsilva/turbobench/commit/d986efa72c81a7d0b5ea689ac37898d8fc38732f),
 harness source SHA-256
 `2c64aefe52d5db7f2887b0f9d9d32c23c49f6590319a02eee5b6e2398b710319`,
@@ -62,10 +62,18 @@ preprocessing, IPC, infos, terminal detection, and selective resets. It excluded
 construction, initial reset, action generation, warmup, correctness replay,
 rendering, and encoding.
 
-Reproduce the package comparisons from the exact TurboBench source revision.
-Set `TURBOBENCH_ASSET_ROOT` to a Stable Retro-compatible data directory that
-contains `SuperMarioBros-Nes-v0/rom.nes` and the canonical `Level1-1` through
-`Level1-4` state files:
+Install the published CLI for new comparisons with:
+
+```bash
+uv tool install \
+  --exclude-newer-package turbobench-cli=2026-08-12T00:00:00Z \
+  turbobench-cli==1.0.0
+```
+
+The recorded bundles retain the exact source identity shown above. Reproduce
+them from that source revision, setting `TURBOBENCH_ASSET_ROOT` to a Stable
+Retro-compatible data directory that contains `SuperMarioBros-Nes-v0/rom.nes`
+and the canonical `Level1-1` through `Level1-4` state files:
 
 ```bash
 git clone https://github.com/tsilva/turbobench.git

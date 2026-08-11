@@ -70,8 +70,8 @@ def test_readme_delegates_training_to_pinned_gradlab_recipes():
 
 def test_readme_use_example_matches_action_batch_contract():
     readme = (ROOT / "README.md").read_text()
-    use_section = readme.split("## 🎮 Use", maxsplit=1)[1].split(
-        "## Turbo Vector API", maxsplit=1
+    use_section = readme.split("## Use from Python", maxsplit=1)[1].split(
+        "## Train with GradLab", maxsplit=1
     )[0]
 
     assert "use_restricted_actions=Actions.ALL" in use_section
@@ -79,9 +79,23 @@ def test_readme_use_example_matches_action_batch_contract():
     assert 'use_restricted_actions="basic"' not in use_section
 
 
-def test_readme_info_table_matches_available_info_key_order():
+def test_readme_leads_with_a_supported_first_run_path():
     readme = (ROOT / "README.md").read_text()
-    info_section = readme.split("All selectable game-state variables", maxsplit=1)[1].split(
+    pyproject = (ROOT / "pyproject.toml").read_text()
+
+    assert readme.index("## Quick start") < readme.index(
+        "## Why researchers use it"
+    )
+    assert "python -m pip install supermariobrosnes-turbo" in readme
+    assert "smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes" in readme
+    assert "discoverable SDL2 runtime" in readme
+    assert "Windows PowerShell" not in readme
+    assert '"Operating System :: Microsoft :: Windows"' not in pyproject
+
+
+def test_api_info_table_matches_available_info_key_order():
+    api = (ROOT / "API.md").read_text()
+    info_section = api.split("## Research infos", maxsplit=1)[1].split(
         "The environment may also add lifecycle metadata", maxsplit=1
     )[0]
     documented_keys = tuple(
@@ -95,14 +109,33 @@ def test_readme_info_table_matches_available_info_key_order():
     assert documented_keys == supermariobrosnes_turbo.AVAILABLE_INFO_KEYS
 
 
+def test_api_snapshot_example_encodes_before_closing_source():
+    api = (ROOT / "API.md").read_text()
+    snapshot_section = api.split("## Live snapshots", maxsplit=1)[1].split(
+        "## Research infos", maxsplit=1
+    )[0]
+
+    assert "source = make_env()" in snapshot_section
+    assert "destination = make_env()" in snapshot_section
+    assert snapshot_section.index(
+        "payloads = source.encode_snapshots"
+    ) < snapshot_section.index(
+        "source.close()"
+    )
+
+
 def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     readme = (ROOT / "README.md").read_text()
     benchmarks = (ROOT / "BENCHMARKS.md").read_text()
     commit = "d986efa72c81a7d0b5ea689ac37898d8fc38732f"
 
-    assert "official `0.6.2` mapper 0/NROM package benchmarks" in readme
+    assert "[verified `0.6.2` benchmarks](BENCHMARKS.md)" in readme
     assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
     assert "media/benchmark-throughput.svg" not in readme
+    assert "https://pypi.org/project/turbobench-cli/1.0.0/" in readme
+    assert "https://pypi.org/project/turbobench-cli/1.0.0/" in benchmarks
+    assert "turbobench-cli=2026-08-12T00:00:00Z" in benchmarks
+    assert "turbobench-cli==1.0.0" in benchmarks
     assert f"git checkout --detach {commit}" in benchmarks
     assert "uv run turbobench compare supermario/canonical-v1" in benchmarks
     assert "independently verified" not in benchmarks

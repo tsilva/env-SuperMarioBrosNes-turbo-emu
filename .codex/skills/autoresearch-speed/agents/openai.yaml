@@ -1,4 +1,0 @@
-interface:
-  display_name: "Autoresearch Speed"
-  short_description: "Run +10% SPS improvement rounds from stored research state."
-  default_prompt: "Use $autoresearch-speed to run the next +10% Super Mario Bros emulator SPS improvement round from AUTORESEARCH_ROOT_PATH state."

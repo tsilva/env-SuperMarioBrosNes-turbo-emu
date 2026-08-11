@@ -25,7 +25,6 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "License :: OSI Approved :: MIT License",
   "Operating System :: MacOS",
-  "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.9",
@@ -77,10 +76,6 @@ include = [
   "python/supermariobrosnes_turbo/data/**/*.state",
   "python/supermariobrosnes_turbo/data/**/metadata.json",
   "python/supermariobrosnes_turbo/py.typed",
-  "scripts/__init__.py",
-  "scripts/benchmark_rom.py",
-  "scripts/benchmark_sps.py",
-  "scripts/benchmark_workload.py",
 ]
 exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]
 

@@ -52,13 +52,6 @@ from . import (
     action_mask,
     resolve_required_rom_path,
 )
-from .benchmark_sps import (
-    PreprocessingConfig,
-    create_stable_retro_vector_env,
-    named_action_mask,
-    stable_retro_buttons,
-)
-from .env import VISIBLE_HEIGHT, VISIBLE_WIDTH
 from .action_run import find_policy_path_for_state, load_action_run_checkpoint
 
 
@@ -244,12 +237,6 @@ def download_direct_hf_file(
     return target
 
 
-def stable_action_masks(action_names: tuple[str, ...], rom_path: Path) -> np.ndarray:
-    del rom_path
-    buttons = stable_retro_buttons()
-    return np.stack([named_action_mask(name, buttons) for name in action_names])
-
-
 def json_default(value):
     if isinstance(value, np.ndarray):
         return {
@@ -279,8 +266,6 @@ def lane_info(infos: dict[str, object], lane: int = 0) -> dict[str, object]:
 def apply_checkpoint_defaults(args: argparse.Namespace, model_path: Path) -> None:
     """Select the preprocessing contract used to create the checkpoint."""
     del model_path
-    if args.backend == "auto":
-        args.backend = "native"
     if args.max_pool_frames is None:
         args.max_pool_frames = False
     if args.crop_mode is None:
@@ -399,12 +384,9 @@ class SdlPolicyPlayer:
 
     def _configure_model_actions(self, model) -> None:
         self.action_names = model.action_names
-        if self.args.backend == "native":
-            self.action_masks = np.stack(
-                [action_mask(name) for name in self.action_names]
-            ).astype(np.uint8)
-        else:
-            self.action_masks = stable_action_masks(self.action_names, self.rom_path)
+        self.action_masks = np.stack(
+            [action_mask(name) for name in self.action_names]
+        ).astype(np.uint8)
 
     def activate_named_level_policy(self, level_name: str) -> bool:
         if self.args.level_policy_root is None:
@@ -460,56 +442,35 @@ class SdlPolicyPlayer:
     def make_env(self, state: str | None = None):
         state = state or self.current_state
         raw_view = self.args.view == "raw"
-        if self.args.backend == "native":
-            env = SuperMarioBrosNesTurboVecEnv(
-                self.args.game,
-                state=state,
-                rom_path=self.rom_path,
-                num_envs=1,
-                num_threads=1,
-                render_mode="rgb_array",
-                use_restricted_actions=Actions.ALL,
-                frame_skip=self.args.frame_skip,
-                obs_grayscale=not raw_view,
-                frame_stack=1 if raw_view else self.args.frame_stack,
-                maxpool_last_two=False if raw_view else self.args.max_pool_frames,
-                obs_crop=(
-                    None
-                    if raw_view
-                    else (self.args.crop_top, self.args.crop_bottom, 0, 0)
-                ),
-                obs_crop_mode=self.args.crop_mode,
-                obs_crop_fill=0,
-                obs_resize=(
-                    None
-                    if raw_view
-                    else (self.args.resize_height, self.args.resize_width)
-                ),
-                obs_resize_algorithm="area",
-                obs_layout="chw",
-                obs_copy="safe_view",
-                reward_clip=False,
-                info_filter="all",
-            )
-            env.seed(self.args.seed)
-            return env
-
-        env = create_stable_retro_vector_env(
+        env = SuperMarioBrosNesTurboVecEnv(
+            self.args.game,
+            state=state,
             rom_path=self.rom_path,
-            lane_state_names=[state],
-            state_dir=self.args.state_dir,
-            preprocessing=PreprocessingConfig(
-                frame_skip=self.args.frame_skip,
-                frame_stack=1 if raw_view else self.args.frame_stack,
-                grayscale=not raw_view,
-                crop_top=0 if raw_view else self.args.crop_top,
-                crop_bottom=0 if raw_view else self.args.crop_bottom,
-                crop_mode="remove" if raw_view else self.args.crop_mode,
-                resize_width=VISIBLE_WIDTH if raw_view else self.args.resize_width,
-                resize_height=VISIBLE_HEIGHT if raw_view else self.args.resize_height,
-                maxpool_last_two=(False if raw_view else self.args.max_pool_frames),
+            num_envs=1,
+            num_threads=1,
+            render_mode="rgb_array",
+            use_restricted_actions=Actions.ALL,
+            frame_skip=self.args.frame_skip,
+            obs_grayscale=not raw_view,
+            frame_stack=1 if raw_view else self.args.frame_stack,
+            maxpool_last_two=False if raw_view else self.args.max_pool_frames,
+            obs_crop=(
+                None
+                if raw_view
+                else (self.args.crop_top, self.args.crop_bottom, 0, 0)
             ),
-            asynchronous=False,
+            obs_crop_mode=self.args.crop_mode,
+            obs_crop_fill=0,
+            obs_resize=(
+                None
+                if raw_view
+                else (self.args.resize_height, self.args.resize_width)
+            ),
+            obs_resize_algorithm="area",
+            obs_layout="chw",
+            obs_copy="safe_view",
+            reward_clip=False,
+            info_filter="all",
         )
         env.seed(self.args.seed)
         return env
@@ -643,7 +604,7 @@ class SdlPolicyPlayer:
         self.sdl.SDL_RenderPresent(self.renderer)
 
     def current_display_frame(self) -> np.ndarray:
-        if self.args.backend == "native" and self.args.view == "raw":
+        if self.args.view == "raw":
             frame = self.env.render()
             if frame is not None:
                 return np.asarray(frame)
@@ -691,12 +652,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--filename", default=None, help="Checkpoint filename inside an HF repo"
     )
     parser.add_argument("--cache-dir", type=Path, default=Path("artifacts/hf_cache"))
-    parser.add_argument(
-        "--backend",
-        choices=("auto", "stable-retro", "native"),
-        default="auto",
-        help="auto selects the native backend",
-    )
     parser.add_argument("--game", default=DEFAULT_GAME)
     parser.add_argument(
         "--rom-path",
@@ -705,7 +660,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Path to the SMB NES ROM. Defaults to Stable Retro-compatible discovery.",
     )
     parser.add_argument("--state", default="Level1-1")
-    parser.add_argument("--state-dir", type=Path, default=None)
     parser.add_argument(
         "--level-policy-root",
         type=Path,

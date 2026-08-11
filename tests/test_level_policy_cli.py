@@ -46,13 +46,10 @@ def test_play_parser_owns_modes_and_playback_options() -> None:
     defaults = parser.parse_args([])
     assert defaults.state == "Level1-1"
     assert defaults.action_set is None
-    args = parser.parse_args(
-        ["Level1-1", "--policy", "policy.zip", "--backend", "native"]
-    )
+    args = parser.parse_args(["Level1-1", "--policy", "policy.zip"])
 
     assert args.state == "Level1-1"
     assert args.policy == "policy.zip"
-    assert args.backend == "native"
     with pytest.raises(SystemExit):
         parser.parse_args(["Level1-1", "--manual", "--policy", "policy.zip"])
     with pytest.raises(SystemExit):
