@@ -14,7 +14,7 @@ both
 and the original
 [`stable-retro==1.0.1`](https://pypi.org/project/stable-retro/1.0.1/). Both
 comparisons passed every TurboBench validity gate and produced official,
-independently verified result bundles.
+verified result bundles.
 
 | Envs | Matched provider | Turbo median SPS | Provider median SPS | Paired speedup | 95% paired bootstrap CI |
 | ---: | --- | ---: | ---: | ---: | ---: |
@@ -31,14 +31,17 @@ Stable Retro. SPS means environment steps per second.
 
 ### Evidence
 
-| Comparison | Verified bundle ID |
+| Comparison | Recorded bundle ID |
 | --- | --- |
 | `supermariobrosnes-turbo==0.6.2` versus `stable-retro-turbo==1.0.1.post37` | `1d3508ab40a81377d7f8d0fc5270c55a85e9f935893a41518761597f75e63760` |
 | `supermariobrosnes-turbo==0.6.2` versus `stable-retro==1.0.1` | `ca1853067f0a28c276dc97343981e3c806c468ea5b1cde094b40fc263cfa3e19` |
 
 Each bundle contains 119 hash-bound artifacts and passed `turbobench verify`
-without errors. The runs used TurboBench `1.0.0` from source commit
-`d986efa72c81a7d0b5ea689ac37898d8fc38732f`, harness source SHA-256
+without errors. The IDs above identify the recorded local evidence; they are
+not download links, and this repository does not publish the bundles. The runs
+used TurboBench `1.0.0` from
+[source commit `d986efa72c81a7d0b5ea689ac37898d8fc38732f`](https://github.com/tsilva/turbobench/commit/d986efa72c81a7d0b5ea689ac37898d8fc38732f),
+harness source SHA-256
 `2c64aefe52d5db7f2887b0f9d9d32c23c49f6590319a02eee5b6e2398b710319`,
 and immutable profile `supermario/canonical-v1` with profile SHA-256
 `326c6d47c4cc0bc2bbafdf003a430ea80cc27877f8a4144dfbb65dbea6bb2cd7`.
@@ -59,15 +62,25 @@ preprocessing, IPC, infos, terminal detection, and selective resets. It excluded
 construction, initial reset, action generation, warmup, correctness replay,
 rendering, and encoding.
 
-Reproduce the package comparisons with the canonical ROM available to
-TurboBench:
+Reproduce the package comparisons from the exact TurboBench source revision.
+Set `TURBOBENCH_ASSET_ROOT` to a Stable Retro-compatible data directory that
+contains `SuperMarioBros-Nes-v0/rom.nes` and the canonical `Level1-1` through
+`Level1-4` state files:
 
 ```bash
-turbobench compare supermario/canonical-v1 \
+git clone https://github.com/tsilva/turbobench.git
+cd turbobench
+git checkout --detach d986efa72c81a7d0b5ea689ac37898d8fc38732f
+uv sync --frozen --group dev
+
+export TURBOBENCH_ASSET_ROOT=/absolute/path/to/stable-retro/data/stable
+uv run turbobench doctor supermario/canonical-v1
+
+uv run turbobench compare supermario/canonical-v1 \
   --left supermariobrosnes-turbo@0.6.2 \
   --right stable-retro-turbo@1.0.1.post37
 
-turbobench compare supermario/canonical-v1 \
+uv run turbobench compare supermario/canonical-v1 \
   --left supermariobrosnes-turbo@0.6.2 \
   --right stable-retro@1.0.1
 ```

@@ -242,7 +242,7 @@ def test_report_renders_result_and_validity() -> None:
             "turbo": {"name": "supermariobrosnes-turbo", "version": "0.3.0"},
             "stable-retro": {
                 "name": "stable-retro-turbo",
-                "version": "1.0.1.post33",
+                "version": "1.0.1.post34",
             },
         },
         "results": [shape_result],
@@ -277,3 +277,7 @@ def test_report_renders_result_and_validity() -> None:
     assert "5.00x" in report
     assert "Exact ROM-backed parity checks: **PASS**" in report
     assert "make benchmark-report" in report
+    assert "# Turbo vs Stable Retro Turbo SPS Benchmark" in report
+    assert "Stable Retro Turbo median SPS" in report
+    assert "Stable Retro Turbo vectorization" in report
+    assert "Upstream Stable Retro" not in report

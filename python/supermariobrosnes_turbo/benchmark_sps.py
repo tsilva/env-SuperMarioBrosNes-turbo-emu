@@ -491,7 +491,7 @@ def stable_retro_module() -> Any:
     except ImportError as exc:
         raise SystemExit(
             "Stable Retro baseline mode requires the optional development dependency "
-            "stable-retro-turbo==1.0.1.post33; run `uv sync --extra dev`."
+            "stable-retro-turbo==1.0.1.post34; run `uv sync --extra dev`."
         ) from exc
 
 

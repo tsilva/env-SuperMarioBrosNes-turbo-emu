@@ -1,4 +1,5 @@
 import importlib.util
+import re
 from pathlib import Path
 
 import supermariobrosnes_turbo
@@ -59,11 +60,52 @@ def test_readme_delegates_training_to_pinned_gradlab_recipes():
     ) in readme
     assert (
         "uvx gradlab@0.1.1 train "
-        "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom "
+        "SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
+    assert "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m" not in readme
     assert "smb-turbo train" not in readme
     assert "train.py" not in readme
+
+
+def test_readme_use_example_matches_action_batch_contract():
+    readme = (ROOT / "README.md").read_text()
+    use_section = readme.split("## 🎮 Use", maxsplit=1)[1].split(
+        "## Turbo Vector API", maxsplit=1
+    )[0]
+
+    assert "use_restricted_actions=Actions.ALL" in use_section
+    assert 'action_batch("right", env.num_envs)' in use_section
+    assert 'use_restricted_actions="basic"' not in use_section
+
+
+def test_readme_info_table_matches_available_info_key_order():
+    readme = (ROOT / "README.md").read_text()
+    info_section = readme.split("All selectable game-state variables", maxsplit=1)[1].split(
+        "The environment may also add lifecycle metadata", maxsplit=1
+    )[0]
+    documented_keys = tuple(
+        re.findall(
+            r"^\| `([^`]+)` \| (?:Legacy/default|Extra/opt-in) \|",
+            info_section,
+            re.MULTILINE,
+        )
+    )
+
+    assert documented_keys == supermariobrosnes_turbo.AVAILABLE_INFO_KEYS
+
+
+def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
+    readme = (ROOT / "README.md").read_text()
+    benchmarks = (ROOT / "BENCHMARKS.md").read_text()
+    commit = "d986efa72c81a7d0b5ea689ac37898d8fc38732f"
+
+    assert "official `0.6.2` mapper 0/NROM package benchmarks" in readme
+    assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
+    assert "media/benchmark-throughput.svg" not in readme
+    assert f"git checkout --detach {commit}" in benchmarks
+    assert "uv run turbobench compare supermario/canonical-v1" in benchmarks
+    assert "independently verified" not in benchmarks
 
 
 def test_imported_rom_is_ignored_and_excluded_from_distributions():

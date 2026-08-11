@@ -10,10 +10,11 @@
 
 **SuperMarioBros-Nes-turbo** is a Rust-backed Gymnasium vector environment for
 reinforcement-learning researchers working with Super Mario Bros NES. In the
-published `0.3.0` mapper 0/NROM benchmark, it measured **13.27× to 18.27×** the
-end-to-end step and preprocessing throughput of
-[Stable Retro](https://github.com/Farama-Foundation/stable-retro), depending on
-the host and number of environments.
+official `0.6.2` mapper 0/NROM package benchmarks, it measured **15.63× to
+17.94×** the throughput of original
+[Stable Retro](https://github.com/Farama-Foundation/stable-retro) and **7.46× to
+8.05×** Stable Retro Turbo across the measured vector shapes on the documented
+host.
 
 ## ⚡ Why it is fast
 
@@ -84,10 +85,10 @@ uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /absolut
 ```
 
 For Go-Explore trajectory discovery, capped at 20 million transitions and
-stopping locally on the first level completion:
+retaining the best action-run policy it discovers:
 
 ```bash
-uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom /absolute/path/to/SuperMarioBros.nes
+uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom /absolute/path/to/SuperMarioBros.nes
 ```
 
 GradLab verifies and uses the ROM in place, shows live progress, and writes a
@@ -116,7 +117,7 @@ env = SuperMarioBrosNesTurboVecEnv(
     "SuperMarioBros-Nes-v0",
     state="Level1-1",
     num_envs=16,
-    use_restricted_actions="basic",
+    use_restricted_actions=Actions.ALL,
     frame_skip=4,
     obs_grayscale=True,
     obs_crop=(32, 0, 0, 0),
@@ -248,7 +249,6 @@ variables are returned only when explicitly named in `info_filter["keys"]`.
 | `xscrollHi` | Legacy/default | `(num_envs,)` | `np.int_` | High/page component of horizontal scroll. |
 | `xscrollLo` | Legacy/default | `(num_envs,)` | `np.int_` | Low component of horizontal scroll. |
 | `area_id` | Extra/opt-in | `(num_envs,)` | `np.int16` | Stable internal subarea identifier. |
-| `area_pointer` | Extra/opt-in | `(num_envs,)` | `np.int16` | Current SMB area-data pointer, used to distinguish route destinations that reuse coordinates. |
 | `area_type` | Extra/opt-in | `(num_envs,)` | `np.int8` | `AreaType`: `UNKNOWN=-1`, `WATER=0`, `GROUND=1`, `UNDERGROUND=2`, `CASTLE=3`. |
 | `y_pos` | Extra/opt-in | `(num_envs,)` | `np.int32` | Combined world-space vertical position. |
 | `y_screen_pos` | Extra/opt-in | `(num_envs,)` | `np.int16` | Screen-relative vertical position. |
@@ -271,6 +271,7 @@ variables are returned only when explicitly named in `info_filter["keys"]`.
 | `enemy_x_velocity` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Signed horizontal velocities; inactive slots are `0`. |
 | `enemy_y_velocity` | Extra/opt-in | `(num_envs, 6)` | `np.int16` | Signed vertical velocities; inactive slots are `0`. |
 | `enemy_facing` | Extra/opt-in | `(num_envs, 6)` | `np.int8` | Normalized `Direction`; inactive slots are `0` (`NONE`). |
+| `area_pointer` | Extra/opt-in | `(num_envs,)` | `np.int16` | Current SMB area-data pointer, used to distinguish route destinations that reuse coordinates. |
 | `loop_command_active` | Extra/opt-in | `(num_envs,)` | `np.bool_` | Whether SMB's castle loop command is active. |
 | `loop_correct_count` | Extra/opt-in | `(num_envs,)` | `np.int16` | Number of accepted steps in the active castle-loop route. |
 | `loop_pass_count` | Extra/opt-in | `(num_envs,)` | `np.int16` | Number of completed castle-loop passes. |
@@ -331,22 +332,22 @@ command above prints the exact playback command for its newly trained model.
 smb-turbo import /path/to/roms        # import the supported ROM
 smb-turbo play                        # play Level1-1 manually or with its policy
 uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /path/to/rom.nes
-uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom /path/to/rom.nes
+uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom /path/to/rom.nes
 uv sync --frozen --extra dev --group dev  # install development dependencies
 uv run maturin develop --release      # build the optimized Rust extension
 make test                             # run Rust and Python tests
 make test-retro-oracle                # run ROM-backed parity and policy tests
 make benchmark                        # benchmark SuperMarioBros-Nes-turbo locally
-make benchmark-report                 # compare SuperMarioBros-Nes-turbo with Stable Retro
+make benchmark-report                 # compare SuperMarioBros-Nes-turbo with Stable Retro Turbo
 uv run python scripts/benchmark_info_filter.py --rom /path/to/rom.nes  # diagnostic infos overhead
 ```
 
 ## 📈 Benchmark
 
-[![SuperMarioBros-Nes-turbo versus Stable Retro median environment throughput](media/benchmark-throughput.svg)](BENCHMARKS.md)
-
-The chart records the published `0.3.0` comparison. See
-[BENCHMARKS.md](BENCHMARKS.md) for exact results, protocol, and machine details.
+The official `0.6.2` package results compare SuperMarioBros-Nes-turbo with both
+original Stable Retro and Stable Retro Turbo. See
+[BENCHMARKS.md](BENCHMARKS.md) for exact tables, protocol, machine details, and
+reproduction commands.
 `benchmark_info_filter.py` is a paired diagnostic for the optional research-info
 path only; its output is never eligible for autoresearch acceptance records.
 

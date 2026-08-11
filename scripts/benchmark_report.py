@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Produce a paired Turbo-versus-upstream-Stable-Retro benchmark report."""
+"""Produce a paired Turbo-versus-Stable-Retro-Turbo benchmark report."""
 
 from __future__ import annotations
 
@@ -596,7 +596,7 @@ def render_report(aggregate: dict[str, Any]) -> str:
     settings = aggregate["settings"]
     validity = aggregate["validity"]
     lines = [
-        "# Turbo vs Upstream Stable Retro SPS Benchmark",
+        "# Turbo vs Stable Retro Turbo SPS Benchmark",
         "",
         f"Generated: `{aggregate['created_at']}`",
         "",
@@ -619,7 +619,7 @@ def render_report(aggregate: dict[str, Any]) -> str:
             "",
             "## Results",
             "",
-            "| Envs | Turbo median SPS | Stable Retro median SPS | Median paired speedup | 95% CI | Pairs | Claim |",
+            "| Envs | Turbo median SPS | Stable Retro Turbo median SPS | Median paired speedup | 95% CI | Pairs | Claim |",
             "|---:|---:|---:|---:|---:|---:|:---:|",
         ]
     )
@@ -642,7 +642,7 @@ def render_report(aggregate: dict[str, Any]) -> str:
             "",
             "## Matched workload",
             "",
-            "- One backend per invocation; paired order alternates Turbo/Stable and Stable/Turbo.",
+            "- One backend per invocation; paired order alternates Turbo/Stable-Retro-Turbo and Stable-Retro-Turbo/Turbo.",
             "- Canonical ROM and round-robin `Level1-1` through `Level1-4` lane states.",
             "- Deterministic sampled actions: `noop`, `right`, `right_b`, `right_a`, seed `0`.",
             "- Frame skip 4, no max-pooling, four-frame stack, integer grayscale, top-32 HUD mask, integer area resize to 84x84, CHW `uint8`.",
@@ -668,7 +668,7 @@ def render_report(aggregate: dict[str, Any]) -> str:
             f"- Python: `{aggregate['system']['python'].splitlines()[0]}`",
             f"- Turbo package: `{packages['turbo']['name']}=={packages['turbo']['version']}`",
             f"- Baseline package: `{packages['stable-retro']['name']}=={packages['stable-retro']['version']}`",
-            "- Stable Retro vectorization: one upstream scalar `RetroEnv` worker per lane under Gymnasium `AsyncVectorEnv`; process and IPC overhead are included.",
+            "- Stable Retro Turbo vectorization: one scalar `RetroEnv` worker per lane under Gymnasium `AsyncVectorEnv`; process and IPC overhead are included.",
             "",
             "## Reproduction",
             "",

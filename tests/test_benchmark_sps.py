@@ -122,6 +122,13 @@ def test_dependency_uses_stable_retro_turbo_release() -> None:
     assert f'"{dependency}"' in pyproject
     assert '\nname = "stable-retro-turbo"\n' in lockfile
     assert '\nname = "stable-retro"\n' not in lockfile
+    for source in (
+        root / "scripts" / "benchmark_sps.py",
+        root / "python" / "supermariobrosnes_turbo" / "benchmark_sps.py",
+    ):
+        text = source.read_text()
+        assert "stable-retro-turbo==1.0.1.post34" in text
+        assert "stable-retro-turbo==1.0.1.post33" not in text
 
 
 def test_mask_grayscale_integer_area_resize_and_chw() -> None:
