@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import hashlib
 import json
 import os
@@ -30,6 +31,7 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 CARGO_TOML = REPO_ROOT / "Cargo.toml"
 CARGO_LOCK = REPO_ROOT / "Cargo.lock"
 UV_LOCK = REPO_ROOT / "uv.lock"
+CITATION = REPO_ROOT / "CITATION.cff"
 PYTHON = Path(sys.executable)
 PACKAGE_NAME = "supermariobrosnes-turbo"
 IMPORT_NAME = "supermariobrosnes_turbo"
@@ -127,6 +129,13 @@ def cargo_lock_version() -> str:
     return section_version(CARGO_LOCK, "package", package_name=PACKAGE_NAME)
 
 
+def citation_version() -> str:
+    for line in CITATION.read_text(encoding="utf-8").splitlines():
+        if line.startswith("version: "):
+            return line.split(":", 1)[1].strip().strip('"')
+    raise RuntimeError(f"could not find version in {CITATION}")
+
+
 def validate_version(version: str) -> None:
     if VERSION_RE.match(version) is None:
         raise SystemExit(f"unsupported version format: {version!r}")
@@ -210,12 +219,33 @@ def write_version(version: str) -> None:
     VERSION_PATH.write_text(f"{version}\n", encoding="utf-8")
 
 
+def replace_citation_release(version: str) -> None:
+    lines = CITATION.read_text(encoding="utf-8").splitlines(keepends=True)
+    replacements = {
+        "version:": f"version: {version}",
+        "date-released:": f"date-released: {date.today().isoformat()}",
+    }
+    changed: set[str] = set()
+    for index, line in enumerate(lines):
+        for prefix, replacement in replacements.items():
+            if line.startswith(f"{prefix} "):
+                newline = "\n" if line.endswith("\n") else ""
+                lines[index] = f"{replacement}{newline}"
+                changed.add(prefix)
+                break
+    missing = sorted(set(replacements) - changed)
+    if missing:
+        raise RuntimeError(f"could not replace {', '.join(missing)} in {CITATION}")
+    CITATION.write_text("".join(lines), encoding="utf-8")
+
+
 def check_version(args: argparse.Namespace) -> None:
     versions = {
         "version_txt": read_version(),
         "pyproject": pyproject_version(),
         "cargo_toml": cargo_version(),
         "cargo_lock": cargo_lock_version(),
+        "citation": citation_version(),
     }
     expected = args.version
     failures = []
@@ -278,6 +308,7 @@ def bump_version(args: argparse.Namespace) -> None:
         replace_section_version(CARGO_TOML, "package", target)
         replace_package_version(CARGO_LOCK, PACKAGE_NAME, target)
         replace_package_version(UV_LOCK, PACKAGE_NAME, target)
+        replace_citation_release(target)
     print(target)
 
 
@@ -288,6 +319,7 @@ def sync_version(args: argparse.Namespace) -> None:
     replace_section_version(CARGO_TOML, "package", version)
     replace_package_version(CARGO_LOCK, PACKAGE_NAME, version)
     replace_package_version(UV_LOCK, PACKAGE_NAME, version)
+    replace_citation_release(version)
     print(version)
 
 

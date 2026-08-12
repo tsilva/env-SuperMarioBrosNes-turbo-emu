@@ -34,6 +34,7 @@ def test_version_file_is_the_single_source_of_truth():
         "Cargo.toml",
         "Cargo.lock",
         "uv.lock",
+        "CITATION.cff",
         "CHANGES.md",
     ):
         assert f'"{release_file}"' in release_script
@@ -63,6 +64,19 @@ def test_version_bump_updates_only_the_project_entries_in_lockfiles(tmp_path):
 
     assert 'name = "dependency"\nversion = "9.9.9"' in lock.read_text()
     assert 'name = "supermariobrosnes-turbo"\nversion = "0.4.3"' in lock.read_text()
+
+
+def test_version_bump_updates_citation_release_metadata(tmp_path, monkeypatch):
+    release_build = _release_build_module()
+    citation = tmp_path / "CITATION.cff"
+    citation.write_text("version: 0.6.2\ndate-released: 2026-07-29\n")
+    monkeypatch.setattr(release_build, "CITATION", citation)
+
+    release_build.replace_citation_release("0.6.3")
+
+    contents = citation.read_text()
+    assert "version: 0.6.3" in contents
+    assert f"date-released: {release_build.date.today().isoformat()}" in contents
 
 
 def test_release_validates_python_314_with_stable_abi_wheels():
