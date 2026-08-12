@@ -758,8 +758,8 @@ print({EXTENSION_NAME}.__file__)
 assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
 assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
 assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.supports_live_snapshots is True
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_api_version == 1
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_id == "supermariobrosnes-turbo.portable-v1"
+assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_api_version == 2
+assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_id == "supermariobrosnes-turbo.portable-v2"
 assert len(INFO_KEYS) == 10
 assert len(EXTRA_INFO_KEYS) > 0
 assert AVAILABLE_INFO_KEYS == INFO_KEYS + EXTRA_INFO_KEYS
@@ -816,7 +816,7 @@ else:
         assert handles[0].nbytes > 0
         assert handles[1] is None
         payloads = env.encode_snapshots(handles)
-        assert payloads[0].startswith(b"SMBVEC1\\0")
+        assert payloads[0].startswith(b"SMBVEC2\\0")
         assert payloads[1] is None
         decoded_handles = env.decode_snapshots(payloads)
 
