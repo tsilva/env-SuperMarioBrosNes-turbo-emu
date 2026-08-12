@@ -88,6 +88,13 @@ multiplayer, RAM observations, and BK2 movie recording. Turbo supports only the
 documented SMB mapper 0/NROM workload, one player, and image observations, with
 batched RAM available separately through `ram()`; it does not record BK2 movies.
 
+Fidelity changes are tested directly against pinned original
+`stable-retro==1.0.1`, not only against the Turbo fork. The ROM-backed
+TurboBench v2 oracle covers all four World 1 start states, scalar and four-lane
+execution, observations, lossless native frames, rewards, episode boundaries,
+info, exact 2 KiB CPU RAM, lane resets, and snapshot continuation. Reproduction
+and release-receipt commands are in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Use from Python
 
 Add the package to a uv-managed project:

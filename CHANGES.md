@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add a ROM-backed TurboBench semantic-oracle gate against original Stable
+  Retro 1.0.1 across every public World 1 state, scalar and vector rollouts,
+  native and processed frames, CPU RAM, resets, and snapshot continuation.
+- Match Stable Retro's final skipped native frame and sprite-zero status-bar
+  split exactly, and version portable snapshots as codec v2 for the added
+  raster state.
 - Align native termination with Stable Retro's Mario scenario by ending only on
   final game over, remove the private flag-completion switch, and leave life,
   flag, and level task events to downstream systems.

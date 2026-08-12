@@ -459,10 +459,10 @@ def test_portable_snapshot_codec_restores_exactly_across_environment_instances()
         mask = np.ones((2,), dtype=np.bool_)
         handles = source.capture_snapshots(mask)
         payloads = source.encode_snapshots(handles)
-        assert source.snapshot_codec_api_version == 1
-        assert source.snapshot_codec_id == "supermariobrosnes-turbo.portable-v1"
+        assert source.snapshot_codec_api_version == 2
+        assert source.snapshot_codec_id == "supermariobrosnes-turbo.portable-v2"
         assert source.snapshot_codec_metadata["payload_kind"] == "portable_bytes"
-        assert all(payload is not None and payload.startswith(b"SMBVEC1\0") for payload in payloads)
+        assert all(payload is not None and payload.startswith(b"SMBVEC2\0") for payload in payloads)
 
         decoded = destination.decode_snapshots(payloads)
         state_indices = np.full((2,), -1, dtype=np.int32)
@@ -858,7 +858,7 @@ def test_turbo_api_v1_capabilities_signals_ownership_and_per_lane_rendering() ->
         env.close()
 
 
-def test_rgb_render_keeps_mario_visible_during_injury_transition() -> None:
+def test_rgb_render_uses_latest_frame_during_injury_transition() -> None:
     state_path = (
         Path(__file__).resolve().parents[1]
         / "python"
@@ -912,10 +912,9 @@ def test_rgb_render_keeps_mario_visible_during_injury_transition() -> None:
                 recent_frames.append((frame, visible_sprites))
 
             previous, current = recent_frames[-2:]
-            expected = previous if previous[1] > current[1] else current
             rendered = skipped.render()
             assert rendered is not None
-            np.testing.assert_array_equal(rendered, expected[0])
+            np.testing.assert_array_equal(rendered, current[0])
 
             ram = skipped.ram()[0]
             if ram[0x000E] == 10:  # InjuryBlink / big-to-small transition

@@ -26,14 +26,30 @@ make test
 ```
 
 Changes affecting emulation, states, rewards, termination, actions, or
-preprocessing must also pass the local ROM-backed oracle suite:
+preprocessing must also pass the local ROM-backed semantic oracle against
+pinned original `stable-retro==1.0.1`:
 
 ```bash
 make test-retro-oracle
 ```
 
+The target compares all World 1 start states in scalar and four-lane runs for
+4,096 seeded transitions. It checks processed observations, lossless native
+frames, rewards, termination and truncation, selected info, exact 2 KiB CPU
+RAM, lane resets, and snapshot continuation. Set `TURBOBENCH` when the CLI is
+not available from the default sibling checkout, and set `ORACLE_OUTPUT` to
+retain the receipt at a specific external path.
+
+Checkout receipts are development evidence. After publishing the candidate,
+regenerate the same oracle using `supermariobrosnes-turbo@VERSION` and fail
+closed on the canonical workload and PyPI candidate identity:
+
+```bash
+make verify-retro-oracle ORACLE_RECEIPT=/external/evidence/receipt
+```
+
 Never commit or attach ROMs. Report only the canonical ROM SHA-256 documented
-in the README.
+in the README, and keep provenance receipts outside the repository.
 
 ## Pull requests
 

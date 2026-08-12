@@ -544,8 +544,8 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         "turbo_api_version": 1,
     }
     supports_live_snapshots = True
-    snapshot_codec_api_version = 1
-    snapshot_codec_id = "supermariobrosnes-turbo.portable-v1"
+    snapshot_codec_api_version = 2
+    snapshot_codec_id = "supermariobrosnes-turbo.portable-v2"
     snapshot_codec_metadata = MappingProxyType(
         {
             "api_version": snapshot_codec_api_version,

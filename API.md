@@ -182,7 +182,7 @@ finally:
 Live handles are reusable, same-instance, session-local, and intentionally not
 pickleable. Portable bytes bind decoded handles to a compatible destination.
 The immutable `snapshot_codec_metadata` declaration identifies
-`supermariobrosnes-turbo.portable-v1`. One masked reset can mix snapshot starts
+`supermariobrosnes-turbo.portable-v2`. One masked reset can mix snapshot starts
 with ordinary `state_indices`; `infos["start_source"]` distinguishes
 `"snapshot"` from `"environment"`.
 

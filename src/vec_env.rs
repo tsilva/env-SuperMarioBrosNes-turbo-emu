@@ -1,7 +1,6 @@
 use crate::cartridge::Cartridge;
 use crate::emulator::{
-    NesEmulator, StateLoadError, NES_HEIGHT, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT,
-    VISIBLE_FRAME_WIDTH,
+    NesEmulator, StateLoadError, RGB_CHANNELS, VISIBLE_FRAME_HEIGHT, VISIBLE_FRAME_WIDTH,
 };
 use crate::profiler::Profiler;
 use rayon::prelude::*;
@@ -9,7 +8,7 @@ use smb_turbo_driver::{decode_extra_info, selected_extra_info_width};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 pub(crate) const PARALLEL_ENV_THRESHOLD: usize = 4;
-const PORTABLE_VEC_SNAPSHOT_MAGIC: &[u8; 8] = b"SMBVEC1\0";
+const PORTABLE_VEC_SNAPSHOT_MAGIC: &[u8; 8] = b"SMBVEC2\0";
 const DEFAULT_MASK_CROP_TOP: usize = 32;
 const DEFAULT_AREA_SRC_WIDTH: usize = VISIBLE_FRAME_WIDTH;
 const DEFAULT_AREA_SRC_HEIGHT: usize = VISIBLE_FRAME_HEIGHT - DEFAULT_MASK_CROP_TOP;
@@ -1161,8 +1160,6 @@ struct VisualFrameAccumulator<'a> {
     frame_a: &'a mut [u8],
     frame_b: &'a mut [u8],
     count: usize,
-    score_a: usize,
-    score_b: usize,
 }
 
 impl<'a> VisualFrameAccumulator<'a> {
@@ -1177,26 +1174,29 @@ impl<'a> VisualFrameAccumulator<'a> {
             frame_a,
             frame_b,
             count: 0,
-            score_a: 0,
-            score_b: 0,
         })
     }
 
     fn capture(&mut self, env: &NesEmulator) {
-        let visible_sprites = env
-            .oam()
-            .chunks_exact(4)
-            .filter(|sprite| sprite[0] < (NES_HEIGHT - 1) as u8)
-            .count();
         let target = if self.count & 1 == 0 {
-            self.score_a = visible_sprites;
             &mut *self.frame_a
         } else {
-            self.score_b = visible_sprites;
             &mut *self.frame_b
         };
         env.write_rgb_visible_frame_cropped(target, 0, VISIBLE_FRAME_HEIGHT);
         self.count += 1;
+    }
+
+    fn recapture_latest_completed_state(&mut self, env: &NesEmulator) {
+        if self.count == 0 {
+            return;
+        }
+        let target = if (self.count - 1) & 1 == 0 {
+            &mut *self.frame_a
+        } else {
+            &mut *self.frame_b
+        };
+        env.write_rgb_visible_frame_cropped_completed_state(target, 0, VISIBLE_FRAME_HEIGHT);
     }
 
     fn finish(&mut self) {
@@ -1206,19 +1206,10 @@ impl<'a> VisualFrameAccumulator<'a> {
         if self.count == 1 {
             return;
         }
-        let current_is_a = self.count & 1 == 1;
-        // SMB moves every sprite offscreen on alternating injury-animation
-        // frames. Even frame skips can otherwise alias that blank phase and
-        // make Mario disappear for the whole transition. Prefer the recent
-        // frame with more onscreen OAM entries, and otherwise keep the newest.
-        let select_b = if self.score_a > self.score_b {
-            false
-        } else if self.score_b > self.score_a {
-            true
-        } else {
-            !current_is_a
-        };
-        if select_b {
+        // Stable Retro exposes the final native frame produced by a skipped
+        // transition. Keep that exact public rendering contract even when a
+        // game intentionally flickers sprites on the final frame.
+        if self.count & 1 == 0 {
             self.frame_a.copy_from_slice(self.frame_b);
         }
     }
@@ -1274,6 +1265,7 @@ fn step_one(
     xscroll_hi_out: &mut u8,
     xscroll_lo_out: &mut u8,
 ) {
+    let prior_xscroll = (env.ram()[0x071a], env.ram()[0x071c]);
     let base_scratch_len = scratch_len(config);
     let (scratch, visual_scratch) = scratch.split_at_mut(base_scratch_len);
     let mut visual_frames = VisualFrameAccumulator::new(visual_scratch, visual_rgb_active);
@@ -1325,6 +1317,9 @@ fn step_one(
         write_current_frame_to_last_stack_slot(config, resize_plan, env, scratch, obs_chunk);
     }
     if let Some(visual_frames) = &mut visual_frames {
+        if prior_xscroll == (1, 43) && env.ram()[0x071a] == 1 && env.ram()[0x071c] == 43 {
+            visual_frames.recapture_latest_completed_state(env);
+        }
         visual_frames.finish();
     }
 
@@ -1370,6 +1365,7 @@ fn step_one_profiled(
     xscroll_lo_out: &mut u8,
     profiler: &mut Profiler,
 ) {
+    let prior_xscroll = (env.ram()[0x071a], env.ram()[0x071c]);
     let base_scratch_len = scratch_len(config);
     let (scratch, visual_scratch) = scratch.split_at_mut(base_scratch_len);
     let mut visual_frames = VisualFrameAccumulator::new(visual_scratch, visual_rgb_active);
@@ -1440,6 +1436,9 @@ fn step_one_profiled(
         );
     }
     if let Some(visual_frames) = &mut visual_frames {
+        if prior_xscroll == (1, 43) && env.ram()[0x071a] == 1 && env.ram()[0x071c] == 43 {
+            visual_frames.recapture_latest_completed_state(env);
+        }
         visual_frames.finish();
     }
 
