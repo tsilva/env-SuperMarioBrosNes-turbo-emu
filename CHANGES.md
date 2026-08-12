@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.6.3 - 2026-08-12
+
 - Add a ROM-backed TurboBench semantic-oracle gate against original Stable
   Retro 1.0.1 across every public World 1 state, scalar and vector rollouts,
   native and processed frames, CPU RAM, resets, and snapshot continuation.
