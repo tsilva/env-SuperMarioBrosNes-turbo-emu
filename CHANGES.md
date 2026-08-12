@@ -4,6 +4,10 @@
 
 - Nothing yet.
 
+## 0.6.4 - 2026-08-12
+
+- Update release smoke for portable snapshot v2.
+
 ## 0.6.3 - 2026-08-12
 
 - Add a ROM-backed TurboBench semantic-oracle gate against original Stable
