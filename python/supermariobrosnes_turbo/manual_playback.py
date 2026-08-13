@@ -212,6 +212,7 @@ class SdlExternalVecPlayer:
             obs_resize=(args.resize_height, args.resize_width),
             obs_resize_algorithm="area",
             obs_layout="chw",
+            obs_copy="copy",
         )
         self.scale = args.scale
         self.stack_scale = args.stack_scale

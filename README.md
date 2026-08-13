@@ -139,6 +139,9 @@ finally:
 The module-qualified ID imports the package and registers the factory. This ID
 is vector-only and requires an explicit `game`; the native
 `SuperMarioBrosNesTurboVecEnv` constructor remains available for direct use.
+It implements Turbo Vector API v2 with NumPy transitions, shared 84x84
+grayscale CHW defaults, immutable capability and signal declarations, and
+disabled-by-default rendering.
 
 See [API.md](API.md) for the complete action, observation, state, snapshot,
 rendering, playback, and research-info contracts.

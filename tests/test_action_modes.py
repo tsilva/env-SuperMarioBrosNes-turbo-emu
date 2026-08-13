@@ -281,7 +281,7 @@ def test_all_filtered_and_discrete_step_the_same_36_native_states() -> None:
         np.testing.assert_array_equal(envs[1]._actions, DISCRETE_CONTROLLER_BYTES)
         np.testing.assert_array_equal(envs[2]._actions, DISCRETE_CONTROLLER_BYTES)
 
-        step_results = [env.step_wait_gymnasium() for env in envs]
+        step_results = [env.step_wait() for env in envs]
         for result_index in range(4):
             np.testing.assert_array_equal(
                 step_results[0][result_index],

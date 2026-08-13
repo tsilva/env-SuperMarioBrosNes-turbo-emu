@@ -173,7 +173,7 @@ def test_api_documents_public_execution_and_diagnostic_controls():
 
     for term in (
         "step_async(actions)",
-        "step_wait_gymnasium()",
+        "step_wait()",
         "num_threads=None",
         "noop_reset_max=N",
         "sticky_action_prob=p",

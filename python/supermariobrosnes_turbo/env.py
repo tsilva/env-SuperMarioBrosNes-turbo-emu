@@ -267,7 +267,7 @@ def _normalize_state_config(
     state_catalog: Sequence[StateSpec] | None,
 ) -> tuple[list[bytes], tuple[str, ...]]:
     if state_catalog is None:
-        if state is _STATE_UNSET:
+        if state is _STATE_UNSET or state is None:
             state = State.DEFAULT
         if isinstance(state, Mapping) or (
             isinstance(state, Sequence)
@@ -279,7 +279,7 @@ def _normalize_state_config(
             return [], ()
         return [_load_initial_state(state)], (_state_label(state, "state-0"),)
 
-    if state is not _STATE_UNSET:
+    if state is not None and state is not _STATE_UNSET:
         raise ValueError("state and state_catalog are mutually exclusive")
     if isinstance(state_catalog, (str, bytes, bytearray, memoryview)) or not isinstance(
         state_catalog, Sequence
@@ -541,7 +541,8 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     metadata = {
         "render_modes": ["rgb_array"],
         "autoreset_mode": AutoresetMode.DISABLED,
-        "turbo_api_version": 1,
+        "turbo_api_version": 2,
+        "transition_transport": "numpy",
     }
     supports_live_snapshots = True
     snapshot_codec_api_version = 2
@@ -559,35 +560,37 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     def __init__(
         self,
         game: str,
-        state: Any = _STATE_UNSET,
+        state: Any = None,
         scenario: str | None = None,
         info: str | None = None,
-        use_restricted_actions: Actions | str | ActionTable = Actions.FILTERED,
+        use_restricted_actions: Actions | str | ActionTable = "default",
         record: bool = False,
         players: int = 1,
-        inttype: Any = Integrations.STABLE,
-        obs_type: Any = Observations.IMAGE,
+        inttype: Any = "stable",
+        obs_type: Any = "image",
         render_mode: Literal["rgb_array"] | None = None,
         *,
         num_envs: int = 1,
         num_threads: int | None = None,
         rom_path: str | Path | None = None,
-        obs_copy: str = "copy",
-        obs_resize: Sequence[int] | None = None,
+        transport: str = "default",
+        obs_copy: str = "safe_view",
+        obs_resize: Sequence[int] | None = (84, 84),
         obs_crop: Sequence[int] | None = None,
         obs_crop_mode: Literal["remove", "mask"] = "remove",
         obs_crop_fill: int = 0,
-        obs_grayscale: bool = False,
-        obs_resize_algorithm: str = "nearest",
-        obs_layout: str = "hwc",
-        frame_skip: int = 1,
-        frame_stack: int = 1,
+        obs_grayscale: bool = True,
+        obs_resize_algorithm: str = "area",
+        obs_layout: str = "chw",
+        frame_skip: int = 4,
+        frame_stack: int = 4,
         maxpool_last_two: bool = False,
         noop_reset_max: int = 0,
         use_fire_reset: bool = False,
         sticky_action_prob: float = 0.0,
         reward_clip: bool | Sequence[float] = False,
         info_filter: Any = "all",
+        info_frame_stack_keys: Sequence[str] | None = None,
         state_catalog: Sequence[StateSpec] | None = None,
     ) -> None:
         if str(game) != DEFAULT_STABLE_RETRO_GAME:
@@ -607,6 +610,12 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             raise ValueError("inttype must select the Stable integration")
         if render_mode not in (None, "rgb_array"):
             raise ValueError("render_mode must be None or 'rgb_array'")
+        if transport == "default":
+            transport = "numpy"
+        if transport != "numpy":
+            raise ValueError("transport must be 'default' or 'numpy'")
+        if info_frame_stack_keys is not None:
+            raise ValueError("info_frame_stack_keys is unsupported and must be None")
         if use_fire_reset:
             raise ValueError("use_fire_reset is not applicable to Super Mario Bros NES")
 
@@ -629,6 +638,8 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         source_width = VISIBLE_WIDTH if mask_crop else VISIBLE_WIDTH - crop_left - crop_right
         source_height = VISIBLE_HEIGHT if mask_crop else VISIBLE_HEIGHT - crop_top - crop_bottom
         resize_width, resize_height = _normalize_retro_resize(obs_resize, source_width, source_height)
+        if isinstance(use_restricted_actions, str) and use_restricted_actions == "default":
+            use_restricted_actions = Actions.FILTERED
         builtin_name = getattr(use_restricted_actions, "name", use_restricted_actions)
         builtin_text = str(builtin_name).split(".")[-1].casefold()
         if builtin_text in {"all", "filtered", "discrete", "multi_discrete"}:
@@ -651,6 +662,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             action_table_hash = custom.table_hash
             normalized_restricted_actions = use_restricted_actions
         self.autoreset_mode = AutoresetMode.DISABLED
+        self.transport = transport
         self.game = str(game)
         self.action_meanings = action_meanings
         self.action_preset = action_preset
@@ -794,19 +806,31 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
                     "custom_discrete",
                 ),
                 "supported_observation_layouts": ("chw", "hwc"),
+                "supported_observation_color_modes": ("grayscale", "rgb"),
                 "supported_resize_algorithms": ("nearest", "bilinear", "area"),
+                "supported_crop_modes": ("remove", "mask"),
                 "supported_observation_copy_modes": (
                     "copy",
                     "safe_view",
                     "unsafe_view",
                 ),
-                "supports_maxpool_last_two": True,
-                "supports_sticky_action_prob": True,
-                "supports_reward_clipping": True,
-                "supports_noop_reset": True,
-                "supports_state_catalog": True,
+                "supported_transition_transports": ("numpy",),
+                "supports_async_step": True,
+                "supports_branching": False,
+                "supports_device_api": False,
+                "supports_emulator_ram": True,
+                "supports_enemy_variants": False,
+                "supports_fire_reset": False,
+                "supports_info_frame_stack": False,
                 "supports_live_snapshots": True,
-                "supports_per_lane_rgb": True,
+                "supports_maxpool_last_two": True,
+                "supports_noop_reset": True,
+                "supports_per_lane_rgb": render_mode == "rgb_array",
+                "supports_reward_clipping": True,
+                "supports_snapshot_codec": True,
+                "supports_state_catalog": True,
+                "supports_sticky_action_prob": True,
+                "supports_surface_variants": False,
             }
         )
         self._pending_seed: int | Sequence[int | None] | None = None
@@ -863,7 +887,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             )
             signal_specs = {
                 key: {
-                    "dtype": np.dtype(np.int_),
+                    "dtype": "int64",
                     "shape": (),
                     "available_on_reset": True,
                     "available_on_step": True,
@@ -873,7 +897,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
             }
             for descriptor in self._selected_extra_descriptors:
                 signal_specs[descriptor["name"]] = {
-                    "dtype": descriptor["dtype"],
+                    "dtype": descriptor["dtype"].name,
                     "shape": (
                         ()
                         if descriptor["width"] == 1
@@ -992,15 +1016,21 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
                 lane_infos.append({})
                 continue
             info = self._reset_info_dict(index)
-            info["start_source"] = (
-                "snapshot" if bool(snapshot_mask[index]) else "environment"
-            )
+            info["start_source"] = 1 if bool(snapshot_mask[index]) else 0
             if self._info_mode != "none":
                 game_info = self._game_info_dict(index)
                 game_info.update(info)
                 info = game_info
             lane_infos.append(info)
         infos = self._vector_infos(lane_infos)
+        infos["state_index"] = self._active_state_indices.copy()
+        infos["_state_index"] = reset_mask.copy()
+        infos["start_source"] = snapshot_mask.astype(np.int8, copy=True)
+        infos["_start_source"] = reset_mask.copy()
+        infos["noop_reset_count"] = np.asarray(
+            self._core.last_noop_reset_counts(), dtype=np.int64
+        )
+        infos["_noop_reset_count"] = static_mask.copy()
         self._pending_seed = None
         self._pending_options = None
         return self._return_obs(), infos
@@ -1051,6 +1081,8 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     def step_async(self, actions: np.ndarray) -> None:
         if self.closed:
             raise RuntimeError("cannot step a closed environment")
+        if not isinstance(actions, np.ndarray):
+            raise TypeError("actions must be a NumPy array")
         if self._step_pending:
             raise RuntimeError("an asynchronous step is already pending")
         if not np.all(self._initialized):
@@ -1135,9 +1167,9 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         actions: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
         self.step_async(actions)
-        return self.step_wait_gymnasium()
+        return self.step_wait()
 
-    def step_wait_gymnasium(
+    def step_wait(
         self,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
         if not self._step_pending:

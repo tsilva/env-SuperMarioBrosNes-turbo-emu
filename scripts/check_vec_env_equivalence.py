@@ -36,6 +36,7 @@ def make_env(rom_path: Path, num_envs: int) -> SuperMarioBrosNesTurboVecEnv:
         obs_resize=(84, 84),
         obs_resize_algorithm="area",
         obs_layout="chw",
+        obs_copy="copy",
     )
 
 

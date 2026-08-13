@@ -52,7 +52,11 @@ def main() -> None:
         num_envs=4,
         use_restricted_actions=Actions.ALL,
         frame_skip=1,
+        obs_copy="copy",
+        obs_resize=None,
         obs_grayscale=True,
+        obs_resize_algorithm="nearest",
+        obs_layout="hwc",
         frame_stack=1,
     )
     obs, _infos = env.reset()

@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Migrate the vector environment to the breaking Turbo Vector API v2 common
+  constructor, NumPy transport declaration, exact immutable capabilities, and
+  portable signal schema.
+- Standardize numeric reset-source and reset-NOOP infos, sample positive reset
+  NOOPs from `1..N`, and expose only `step_async()`/`step_wait()` for split
+  stepping.
+- Change the public vector defaults to the shared 84x84 grayscale CHW
+  four-frame policy profile while preserving tuned internal workloads
+  explicitly.
 
 ## 0.6.5 - 2026-08-13
 

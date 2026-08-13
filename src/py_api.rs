@@ -283,6 +283,10 @@ impl RetroVecEnv {
         self.inner.active_state_indices().to_vec()
     }
 
+    pub fn last_noop_reset_counts(&self) -> Vec<i64> {
+        self.inner.last_noop_reset_counts().to_vec()
+    }
+
     pub fn rgb_frame_shape(&self) -> (usize, usize, usize, usize) {
         (
             self.inner.config().num_envs,

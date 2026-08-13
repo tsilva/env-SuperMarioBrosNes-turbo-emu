@@ -143,6 +143,26 @@ def test_generic_gymnasium_factory_runs_native_vector_env() -> None:
 
 def test_public_surface_is_manual_reset_only() -> None:
     signature = inspect.signature(SuperMarioBrosNesTurboVecEnv)
+    assert tuple(signature.parameters) == (
+        "game", "state", "scenario", "info", "use_restricted_actions",
+        "record", "players", "inttype", "obs_type", "render_mode",
+        "num_envs", "num_threads", "rom_path", "transport", "obs_copy",
+        "obs_resize", "obs_crop", "obs_crop_mode", "obs_crop_fill",
+        "obs_grayscale", "obs_resize_algorithm", "obs_layout", "frame_skip",
+        "frame_stack", "maxpool_last_two", "noop_reset_max", "use_fire_reset",
+        "sticky_action_prob", "reward_clip", "info_filter",
+        "info_frame_stack_keys", "state_catalog",
+    )
+    assert tuple(parameter.default for parameter in signature.parameters.values()) == (
+        inspect.Parameter.empty, None, None, None, "default", False, 1, "stable",
+        "image", None, 1, None, None, "default", "safe_view", (84, 84), None,
+        "remove", 0, True, "area", "chw", 4, 4, False, 0, False, 0.0,
+        False, "all", None, None,
+    )
+    assert all(
+        parameter.kind is inspect.Parameter.KEYWORD_ONLY
+        for parameter in tuple(signature.parameters.values())[10:]
+    )
     for name in (
         "done_on",
         "autoreset_mode",
@@ -161,7 +181,9 @@ def test_public_surface_is_manual_reset_only() -> None:
     ):
         assert not hasattr(SuperMarioBrosNesTurboVecEnv, name)
     assert SuperMarioBrosNesTurboVecEnv.metadata["autoreset_mode"] is AutoresetMode.DISABLED
-    assert SuperMarioBrosNesTurboVecEnv.metadata["turbo_api_version"] == 1
+    assert SuperMarioBrosNesTurboVecEnv.metadata["turbo_api_version"] == 2
+    assert SuperMarioBrosNesTurboVecEnv.metadata["transition_transport"] == "numpy"
+    assert not hasattr(SuperMarioBrosNesTurboVecEnv, "step_wait_gymnasium")
     with pytest.raises(TypeError, match="done_on"):
         SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", done_on=[])
     with pytest.raises(TypeError, match="autoreset_mode"):
@@ -485,11 +507,8 @@ def test_live_snapshots_support_mixed_resets_cross_lane_fanout_and_exact_replay(
         )
         np.testing.assert_array_equal(reset_obs[0], reset_obs[2])
         np.testing.assert_array_equal(env.active_state_indices(), [0, 1, 0])
-        assert infos["start_source"].tolist() == [
-            "snapshot",
-            "environment",
-            "snapshot",
-        ]
+        assert infos["start_source"].dtype == np.int8
+        assert infos["start_source"].tolist() == [1, 0, 1]
         np.testing.assert_array_equal(infos["_start_source"], mask)
 
         actions = noop(3)
@@ -724,7 +743,7 @@ def test_live_snapshot_restore_is_bit_exact_and_lane_local(num_threads: int) -> 
         np.testing.assert_array_equal(env.ram()[0], captured_ram)
         np.testing.assert_array_equal(env.get_images()[0], captured_rgb)
         assert int(env.active_state_indices()[0]) == captured_state_index
-        assert restored_infos["start_source"][0] == "snapshot"
+        assert restored_infos["start_source"][0] == 1
 
         # The masked restore must not alter any observable or hidden stochastic
         # state in an unselected lane. The untouched control lane makes later RNG
@@ -805,7 +824,7 @@ def test_live_snapshot_lifecycle_owner_and_async_validation_are_atomic() -> None
     env.step_async(noop(2))
     with pytest.raises(RuntimeError, match="asynchronous step"):
         env.capture_snapshots(mask)
-    env.step_wait_gymnasium()
+    env.step_wait()
 
     other = make_env(num_envs=2, frame_skip=1)
     try:
@@ -871,16 +890,15 @@ def test_invalid_state_index_is_rejected_atomically() -> None:
         env.close()
 
 
-def test_direct_rom_reset_reports_negative_state_index() -> None:
+def test_none_state_uses_catalog_index_zero_default() -> None:
     env = make_env(state=None, num_envs=1)
     try:
         _obs, infos = env.reset()
-        assert env.state_catalog == ()
-        np.testing.assert_array_equal(env.active_state_indices(), [-1])
-        np.testing.assert_array_equal(infos["state_index"], [-1])
+        assert env.state_catalog == ("Level1-1",)
+        np.testing.assert_array_equal(env.active_state_indices(), [0])
+        np.testing.assert_array_equal(infos["state_index"], [0])
         np.testing.assert_array_equal(infos["_state_index"], [True])
-        with pytest.raises(ValueError, match="non-empty state_catalog"):
-            env.reset(options={"state_indices": np.array([0], dtype=np.int32)})
+        env.reset(options={"state_indices": np.array([0], dtype=np.int32)})
     finally:
         env.close()
 
@@ -919,13 +937,54 @@ def test_rendering_is_disabled_by_default() -> None:
         env.close()
 
 
-def test_turbo_api_v1_capabilities_signals_ownership_and_per_lane_rendering() -> None:
+def test_v2_shared_defaults_resolve_filtered_chw_stack() -> None:
+    env = SuperMarioBrosNesTurboVecEnv(
+        "SuperMarioBros-Nes-v0",
+        rom_path=require_rom(),
+    )
+    try:
+        observations, infos = env.reset(seed=23)
+        assert observations.shape == (1, 4, 84, 84)
+        assert env.action_mode == "filtered"
+        assert env.state_catalog[0] == "Level1-1"
+        assert infos["state_index"].tolist() == [0]
+        assert env.render() is None
+    finally:
+        env.close()
+
+
+def test_turbo_api_v2_capabilities_signals_ownership_and_per_lane_rendering() -> None:
     env = make_env(num_envs=2, render_mode="rgb_array", obs_copy="safe_view")
     try:
-        env.reset(seed=17)
+        observations, infos = env.reset(seed=17)
         assert env.observation_ownership == "safe_view"
         assert env.observation_buffer_depth == 2
         assert env.live_snapshots_deterministic is True
+        assert tuple(env.capabilities) == (
+            "supported_action_modes",
+            "supported_observation_layouts",
+            "supported_observation_color_modes",
+            "supported_resize_algorithms",
+            "supported_crop_modes",
+            "supported_observation_copy_modes",
+            "supported_transition_transports",
+            "supports_async_step",
+            "supports_branching",
+            "supports_device_api",
+            "supports_emulator_ram",
+            "supports_enemy_variants",
+            "supports_fire_reset",
+            "supports_info_frame_stack",
+            "supports_live_snapshots",
+            "supports_maxpool_last_two",
+            "supports_noop_reset",
+            "supports_per_lane_rgb",
+            "supports_reward_clipping",
+            "supports_snapshot_codec",
+            "supports_state_catalog",
+            "supports_sticky_action_prob",
+            "supports_surface_variants",
+        )
         assert env.capabilities["supported_action_modes"] == (
             "all",
             "filtered",
@@ -934,6 +993,19 @@ def test_turbo_api_v1_capabilities_signals_ownership_and_per_lane_rendering() ->
             "custom_discrete",
         )
         assert "x_pos" in env.signal_schema
+        for name, spec in env.signal_schema.items():
+            assert isinstance(spec["dtype"], str)
+            assert isinstance(spec["shape"], tuple)
+            if spec["available_on_reset"]:
+                assert np.dtype(spec["dtype"]) == infos[name].dtype
+                assert infos[name].shape[1:] == spec["shape"]
+        with pytest.raises(TypeError, match="NumPy array"):
+            env.step([0] * env.num_envs)
+        transition = env.step(
+            np.zeros(env.action_space.shape, dtype=env.action_space.dtype)
+        )
+        for value in (observations, *transition[:4], *infos.values(), *transition[4].values()):
+            assert value.dtype != np.dtype(object)
         images = env.get_images()
         assert len(images) == env.num_envs
         assert all(image is not None and image.shape == (224, 240, 3) for image in images)

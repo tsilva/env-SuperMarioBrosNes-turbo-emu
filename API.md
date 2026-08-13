@@ -4,11 +4,12 @@
 the supported `SuperMarioBros-Nes-v0` mapper 0/NROM workload. This reference
 collects the contracts that are intentionally summarized in the README.
 
-## Turbo Vector API v1
+## Turbo Vector API v2
 
-The environment advertises the strict Turbo Vector API v1:
+The environment advertises the strict Turbo Vector API v2:
 
-- `metadata["turbo_api_version"]` is `1`, and `metadata["render_modes"]`
+- `metadata["turbo_api_version"]` is `2`,
+  `metadata["transition_transport"]` is `"numpy"`, and `metadata["render_modes"]`
   advertises `rgb_array`.
 - Immutable `capabilities` and `signal_schema` declarations describe supported
   features and the dtype, shape, and reset/step availability of every signal.
@@ -24,7 +25,7 @@ The environment advertises the strict Turbo Vector API v1:
   lane zero. With the default `render_mode=None`, the first two methods return
   `None` and `get_images()` returns one `None` entry per lane.
 - `step()` provides synchronous vector stepping; `step_async()` and
-  `step_wait_gymnasium()` split action submission from native batched execution
+  `step_wait()` split action submission from native batched execution
   and collection.
 
 The environment conforms to Gymnasium's vector reset and step returns. Autoreset
@@ -60,7 +61,7 @@ or step can overwrite. The resolved `observation_ownership` and
 ## Execution and episode controls
 
 `step(actions)` is the synchronous convenience path over `step_async(actions)`
-and `step_wait_gymnasium()`. `num_threads=None` uses Rayon's process-global
+and `step_wait()`. `num_threads=None` uses Rayon's process-global
 automatic thread pool. A positive `num_threads` creates a private pool capped by
 the lane count and available parallelism; `env.num_threads` reports the effective
 value.
@@ -68,8 +69,8 @@ value.
 Three constructor controls provide common training perturbations without
 wrappers:
 
-- `noop_reset_max=N` advances each reset lane by a seeded random count from zero
-  through `N` raw NOOP frames. Its default is zero.
+- `noop_reset_max=N` advances each reset lane by a seeded random count from one
+  through `N` raw NOOP frames. Its default is zero, which disables reset NOOPs.
 - `sticky_action_prob=p` repeats the lane's previous raw controller action with
   probability `p`. Its default is `0.0`.
 - `reward_clip=True` clips returned rewards to `[-1, 1]`; a `(low, high)` pair
@@ -273,7 +274,7 @@ game-state variables:
 | Key | When present | Meaning |
 | --- | --- | --- |
 | `state_index` | Reset lanes | Active state-catalog index. |
-| `start_source` | Reset lanes | Whether the lane started from the environment or a snapshot. |
+| `start_source` | Reset lanes | `int8` source code: `0` for an environment state, `1` for a snapshot. |
 | `terminated` | Terminated lanes | The lane reached a native game terminal state. |
 | `truncated` | Truncated lanes | The lane reached an external episode limit. |
 | `_<key>` | With each emitted key | Gymnasium mask identifying lanes for which that key is valid. |

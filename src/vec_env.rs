@@ -127,6 +127,7 @@ pub struct MarioVecEnv {
     envs: Vec<NesEmulator>,
     state_catalog: Vec<InitialState>,
     active_state_indices: Vec<i32>,
+    last_noop_reset_counts: Vec<i64>,
     last_actions: Vec<u8>,
     rngs: Vec<XorShift64>,
     pending_reset: Vec<bool>,
@@ -232,6 +233,7 @@ impl MarioVecEnv {
             envs,
             state_catalog,
             active_state_indices: vec![-1; config.num_envs],
+            last_noop_reset_counts: vec![0; config.num_envs],
             last_actions: vec![0; config.num_envs],
             rngs: (0..config.num_envs)
                 .map(|env_idx| XorShift64::new(seed.wrapping_add(env_idx as u64)))
@@ -261,7 +263,8 @@ impl MarioVecEnv {
                 self.envs[env_idx].reset();
                 self.envs[env_idx].prime_cold_boot();
                 self.last_actions[env_idx] = 0;
-                self.apply_noop_reset(env_idx);
+                let noop_count = self.apply_noop_reset(env_idx);
+                self.last_noop_reset_counts[env_idx] = noop_count as i64;
             }
             self.active_state_indices.fill(-1);
             return Ok(());
@@ -271,22 +274,25 @@ impl MarioVecEnv {
             self.envs[env_idx].load_fceu_state(&self.state_catalog[0].data)?;
             self.active_state_indices[env_idx] = 0;
             self.last_actions[env_idx] = 0;
-            self.apply_noop_reset(env_idx);
+            let noop_count = self.apply_noop_reset(env_idx);
+            self.last_noop_reset_counts[env_idx] = noop_count as i64;
         }
         Ok(())
     }
 
-    fn apply_noop_reset(&mut self, env_idx: usize) {
+    fn apply_noop_reset(&mut self, env_idx: usize) -> usize {
         if self.config.noop_reset_max == 0 {
-            return;
+            return 0;
         }
-        let noop_count = self.rngs[env_idx].next_bounded_usize(self.config.noop_reset_max + 1);
+        let noop_count =
+            sample_noop_reset_count(self.config.noop_reset_max, &mut self.rngs[env_idx]);
         for _ in 0..noop_count {
             self.envs[env_idx].step_frame(0);
             if self.envs[env_idx].is_done() {
                 break;
             }
         }
+        noop_count
     }
 
     fn effective_actions(&mut self, actions: &[u8]) -> Vec<u8> {
@@ -340,7 +346,8 @@ impl MarioVecEnv {
             if let Some(seed) = seeds[env_idx] {
                 self.rngs[env_idx] = XorShift64::from_explicit_seed(seed);
             }
-            self.reset_one_env(env_idx, state_indices[env_idx])?;
+            self.last_noop_reset_counts[env_idx] =
+                self.reset_one_env(env_idx, state_indices[env_idx])? as i64;
             self.pending_reset[env_idx] = false;
         }
 
@@ -480,7 +487,7 @@ impl MarioVecEnv {
                 continue;
             }
             if let Some(snapshot) = &snapshots[env_idx] {
-                replacements.push(Some(snapshot.clone()));
+                replacements.push(Some((snapshot.clone(), 0)));
                 continue;
             }
 
@@ -497,24 +504,28 @@ impl MarioVecEnv {
                 env.load_fceu_state(&self.state_catalog[state_index].data)?;
                 state_index as i32
             };
-            apply_noop_reset_to(config.noop_reset_max, &mut env, &mut rng);
-            replacements.push(Some(LiveSnapshot {
-                env,
-                active_state_index,
-                last_action: 0,
-                rng,
-                observation: Vec::new(),
-            }));
+            let noop_reset_count = apply_noop_reset_to(config.noop_reset_max, &mut env, &mut rng);
+            replacements.push(Some((
+                LiveSnapshot {
+                    env,
+                    active_state_index,
+                    last_action: 0,
+                    rng,
+                    observation: Vec::new(),
+                },
+                noop_reset_count,
+            )));
         }
 
         for (env_idx, replacement) in replacements.into_iter().enumerate() {
-            let Some(replacement) = replacement else {
+            let Some((replacement, noop_reset_count)) = replacement else {
                 continue;
             };
             self.envs[env_idx] = replacement.env;
             self.active_state_indices[env_idx] = replacement.active_state_index;
             self.last_actions[env_idx] = replacement.last_action;
             self.rngs[env_idx] = replacement.rng;
+            self.last_noop_reset_counts[env_idx] = noop_reset_count as i64;
             self.pending_reset[env_idx] = false;
             let start = env_idx * obs_stride;
             let obs_chunk = &mut obs[start..start + obs_stride];
@@ -544,6 +555,10 @@ impl MarioVecEnv {
 
     pub fn active_state_indices(&self) -> &[i32] {
         &self.active_state_indices
+    }
+
+    pub fn last_noop_reset_counts(&self) -> &[i64] {
+        &self.last_noop_reset_counts
     }
 
     pub fn rgb_frames_hwc_into(&mut self, dst: &mut [u8]) {
@@ -963,22 +978,20 @@ impl MarioVecEnv {
         }
     }
 
-    fn reset_one_env(&mut self, env_idx: usize, state_index: i32) -> Result<(), StateLoadError> {
+    fn reset_one_env(&mut self, env_idx: usize, state_index: i32) -> Result<usize, StateLoadError> {
         if self.state_catalog.is_empty() {
             self.envs[env_idx].reset();
             self.envs[env_idx].prime_cold_boot();
             self.active_state_indices[env_idx] = -1;
             self.last_actions[env_idx] = 0;
-            self.apply_noop_reset(env_idx);
-            return Ok(());
+            return Ok(self.apply_noop_reset(env_idx));
         }
 
         let state_index = state_index as usize;
         self.envs[env_idx].load_fceu_state(&self.state_catalog[state_index].data)?;
         self.active_state_indices[env_idx] = state_index as i32;
         self.last_actions[env_idx] = 0;
-        self.apply_noop_reset(env_idx);
-        Ok(())
+        Ok(self.apply_noop_reset(env_idx))
     }
 
     pub fn env_ram(&self, env_idx: usize) -> Option<&[u8; 2048]> {
@@ -1011,16 +1024,29 @@ struct XorShift64 {
     state: u64,
 }
 
-fn apply_noop_reset_to(noop_reset_max: usize, env: &mut NesEmulator, rng: &mut XorShift64) {
+fn apply_noop_reset_to(
+    noop_reset_max: usize,
+    env: &mut NesEmulator,
+    rng: &mut XorShift64,
+) -> usize {
     if noop_reset_max == 0 {
-        return;
+        return 0;
     }
-    let noop_count = rng.next_bounded_usize(noop_reset_max + 1);
+    let noop_count = sample_noop_reset_count(noop_reset_max, rng);
     for _ in 0..noop_count {
         env.step_frame(0);
         if env.is_done() {
             break;
         }
+    }
+    noop_count
+}
+
+fn sample_noop_reset_count(noop_reset_max: usize, rng: &mut XorShift64) -> usize {
+    if noop_reset_max == 0 {
+        0
+    } else {
+        1 + rng.next_bounded_usize(noop_reset_max)
     }
 }
 
@@ -2345,6 +2371,19 @@ mod tests {
 
         assert_eq!(effective, vec![previous_controller_state]);
         assert_eq!(env.last_actions, vec![previous_controller_state]);
+    }
+
+    #[test]
+    fn positive_noop_reset_sampling_uses_the_inclusive_one_to_n_range() {
+        let mut rng = XorShift64::from_explicit_seed(123);
+        assert_eq!(sample_noop_reset_count(0, &mut rng), 0);
+        let samples = (0..4096)
+            .map(|_| sample_noop_reset_count(4, &mut rng))
+            .collect::<Vec<_>>();
+        assert!(samples.iter().all(|&value| (1..=4).contains(&value)));
+        for expected in 1..=4 {
+            assert!(samples.contains(&expected));
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
