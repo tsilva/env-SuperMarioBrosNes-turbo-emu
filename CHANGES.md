@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.6.6 - 2026-08-13
+
 - Migrate the vector environment to the breaking Turbo Vector API v2 common
   constructor, NumPy transport declaration, exact immutable capabilities, and
   portable signal schema.
