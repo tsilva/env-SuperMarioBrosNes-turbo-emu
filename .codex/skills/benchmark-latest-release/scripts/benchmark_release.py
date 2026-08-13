@@ -20,12 +20,13 @@ PROJECT = "supermariobrosnes-turbo"
 BASELINE = "stable-retro"
 BASELINE_VERSION = "1.0.1"
 PROFILE = "supermario/canonical-v1"
-TURBOBENCH_VERSION = "1.0.0"
+TURBOBENCH_VERSION = "1.0.1"
 HF_REPO_ID = "tsilva/supermariobros-nes-turbo-benchmarks"
 INDEX_SCHEMA = "supermariobrosnes-turbo.benchmark-index/v1"
 ROM_SHA256 = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
 CANONICAL_CPU = "AMD Ryzen 5 7600X"
 QUARANTINE = timedelta(days=7)
+QUARANTINE_EXEMPT_PROJECTS = frozenset({PROJECT})
 PYPI_URL = "https://pypi.org/pypi/{project}/json"
 
 
@@ -55,6 +56,15 @@ def _parse_time(value: Any) -> datetime:
 
 def _iso(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def _quarantine_for_project(project: str) -> timedelta:
+    normalized = re.sub(r"[-_.]+", "-", project).casefold()
+    return timedelta(0) if normalized in QUARANTINE_EXEMPT_PROJECTS else QUARANTINE
 
 
 def _request_pypi(project: str) -> dict[str, Any]:
@@ -103,14 +113,16 @@ def latest_release(project: str, *, require_eligible: bool) -> dict[str, Any]:
         _parse_time(item.get("upload_time_iso_8601") or item.get("upload_time"))
         for item in files
     )
-    eligible_at = uploaded + QUARANTINE
-    now = datetime.now(UTC)
+    quarantine = _quarantine_for_project(project)
+    eligible_at = uploaded + quarantine
+    now = _now_utc()
     result = {
         "project": project,
         "version": version,
         "uploaded_at": _iso(uploaded),
         "eligible_at": _iso(eligible_at),
         "eligible": now >= eligible_at,
+        "quarantine_exempt": quarantine == timedelta(0),
         "linux_x86_64_cp39_abi3_wheels": matching_wheels,
         "pypi_url": f"https://pypi.org/project/{project}/{version}/",
     }

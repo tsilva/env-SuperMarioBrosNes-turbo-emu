@@ -12,10 +12,12 @@ after every gate passes.
 ## Fixed contract
 
 - Candidate: newest stable version shown by PyPI for
-  `supermariobrosnes-turbo`.
+  `supermariobrosnes-turbo`. This project is explicitly exempt from the
+  seven-day package quarantine; all other TurboBench package quarantine policy
+  remains unchanged.
 - Baseline: `stable-retro@1.0.1` only. Do not add `stable-retro-turbo` to the
   public comparison unless the user explicitly changes that policy.
-- Harness: `turbobench-cli==1.0.0`, profile `supermario/canonical-v1`, provider
+- Harness: `turbobench-cli==1.0.1`, profile `supermario/canonical-v1`, provider
   Python `3.14`, with no `--quick`, `--force-busy`, `--allow-dirty`, `--steps`,
   or `--shapes` overrides.
 - Host: the documented canonical x86-64 Linux host with AMD Ryzen 5 7600X
@@ -27,10 +29,11 @@ after every gate passes.
 - History: add one immutable `v<VERSION>` HF tag per package version; never
   delete or replace an existing version with a different bundle ID.
 
-Treat TurboBench as the authority for eligibility. Its seven-day package
-quarantine means a newly released latest version cannot yet produce an
-official result. Report the eligibility time and stop; do not benchmark an
-older release while calling it latest and do not upload a diagnostic run.
+Treat TurboBench as the authority for eligibility. The explicit
+`supermariobrosnes-turbo` exemption permits its newest stable release to run
+immediately, but no other eligibility, exact-artifact, or validity gate is
+waived. Do not benchmark an older release while calling it latest and do not
+upload a diagnostic run.
 
 ## 1. Resolve and preflight
 
@@ -41,8 +44,9 @@ python3 .codex/skills/benchmark-latest-release/scripts/benchmark_release.py \
   latest --require-eligible
 ```
 
-Record `version`, `uploaded_at`, and `eligible_at` from the JSON. Confirm that
-the version is visible on PyPI and has the Linux x86-64 `cp39-abi3` wheel.
+Record `version`, `uploaded_at`, `eligible_at`, and `quarantine_exempt` from the
+JSON. Require `quarantine_exempt: true`, and confirm that the version is visible
+on PyPI and has the Linux x86-64 `cp39-abi3` wheel.
 
 On the canonical benchmark host:
 
@@ -62,13 +66,13 @@ export TURBOBENCH_ASSET_ROOT=/home/tsilva/.local/share/turbobench/assets/stable
 
 ```bash
 uv tool install --force \
-  --exclude-newer-package turbobench-cli=2026-08-12T00:00:00Z \
-  turbobench-cli==1.0.0
+  --exclude-newer-package turbobench-cli=2026-08-13T14:50:17Z \
+  turbobench-cli==1.0.1
 turbobench --version
 turbobench doctor supermario/canonical-v1
 ```
 
-Require `turbobench 1.0.0` and a passing doctor. Stop on any prerequisite,
+Require `turbobench 1.0.1` and a passing doctor. Stop on any prerequisite,
 asset, platform, package-resolution, or load failure. Never use an override to
 turn a failed preflight into publishable evidence.
 
