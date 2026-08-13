@@ -20,7 +20,8 @@ PROJECT = "supermariobrosnes-turbo"
 BASELINE = "stable-retro"
 BASELINE_VERSION = "1.0.1"
 PROFILE = "supermario/canonical-v1"
-TURBOBENCH_VERSION = "1.0.1"
+TURBOBENCH_RESULT_VERSION = "1.0.1"
+TURBOBENCH_VERIFIER_VERSION = "1.0.2"
 HF_REPO_ID = "tsilva/supermariobros-nes-turbo-benchmarks"
 INDEX_SCHEMA = "supermariobrosnes-turbo.benchmark-index/v1"
 ROM_SHA256 = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
@@ -150,11 +151,12 @@ def _verify_with_turbobench(bundle: Path, command_text: str) -> dict[str, Any]:
     version = _run([*command, "--version"])
     if (
         version.returncode
-        or version.stdout.strip() != f"turbobench {TURBOBENCH_VERSION}"
+        or version.stdout.strip() != f"turbobench {TURBOBENCH_VERIFIER_VERSION}"
     ):
         detail = version.stderr.strip() or version.stdout.strip() or "command failed"
         raise ValueError(
-            f"expected turbobench {TURBOBENCH_VERSION}; got {detail!r} from {command_text!r}"
+            f"expected turbobench {TURBOBENCH_VERIFIER_VERSION}; got {detail!r} "
+            f"from {command_text!r}"
         )
     verified = _run([*command, "verify", str(bundle)])
     try:
@@ -190,8 +192,10 @@ def _bundle_entry(
 
     if result.get("profile", {}).get("id") != PROFILE:
         raise ValueError(f"expected profile {PROFILE}")
-    if result.get("tool", {}).get("version") != TURBOBENCH_VERSION:
-        raise ValueError(f"bundle was not created by TurboBench {TURBOBENCH_VERSION}")
+    if result.get("tool", {}).get("version") != TURBOBENCH_RESULT_VERSION:
+        raise ValueError(
+            f"bundle was not created by TurboBench {TURBOBENCH_RESULT_VERSION}"
+        )
     if result.get("claim", {}).get("status") != "official":
         raise ValueError("bundle claim is not official")
     if result.get("validity", {}).get("passed") is not True:

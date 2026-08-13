@@ -8,9 +8,12 @@ import pickle
 import subprocess
 import sys
 
+import gymnasium as gym
 import numpy as np
 import pytest
+import supermariobrosnes_turbo as smb_turbo
 from gymnasium import spaces
+from gymnasium.envs.registration import EnvSpec
 from gymnasium.vector import AutoresetMode, VectorEnv
 
 from rom_helpers import require_rom
@@ -54,6 +57,88 @@ def make_env(**kwargs: object) -> SuperMarioBrosNesTurboVecEnv:
 
 def noop(num_envs: int) -> np.ndarray:
     return np.zeros((num_envs, len(NES_BUTTONS)), dtype=np.uint8)
+
+
+def test_generic_gymnasium_registration_is_vector_only_and_idempotent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = gym.spec(smb_turbo.GYMNASIUM_ENV_ID)
+    assert spec.entry_point is None
+    assert spec.vector_entry_point == (
+        "supermariobrosnes_turbo:_make_gymnasium_vec_env"
+    )
+    assert spec.kwargs == {}
+    smb_turbo._register_gymnasium_env()
+
+    with pytest.raises(gym.error.Error, match="entry_point is not specified"):
+        gym.make(smb_turbo.GYMNASIUM_ENV_ID, game="SuperMarioBros-Nes-v0")
+    with pytest.raises(TypeError, match="game"):
+        gym.make_vec(smb_turbo.GYMNASIUM_ENV_ID, num_envs=1)
+
+    monkeypatch.setitem(
+        gym.registry,
+        smb_turbo.GYMNASIUM_ENV_ID,
+        EnvSpec(
+            id=smb_turbo.GYMNASIUM_ENV_ID,
+            entry_point=None,
+            vector_entry_point="tests:conflicting_factory",
+        ),
+    )
+    with pytest.raises(gym.error.Error, match="conflicting specification"):
+        smb_turbo._register_gymnasium_env()
+
+
+def test_module_qualified_gymnasium_id_registers_in_a_clean_process() -> None:
+    root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        filter(None, (str(root / "python"), env.get("PYTHONPATH")))
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            'exec("""import gymnasium as gym\n'
+            "assert 'SuperMarioBros-Nes-Turbo-v0' not in gym.registry\n"
+            "try:\n"
+            "    gym.make_vec(\n"
+            "        'supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0',\n"
+            "        num_envs=1,\n"
+            "    )\n"
+            "except TypeError as exc:\n"
+            "    assert 'game' in str(exc)\n"
+            "else:\n"
+            "    raise AssertionError('game was not required')\n"
+            "spec = gym.spec('SuperMarioBros-Nes-Turbo-v0')\n"
+            "assert spec.vector_entry_point == "
+            '\'supermariobrosnes_turbo:_make_gymnasium_vec_env\'\n""")',
+        ],
+        check=True,
+        cwd=root,
+        env=env,
+    )
+
+
+def test_generic_gymnasium_factory_runs_native_vector_env() -> None:
+    env = gym.make_vec(
+        "supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0",
+        game="SuperMarioBros-Nes-v0",
+        state="Level1-1",
+        rom_path=require_rom(),
+        num_envs=2,
+        num_threads=1,
+        use_restricted_actions=Actions.ALL,
+        frame_skip=1,
+        frame_stack=1,
+    )
+    try:
+        assert isinstance(env, SuperMarioBrosNesTurboVecEnv)
+        observations, _infos = env.reset(seed=7)
+        assert env.observation_space.contains(observations)
+        transition = env.step(noop(2))
+        assert env.observation_space.contains(transition[0])
+    finally:
+        env.close()
 
 
 def test_public_surface_is_manual_reset_only() -> None:

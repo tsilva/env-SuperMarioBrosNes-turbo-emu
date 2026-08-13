@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -69,3 +71,39 @@ def test_other_projects_keep_the_seven_day_quarantine(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="seven-day quarantine"):
         module.latest_release("another-project", require_eligible=True)
+
+
+def test_publication_uses_newer_verifier_for_recorded_harness(
+    tmp_path, monkeypatch
+) -> None:
+    module = _benchmark_release_module()
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        if command[-1] == "--version":
+            return subprocess.CompletedProcess(command, 0, "turbobench 1.0.2\n", "")
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            json.dumps(
+                {
+                    "passed": True,
+                    "bundle_id": "a" * 64,
+                    "artifact_count": 1,
+                }
+            ),
+            "",
+        )
+
+    monkeypatch.setattr(module, "_run", fake_run)
+
+    result = module._verify_with_turbobench(tmp_path, "turbobench")
+
+    assert module.TURBOBENCH_RESULT_VERSION == "1.0.1"
+    assert module.TURBOBENCH_VERIFIER_VERSION == "1.0.2"
+    assert result["passed"] is True
+    assert calls == [
+        ["turbobench", "--version"],
+        ["turbobench", "verify", str(tmp_path)],
+    ]

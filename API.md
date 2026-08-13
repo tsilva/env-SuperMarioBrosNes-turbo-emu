@@ -31,6 +31,12 @@ The environment conforms to Gymnasium's vector reset and step returns. Autoreset
 is permanently disabled: stepping a terminal lane again is an error until that
 lane is explicitly reset through `options["reset_mask"]`.
 
+Construct it through the vector-only Gymnasium factory with
+`gym.make_vec("supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0",
+game="SuperMarioBros-Nes-v0", ...)`. The module-qualified ID imports and
+registers the package; `game` is required. Direct construction through
+`SuperMarioBrosNesTurboVecEnv` has the same environment options.
+
 ## Actions and observations
 
 `use_restricted_actions` accepts these built-in modes:

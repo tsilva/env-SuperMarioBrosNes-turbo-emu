@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Add the vector-only Gymnasium factory
+  `supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0`, with an explicit
+  `game` argument and the native vector environment as its result.
 
 ## 0.6.4 - 2026-08-12
 

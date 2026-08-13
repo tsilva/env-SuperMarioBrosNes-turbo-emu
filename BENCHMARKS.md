@@ -6,37 +6,62 @@ bundle.
 
 ## Official TurboBench package results
 
-On 2026-08-11,
-[`supermariobrosnes-turbo==0.6.2`](https://pypi.org/project/supermariobrosnes-turbo/0.6.2/)
+On 2026-08-13,
+[`supermariobrosnes-turbo==0.6.4`](https://pypi.org/project/supermariobrosnes-turbo/0.6.4/)
 was compared using the [documented machine profile](#machine-profile) against
 the original
 [`stable-retro==1.0.1`](https://pypi.org/project/stable-retro/1.0.1/). The
 comparison passed every TurboBench validity gate and produced an official,
-verified result bundle.
+verified result bundle published under an immutable Hugging Face tag.
 
 | Envs | Matched provider | Turbo median SPS | Provider median SPS | Paired speedup | 95% paired bootstrap CI |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | `stable-retro==1.0.1` | 10,543.8 | 626.8 | 16.8314x | 16.7373x–16.9237x |
-| 16 | `stable-retro==1.0.1` | 52,368.7 | 3,346.5 | 15.6262x | 15.5387x–15.8200x |
-| 32 | `stable-retro==1.0.1` | 65,930.0 | 3,689.6 | 17.9426x | 17.7317x–18.0522x |
+| 1 | `stable-retro==1.0.1` | 10,399.6 | 629.6 | 16.6064x | 16.4006x–16.6895x |
+| 16 | `stable-retro==1.0.1` | 51,109.7 | 3,327.6 | 15.4219x | 15.1743x–15.4474x |
+| 32 | `stable-retro==1.0.1` | 63,606.3 | 3,676.8 | 17.2701x | 17.1991x–17.3980x |
 
 SPS means environment steps per second.
 
 ### Evidence
 
-| Comparison | Recorded bundle ID |
-| --- | --- |
-| `supermariobrosnes-turbo==0.6.2` versus `stable-retro==1.0.1` | `ca1853067f0a28c276dc97343981e3c806c468ea5b1cde094b40fc263cfa3e19` |
+| Comparison | Immutable evidence | Bundle ID |
+| --- | --- | --- |
+| `supermariobrosnes-turbo==0.6.4` versus `stable-retro==1.0.1` | [Hugging Face bundle](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21) | `65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21` |
 
-The bundle contains 119 hash-bound artifacts and passed `turbobench verify`
-without errors. The ID above identifies the recorded local evidence; it is not
-a download link, and this repository does not publish the bundle. The run used
-[TurboBench 1.0.0](https://pypi.org/project/turbobench-cli/1.0.0/) from
-[source commit `d986efa72c81a7d0b5ea689ac37898d8fc38732f`](https://github.com/tsilva/turbobench/commit/d986efa72c81a7d0b5ea689ac37898d8fc38732f),
+The 119 hash-bound artifacts are published in the immutable
+[`v0.6.4` dataset tag](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4)
+at [commit `adaeb62c3c4c45aa6fa439d874945b786c97bc3f`](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/commit/adaeb62c3c4c45aa6fa439d874945b786c97bc3f).
+A fresh download of that tag passed `turbobench verify` without errors using
+[TurboBench 1.0.2](https://pypi.org/project/turbobench-cli/1.0.2/). This is
+first-party, self-verified evidence, not an independent reproduction or author
+authentication.
+
+The benchmark itself used
+[TurboBench 1.0.1](https://pypi.org/project/turbobench-cli/1.0.1/) from
+[source commit `917c3d70b04b54779a05f94055a748ceda524b20`](https://github.com/tsilva/turbobench/commit/917c3d70b04b54779a05f94055a748ceda524b20),
 harness source SHA-256
-`2c64aefe52d5db7f2887b0f9d9d32c23c49f6590319a02eee5b6e2398b710319`,
+`78dce9803b7b3413668bb6d8168f661e34f974089a131c0dd34223c993535fc9`,
 and immutable profile `supermario/canonical-v1` with profile SHA-256
-`326c6d47c4cc0bc2bbafdf003a430ea80cc27877f8a4144dfbb65dbea6bb2cd7`.
+`cbe40b5f203cd6fc5c397a216cc353e984685a52b04d01b7d550cd784b3935a1`.
+The recorded provider artifact identities are
+`7ce7e04110f4c993adbc1b15cc6d0ccaa7ddc12861aa31c6dcda4430746f8795`
+for Turbo and
+`1310a4c0f9a5d6c0dc99c4412318ffd34529083abad262bad20146d1bff2366a`
+for Stable Retro. Their selected Linux wheel SHA-256 digests are respectively
+`a37962b48504fbf509ed8785564229cc1b441e5f2a591b122a2adc1b59744e67`
+and `4451c5f8209dbdbf343d29ab028ec7d40d28b9c7459ac4e632be990bc2f1eac3`.
+
+Download and verify the exact publication with:
+
+```bash
+uv tool install --refresh --force \
+  --exclude-newer-package turbobench-cli=2026-08-13T15:41:56Z \
+  turbobench-cli==1.0.2
+hf download tsilva/supermariobros-nes-turbo-benchmarks \
+  --type dataset --revision v0.6.4 --local-dir ./benchmark-evidence
+turbobench verify \
+  ./benchmark-evidence/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21
+```
 
 ### TurboBench protocol
 
@@ -54,12 +79,12 @@ preprocessing, IPC, infos, terminal detection, and selective resets. It excluded
 construction, initial reset, action generation, warmup, correctness replay,
 rendering, and encoding.
 
-Install the published CLI for new comparisons with:
+Install the benchmark's recorded CLI for reproduction with:
 
 ```bash
 uv tool install \
-  --exclude-newer-package turbobench-cli=2026-08-12T00:00:00Z \
-  turbobench-cli==1.0.0
+  --exclude-newer-package turbobench-cli=2026-08-13T14:50:17Z \
+  turbobench-cli==1.0.1
 ```
 
 The recorded bundles retain the exact source identity shown above. Reproduce
@@ -70,14 +95,14 @@ and the canonical `Level1-1` through `Level1-4` state files:
 ```bash
 git clone https://github.com/tsilva/turbobench.git
 cd turbobench
-git checkout --detach d986efa72c81a7d0b5ea689ac37898d8fc38732f
+git checkout --detach 917c3d70b04b54779a05f94055a748ceda524b20
 uv sync --frozen --group dev
 
 export TURBOBENCH_ASSET_ROOT=/absolute/path/to/stable-retro/data/stable
 uv run turbobench doctor supermario/canonical-v1
 
 uv run turbobench compare supermario/canonical-v1 \
-  --left supermariobrosnes-turbo@0.6.2 \
+  --left supermariobrosnes-turbo@0.6.4 \
   --right stable-retro@1.0.1
 ```
 
@@ -91,5 +116,5 @@ uv run turbobench compare supermario/canonical-v1 \
 | OS | Ubuntu 26.04 LTS, Linux 7.0.0-29-generic, x86_64 |
 | Runtime | CPython 3.14.6; `numpy==2.4.2`; `gymnasium==1.2.2` |
 
-The one-minute system load was below TurboBench's 6.0 threshold for the run; no
-diagnostic overrides were used.
+The recorded one-minute system load was 2.476, below TurboBench's 6.0 threshold;
+no diagnostic overrides were used.

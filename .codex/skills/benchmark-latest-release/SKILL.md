@@ -17,9 +17,13 @@ after every gate passes.
   remains unchanged.
 - Baseline: `stable-retro@1.0.1` only. Do not add `stable-retro-turbo` to the
   public comparison unless the user explicitly changes that policy.
-- Harness: `turbobench-cli==1.0.1`, profile `supermario/canonical-v1`, provider
+- Benchmark harness: `turbobench-cli==1.0.1`, profile
+  `supermario/canonical-v1`, provider
   Python `3.14`, with no `--quick`, `--force-busy`, `--allow-dirty`, `--steps`,
   or `--shapes` overrides.
+- Publication verifier: `turbobench-cli==1.0.2`. Bundles retain their recorded
+  1.0.1 harness identity; use 1.0.2 only after the run because it verifies
+  Git-hosted bundles whose optional empty `media/` directory is omitted.
 - Host: the documented canonical x86-64 Linux host with AMD Ryzen 5 7600X
   (`beast-3` when that SSH alias is available). Never silently replace the
   official time series with another host.
@@ -110,6 +114,19 @@ verification above again. Never transfer `TURBOBENCH_ASSET_ROOT`, the ROM, the
 provider-runtime cache, or a `.partial` directory into the publication stage.
 
 ## 3. Prepare one HF commit
+
+Replace the benchmark harness with the pinned publication verifier before
+staging or checking a downloaded publication:
+
+```bash
+uv tool install --refresh --force \
+  --exclude-newer-package turbobench-cli=2026-08-13T15:41:56Z \
+  turbobench-cli==1.0.2
+turbobench --version
+```
+
+Require `turbobench 1.0.2`. This must not change the recorded harness version
+inside the already completed result bundle.
 
 Authenticate without exposing tokens:
 

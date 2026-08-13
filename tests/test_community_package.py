@@ -193,15 +193,30 @@ def test_api_documents_public_execution_and_diagnostic_controls():
 def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     readme = (ROOT / "README.md").read_text()
     benchmarks = (ROOT / "BENCHMARKS.md").read_text()
-    commit = "d986efa72c81a7d0b5ea689ac37898d8fc38732f"
+    commit = "917c3d70b04b54779a05f94055a748ceda524b20"
+    tag_url = (
+        "https://huggingface.co/datasets/tsilva/"
+        "supermariobros-nes-turbo-benchmarks/tree/v0.6.4"
+    )
+    bundle_url = (
+        f"{tag_url}/bundles/v0.6.4/vs-stable-retro-1.0.1/"
+        "65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21"
+    )
 
-    assert "[verified `0.6.2` benchmarks](BENCHMARKS.md)" in readme
+    assert "[verified `0.6.4` benchmarks](BENCHMARKS.md)" in readme
     assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
     assert "media/benchmark-throughput.svg" not in readme
-    assert "https://pypi.org/project/turbobench-cli/1.0.0/" in readme
-    assert "https://pypi.org/project/turbobench-cli/1.0.0/" in benchmarks
-    assert "turbobench-cli=2026-08-12T00:00:00Z" in benchmarks
-    assert "turbobench-cli==1.0.0" in benchmarks
+    assert "https://pypi.org/project/turbobench-cli/1.0.2/" in readme
+    assert "https://pypi.org/project/turbobench-cli/1.0.1/" in benchmarks
+    assert "https://pypi.org/project/turbobench-cli/1.0.2/" in benchmarks
+    assert "turbobench-cli=2026-08-13T14:50:17Z" in benchmarks
+    assert "turbobench-cli==1.0.1" in benchmarks
+    assert "turbobench-cli=2026-08-13T15:41:56Z" in benchmarks
+    assert "turbobench-cli==1.0.2" in benchmarks
+    assert tag_url in readme
+    assert bundle_url in readme
+    assert tag_url in benchmarks
+    assert bundle_url in benchmarks
     assert f"git checkout --detach {commit}" in benchmarks
     assert "uv run turbobench compare supermario/canonical-v1" in benchmarks
     assert "independently verified" not in benchmarks

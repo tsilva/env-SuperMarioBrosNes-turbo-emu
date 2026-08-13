@@ -11,8 +11,9 @@ lane-local episode control, reusable saved and live state, configurable actions
 and observations, and opt-in semantic game data. Supply your own supported ROM,
 then play immediately or use the vector API from Python.
 
-In the [verified `0.6.2` benchmarks](BENCHMARKS.md), it measured **15.63× to
-17.94×** the throughput of original
+In the [verified `0.6.4` benchmarks](BENCHMARKS.md), backed by the
+[immutable published evidence](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4),
+it measured **15.42× to 17.27×** the throughput of original
 [Stable Retro](https://github.com/Farama-Foundation/stable-retro) across the
 matched vector shapes.
 
@@ -104,14 +105,16 @@ uv add supermariobrosnes-turbo
 ```
 
 ```python
+import gymnasium as gym
+
 from supermariobrosnes_turbo import (
     Actions,
-    SuperMarioBrosNesTurboVecEnv,
     action_batch,
 )
 
-env = SuperMarioBrosNesTurboVecEnv(
-    "SuperMarioBros-Nes-v0",
+env = gym.make_vec(
+    "supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0",
+    game="SuperMarioBros-Nes-v0",
     state="Level1-1",
     rom_path="/absolute/path/to/SuperMarioBros.nes",
     num_envs=16,
@@ -132,6 +135,10 @@ try:
 finally:
     env.close()
 ```
+
+The module-qualified ID imports the package and registers the factory. This ID
+is vector-only and requires an explicit `game`; the native
+`SuperMarioBrosNesTurboVecEnv` constructor remains available for direct use.
 
 See [API.md](API.md) for the complete action, observation, state, snapshot,
 rendering, playback, and research-info contracts.
@@ -174,14 +181,17 @@ For source builds, tests, and contribution commands, see
 
 ## Benchmarks
 
-[BENCHMARKS.md](BENCHMARKS.md) contains the exact workloads, results, evidence,
-machine profile, and reproduction commands. Install the recorded
-[TurboBench 1.0.0](https://pypi.org/project/turbobench-cli/1.0.0/) runner with:
+[BENCHMARKS.md](BENCHMARKS.md) contains the exact workloads, results, machine
+profile, and reproduction commands. The current result is preserved in the
+immutable Hugging Face [`v0.6.4` tag](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4),
+including the [exact verified bundle](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21).
+Install the public [TurboBench 1.0.2](https://pypi.org/project/turbobench-cli/1.0.2/)
+verifier with:
 
 ```bash
-uv tool install \
-  --exclude-newer-package turbobench-cli=2026-08-12T00:00:00Z \
-  turbobench-cli==1.0.0
+uv tool install --refresh --force \
+  --exclude-newer-package turbobench-cli=2026-08-13T15:41:56Z \
+  turbobench-cli==1.0.2
 ```
 
 ## Notes
