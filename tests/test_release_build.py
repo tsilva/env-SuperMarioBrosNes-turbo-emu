@@ -116,7 +116,7 @@ def test_release_wheel_builds_use_platform_scoped_cargo_caches():
         "macos-arm64",
         "linux-x86_64",
     )
-    assert "actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830" in workflow
+    assert "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9" in workflow
     assert "path: ${{ matrix.cargo_target_dir }}" in workflow
     assert "key: cargo-target-v2-${{ matrix.platform }}-${{ steps.source.outputs.sha }}" in workflow
     assert 'run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"' in workflow
