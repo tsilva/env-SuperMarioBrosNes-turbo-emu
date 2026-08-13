@@ -16,6 +16,7 @@ from gymnasium.vector import AutoresetMode, VectorEnv
 from rom_helpers import require_rom
 from supermariobrosnes_turbo import (
     Actions,
+    Integrations,
     NES_BUTTONS,
     SuperMarioBrosNesTurboVecEnv,
     list_available_states,
@@ -57,8 +58,15 @@ def noop(num_envs: int) -> np.ndarray:
 
 def test_public_surface_is_manual_reset_only() -> None:
     signature = inspect.signature(SuperMarioBrosNesTurboVecEnv)
-    for name in ("done_on", "autoreset_mode", "done_on_info", "state_dir"):
+    for name in (
+        "done_on",
+        "autoreset_mode",
+        "done_on_info",
+        "state_dir",
+        "terminate_on_flag",
+    ):
         assert name not in signature.parameters
+    assert signature.parameters["render_mode"].default is None
     for name in (
         "set_state_policy",
         "set_state_sampling_weights",
@@ -83,6 +91,38 @@ def test_public_surface_is_manual_reset_only() -> None:
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
             use_fire_reset=True,
+        )
+
+
+@pytest.mark.parametrize(
+    ("option", "value", "message"),
+    [
+        ("scenario", "/tmp/custom.json", "scenario"),
+        ("info", "/tmp/custom.json", "info"),
+        ("inttype", object(), "inttype"),
+        ("render_mode", "human", "render_mode"),
+    ],
+)
+def test_ignored_compatibility_values_fail_before_rom_loading(
+    option: str,
+    value: object,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
+            **{option: value},
+        )
+
+
+@pytest.mark.parametrize("inttype", ["stable", "STABLE", 1, Integrations.STABLE])
+def test_stable_integration_forms_reach_rom_loading(inttype: object) -> None:
+    with pytest.raises(RuntimeError, match="failed to read ROM"):
+        SuperMarioBrosNesTurboVecEnv(
+            "SuperMarioBros-Nes-v0",
+            rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
+            inttype=inttype,
         )
 
 
@@ -419,10 +459,10 @@ def test_portable_snapshot_codec_restores_exactly_across_environment_instances()
         mask = np.ones((2,), dtype=np.bool_)
         handles = source.capture_snapshots(mask)
         payloads = source.encode_snapshots(handles)
-        assert source.snapshot_codec_api_version == 1
-        assert source.snapshot_codec_id == "supermariobrosnes-turbo.portable-v1"
+        assert source.snapshot_codec_api_version == 2
+        assert source.snapshot_codec_id == "supermariobrosnes-turbo.portable-v2"
         assert source.snapshot_codec_metadata["payload_kind"] == "portable_bytes"
-        assert all(payload is not None and payload.startswith(b"SMBVEC1\0") for payload in payloads)
+        assert all(payload is not None and payload.startswith(b"SMBVEC2\0") for payload in payloads)
 
         decoded = destination.decode_snapshots(payloads)
         state_indices = np.full((2,), -1, dtype=np.int32)
@@ -783,6 +823,17 @@ def test_rgb_render_is_independent_of_policy_preprocessing() -> None:
         env.close()
 
 
+def test_rendering_is_disabled_by_default() -> None:
+    env = make_env(num_envs=2)
+    try:
+        env.reset()
+        assert env.render() is None
+        assert env.render_lane(1) is None
+        assert env.get_images() == [None, None]
+    finally:
+        env.close()
+
+
 def test_turbo_api_v1_capabilities_signals_ownership_and_per_lane_rendering() -> None:
     env = make_env(num_envs=2, render_mode="rgb_array", obs_copy="safe_view")
     try:
@@ -807,7 +858,7 @@ def test_turbo_api_v1_capabilities_signals_ownership_and_per_lane_rendering() ->
         env.close()
 
 
-def test_rgb_render_keeps_mario_visible_during_injury_transition() -> None:
+def test_rgb_render_uses_latest_frame_during_injury_transition() -> None:
     state_path = (
         Path(__file__).resolve().parents[1]
         / "python"
@@ -861,10 +912,9 @@ def test_rgb_render_keeps_mario_visible_during_injury_transition() -> None:
                 recent_frames.append((frame, visible_sprites))
 
             previous, current = recent_frames[-2:]
-            expected = previous if previous[1] > current[1] else current
             rendered = skipped.render()
             assert rendered is not None
-            np.testing.assert_array_equal(rendered, expected[0])
+            np.testing.assert_array_equal(rendered, current[0])
 
             ram = skipped.ram()[0]
             if ram[0x000E] == 10:  # InjuryBlink / big-to-small transition

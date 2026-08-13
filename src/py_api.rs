@@ -61,14 +61,13 @@ impl MarioLiveSnapshot {
 #[pymethods]
 impl RetroVecEnv {
     #[new]
-    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, terminate_on_flag=true, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, state_catalog_data=None, state_catalog_names=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None, extra_info_ids=None))]
+    #[pyo3(signature = (rom_path, num_envs, frame_skip=4, grayscale=true, frame_stack=4, crop_top=0, crop_bottom=0, resize_width=84, resize_height=84, state_catalog_data=None, state_catalog_names=None, seed=0, frame_maxpool=false, noop_reset_max=0, sticky_action_prob=0.0, crop_left=0, crop_right=0, crop_mode="remove", crop_fill=0, resize_algorithm="area", num_threads=None, extra_info_ids=None))]
     pub fn new(
         rom_path: String,
         num_envs: usize,
         frame_skip: usize,
         grayscale: bool,
         frame_stack: usize,
-        terminate_on_flag: bool,
         crop_top: usize,
         crop_bottom: usize,
         resize_width: usize,
@@ -185,7 +184,6 @@ impl RetroVecEnv {
             grayscale,
             frame_stack,
             frame_maxpool,
-            terminate_on_flag,
             crop_top,
             crop_bottom,
             crop_left,

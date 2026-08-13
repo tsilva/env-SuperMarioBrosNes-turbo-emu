@@ -22,31 +22,9 @@ def test_action_run_checkpoint_uses_native_lightweight_contract() -> None:
 
     play_policy.apply_checkpoint_defaults(args, Path("final_model.zip"))
 
-    assert args.backend == "native"
     assert args.scale == 2
     assert args.max_pool_frames is False
     assert args.crop_mode == "remove"
-
-
-def test_explicit_stable_retro_backend_is_preserved() -> None:
-    args = play_policy.parse_args(["policy.json", "--backend", "stable-retro"])
-
-    play_policy.apply_checkpoint_defaults(args, Path("policy.json"))
-
-    assert args.backend == "stable-retro"
-    assert args.max_pool_frames is False
-    assert args.crop_mode == "remove"
-
-
-def test_stable_retro_supports_mask_crop_through_shared_preprocessing() -> None:
-    args = play_policy.parse_args(
-        ["policy.json", "--backend", "stable-retro", "--crop-mode", "mask"]
-    )
-
-    play_policy.apply_checkpoint_defaults(args, Path("policy.json"))
-
-    assert args.backend == "stable-retro"
-    assert args.crop_mode == "mask"
 
 
 def test_uncapped_playback_disables_delay_and_renderer_vsync() -> None:
@@ -106,9 +84,7 @@ def test_native_view_configures_a_directly_displayable_environment(
             captured["seed"] = seed
 
     monkeypatch.setattr(play_policy, "SuperMarioBrosNesTurboVecEnv", FakeEnv)
-    args = play_policy.parse_args(
-        ["policy.json", "--backend", "native", "--view", view]
-    )
+    args = play_policy.parse_args(["policy.json", "--view", view])
     play_policy.apply_checkpoint_defaults(args, Path("policy.json"))
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = args
@@ -124,47 +100,11 @@ def test_native_view_configures_a_directly_displayable_environment(
 def test_native_raw_view_displays_temporally_stable_rgb_render() -> None:
     rendered = np.full((224, 240, 3), 37, dtype=np.uint8)
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
-    player.args = SimpleNamespace(backend="native", view="raw")
+    player.args = SimpleNamespace(view="raw")
     player.env = SimpleNamespace(render=lambda: rendered)
     player.obs = np.zeros((1, 3, 224, 240), dtype=np.uint8)
 
     assert player.current_display_frame() is rendered
-
-
-def test_stable_retro_raw_view_uses_native_visible_rgb_dimensions(
-    monkeypatch,
-) -> None:
-    captured: dict[str, object] = {}
-
-    class FakeEnv:
-        def seed(self, seed: int) -> None:
-            captured["seed"] = seed
-
-    def create_env(**kwargs: object) -> FakeEnv:
-        captured.update(kwargs)
-        return FakeEnv()
-
-    monkeypatch.setattr(play_policy, "create_stable_retro_vector_env", create_env)
-    args = play_policy.parse_args(
-        ["policy.json", "--backend", "stable-retro", "--view", "raw"]
-    )
-    play_policy.apply_checkpoint_defaults(args, Path("policy.json"))
-    player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
-    player.args = args
-    player.current_state = args.state
-    player.rom_path = Path("mario.nes")
-
-    player.make_env()
-
-    preprocessing = captured["preprocessing"]
-    assert isinstance(preprocessing, play_policy.PreprocessingConfig)
-    assert preprocessing.grayscale is False
-    assert preprocessing.frame_stack == 1
-    assert preprocessing.maxpool_last_two is False
-    assert preprocessing.crop_top == 0
-    assert preprocessing.crop_bottom == 0
-    assert preprocessing.resize_width == 240
-    assert preprocessing.resize_height == 224
 
 
 def test_level_counters_map_to_named_policy() -> None:
@@ -185,7 +125,6 @@ def test_player_activates_policy_for_new_level(tmp_path: Path) -> None:
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = SimpleNamespace(
         action_set="basic",
-        backend="native",
         level_policy_root=tmp_path,
     )
     player.requested_action_set = "basic"
@@ -212,7 +151,6 @@ def test_player_infers_each_automatic_level_policy_action_set(
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = SimpleNamespace(
         action_set=None,
-        backend="native",
         level_policy_root=tmp_path,
     )
     player.requested_action_set = None
@@ -239,7 +177,6 @@ def test_player_rejects_automatic_policy_outside_explicit_action_set(
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)
     player.args = SimpleNamespace(
         action_set="basic",
-        backend="native",
         level_policy_root=tmp_path,
     )
     player.requested_action_set = "basic"

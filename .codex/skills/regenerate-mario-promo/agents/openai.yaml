@@ -1,4 +1,0 @@
-interface:
-  display_name: "Regenerate Mario Promo"
-  short_description: "Rebuild the verified video and GIF preview"
-  default_prompt: "Use $regenerate-mario-promo to rebuild the verified Mario video and README GIF preview."

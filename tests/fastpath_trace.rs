@@ -37,8 +37,8 @@ fn enabled_and_disabled_smb_fast_paths_match_canonical_state_traces() {
     for state_name in ["Level1-1", "Level1-2", "Level1-3", "Level1-4"] {
         let state_path = state_root.join(format!("{state_name}.state"));
         let state = load_state(&state_path);
-        let mut fast = NesEmulator::new_with_options(cart.clone(), true);
-        let mut interpreted = NesEmulator::new_with_options(cart.clone(), true);
+        let mut fast = NesEmulator::new_with_options(cart.clone(), ());
+        let mut interpreted = NesEmulator::new_with_options(cart.clone(), ());
         interpreted.disable_fast_paths();
         fast.load_fceu_state(&state).expect("load fast state");
         interpreted

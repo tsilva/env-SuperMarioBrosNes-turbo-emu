@@ -31,8 +31,8 @@ pub const DEFAULT_GRAY_RESIZE_WIDTH: usize = 84;
 pub const DEFAULT_GRAY_RESIZE_HEIGHT: usize = 84;
 pub const DEFAULT_GRAY_RESIZE_PIXELS: usize =
     DEFAULT_GRAY_RESIZE_WIDTH * DEFAULT_GRAY_RESIZE_HEIGHT;
-const PORTABLE_CORE_STATE_MAGIC: &[u8; 8] = b"NROMST1\0";
-const PORTABLE_MACHINE_STATE_MAGIC: &[u8; 8] = b"NROMGM1\0";
+const PORTABLE_CORE_STATE_MAGIC: &[u8; 8] = b"NROMST2\0";
+const PORTABLE_MACHINE_STATE_MAGIC: &[u8; 8] = b"NROMGM2\0";
 
 pub trait PpuTiming: Clone + Send + Sync + 'static {
     const SPRITE0_HIT_DOT: Option<usize>;
@@ -222,6 +222,9 @@ pub struct Ppu {
     scroll_y_px: u16,
     scroll_x_low: u8,
     scroll_override_x_px: Option<u16>,
+    horizontal_scroll_write_pending: bool,
+    current_status_bar_split_x: u16,
+    last_status_bar_split_x: u16,
     frame_dot: usize,
     next_event_dot: usize,
     frame: u64,
@@ -268,6 +271,9 @@ impl Ppu {
             scroll_y_px: 0,
             scroll_x_low: 0,
             scroll_override_x_px: None,
+            horizontal_scroll_write_pending: false,
+            current_status_bar_split_x: 0,
+            last_status_bar_split_x: 0,
             frame_dot: 0,
             next_event_dot: next_ppu_event_dot(0, sprite0_hit_dot),
             frame: 0,
@@ -296,6 +302,9 @@ impl Ppu {
         self.scroll_y_px = 0;
         self.scroll_x_low = 0;
         self.scroll_override_x_px = None;
+        self.horizontal_scroll_write_pending = false;
+        self.current_status_bar_split_x = 0;
+        self.last_status_bar_split_x = 0;
         self.frame_dot = 0;
         self.next_event_dot = next_ppu_event_dot(0, self.sprite0_hit_dot);
         self.frame = 0;
@@ -335,6 +344,9 @@ impl Ppu {
         self.render_addr = self.addr;
         self.first_write = true;
         self.fine_x = xoff.and_then(|value| value.first().copied()).unwrap_or(0);
+        self.horizontal_scroll_write_pending = false;
+        self.current_status_bar_split_x = 0;
+        self.last_status_bar_split_x = 0;
         self.frame_dot = 0;
         self.next_event_dot = next_ppu_event_dot(0, self.sprite0_hit_dot);
         self.nmi_pending = false;
@@ -373,6 +385,8 @@ impl Ppu {
                         self.frame_dot = 0;
                         self.next_event_dot = PPU_VBLANK_DOT;
                         self.frame = self.frame.wrapping_add(1);
+                        self.last_status_bar_split_x = self.current_status_bar_split_x;
+                        self.current_status_bar_split_x = 0;
                         completed_frame = true;
                     }
                     _ => {}
@@ -449,9 +463,11 @@ impl Ppu {
             }
             5 => {
                 if self.first_write {
+                    let previous_scroll_x_low = self.scroll_x_low;
                     self.fine_x = value & 0x07;
                     self.scroll_x_low = value;
                     self.update_scroll_x_px();
+                    self.horizontal_scroll_write_pending = value != previous_scroll_x_low;
                     self.temp_addr = (self.temp_addr & 0xffe0) | ((value as u16) >> 3);
                 } else {
                     self.scroll_y_px = value as u16;
@@ -969,13 +985,36 @@ impl Ppu {
         width: usize,
         height: usize,
     ) {
+        self.write_rgb_frame_region_with_split(dst, crop_top, crop_left, width, height, true);
+    }
+
+    pub(crate) fn write_rgb_frame_region_completed_state(
+        &self,
+        dst: &mut [u8],
+        crop_top: usize,
+        crop_left: usize,
+        width: usize,
+        height: usize,
+    ) {
+        self.write_rgb_frame_region_with_split(dst, crop_top, crop_left, width, height, false);
+    }
+
+    fn write_rgb_frame_region_with_split(
+        &self,
+        dst: &mut [u8],
+        crop_top: usize,
+        crop_left: usize,
+        width: usize,
+        height: usize,
+        apply_completed_split: bool,
+    ) {
         debug_assert_eq!(dst.len(), width * height * RGB_CHANNELS);
         let plane = width * height;
         for out_y in 0..height {
             let y = crop_top + out_y;
             for out_x in 0..width {
                 let x = crop_left + out_x;
-                let color = nes_rgb(self.bg_color_index(x, y));
+                let color = nes_rgb(self.bg_color_index_with_split(x, y, apply_completed_split));
                 let idx = out_y * width + out_x;
                 dst[idx] = color[0];
                 dst[plane + idx] = color[1];
@@ -987,11 +1026,16 @@ impl Ppu {
 
     #[inline]
     pub(crate) fn bg_color_index(&self, x: usize, y: usize) -> u8 {
+        self.bg_color_index_with_split(x, y, true)
+    }
+
+    #[inline]
+    fn bg_color_index_with_split(&self, x: usize, y: usize, apply_completed_split: bool) -> u8 {
         if self.mask & 0x08 == 0 {
             return self.palette[0];
         }
 
-        let (world_x, world_y) = self.bg_world_pos(x, y);
+        let (world_x, world_y) = self.bg_world_pos(x, y, apply_completed_split);
         let table_x = (world_x / 256) & 1;
         let table_y = (world_y / 240) & 1;
         let table = table_y * 2 + table_x;
@@ -1032,7 +1076,7 @@ impl Ppu {
             return false;
         }
 
-        let (world_x, world_y) = self.bg_world_pos(x, y);
+        let (world_x, world_y) = self.bg_world_pos(x, y, true);
         let table_x = (world_x / 256) & 1;
         let table_y = (world_y / 240) & 1;
         let table = table_y * 2 + table_x;
@@ -1490,6 +1534,24 @@ impl Ppu {
     }
 
     #[inline]
+    pub(crate) fn record_pending_horizontal_scroll_write(&mut self, pending_ppu_cycles: usize) {
+        if !std::mem::take(&mut self.horizontal_scroll_write_pending) {
+            return;
+        }
+        let dot = self.frame_dot.saturating_add(pending_ppu_cycles);
+        let scanline = dot / PPU_DOTS_PER_SCANLINE;
+        if scanline != PPU_VISIBLE_START_SCANLINE + 31 {
+            return;
+        }
+        // Visible pixels occupy PPU dots 1..=256. A horizontal-scroll write
+        // during SMB's sprite-zero split affects the remainder of that row;
+        // retain the already-rendered prefix for the completed public frame.
+        self.current_status_bar_split_x = (dot % PPU_DOTS_PER_SCANLINE)
+            .saturating_sub(1)
+            .min(NES_WIDTH) as u16;
+    }
+
+    #[inline]
     pub fn set_scroll_override_x(&mut self, scroll_x_px: Option<u16>) {
         self.scroll_override_x_px = scroll_x_px;
     }
@@ -1538,8 +1600,19 @@ impl Ppu {
     }
 
     #[inline]
-    pub(crate) fn bg_world_pos(&self, x: usize, y: usize) -> (usize, usize) {
-        if y < 32 {
+    pub(crate) fn bg_world_pos(
+        &self,
+        x: usize,
+        y: usize,
+        apply_completed_split: bool,
+    ) -> (usize, usize) {
+        let sky_status_split = self.palette[0] & 0x3f == 0x22 && self.render_scroll_x_px() == 299;
+        if y < 32
+            || (apply_completed_split
+                && sky_status_split
+                && y == 32
+                && x < self.last_status_bar_split_x as usize)
+        {
             (x, y)
         } else {
             (
@@ -1892,6 +1965,9 @@ impl<T: PpuTiming> NromCore<T> {
         output.extend_from_slice(&(self.ppu.next_event_dot as u32).to_le_bytes());
         output.extend_from_slice(&self.ppu.frame.to_le_bytes());
         output.push(u8::from(self.ppu.nmi_pending));
+        output.push(u8::from(self.ppu.horizontal_scroll_write_pending));
+        output.extend_from_slice(&self.ppu.current_status_bar_split_x.to_le_bytes());
+        output.extend_from_slice(&self.ppu.last_status_bar_split_x.to_le_bytes());
         output
     }
 
@@ -1963,6 +2039,10 @@ impl<T: PpuTiming> NromCore<T> {
         restored.ppu.next_event_dot = input.u32("ppu.next_event_dot")? as usize;
         restored.ppu.frame = input.u64("ppu.frame")?;
         restored.ppu.nmi_pending = input.boolean("ppu.nmi_pending")?;
+        restored.ppu.horizontal_scroll_write_pending =
+            input.boolean("ppu.horizontal_scroll_write_pending")?;
+        restored.ppu.current_status_bar_split_x = input.u16("ppu.current_status_bar_split_x")?;
+        restored.ppu.last_status_bar_split_x = input.u16("ppu.last_status_bar_split_x")?;
         input.finish()?;
 
         if restored.ppu.frame_dot >= PPU_DOTS_PER_FRAME {
@@ -1976,6 +2056,11 @@ impl<T: PpuTiming> NromCore<T> {
                 "portable state ppu.next_event_dot {} is outside the frame",
                 restored.ppu.next_event_dot
             ));
+        }
+        if restored.ppu.current_status_bar_split_x > NES_WIDTH as u16
+            || restored.ppu.last_status_bar_split_x > NES_WIDTH as u16
+        {
+            return Err("portable state has an invalid status-bar split pixel".to_string());
         }
         restored.ppu.refresh_gray_palette_cache();
         *restored
@@ -2014,6 +2099,21 @@ impl<T: PpuTiming> NromCore<T> {
             VISIBLE_FRAME_TOP + crop_top,
             VISIBLE_FRAME_LEFT + crop_left,
             width,
+            height,
+        );
+    }
+    #[inline]
+    pub fn write_rgb_visible_frame_cropped_completed_state(
+        &self,
+        dst: &mut [u8],
+        crop_top: usize,
+        height: usize,
+    ) {
+        self.ppu.write_rgb_frame_region_completed_state(
+            dst,
+            VISIBLE_FRAME_TOP + crop_top,
+            VISIBLE_FRAME_LEFT,
+            VISIBLE_FRAME_WIDTH,
             height,
         );
     }
@@ -3497,6 +3597,9 @@ impl<G: NromGame> NromMachine<G> {
             }
             match G::dispatch_fast_path(&mut self.core, &self.fast_paths, &mut budget) {
                 FastPathOutcome::Applied(policy) => {
+                    self.core
+                        .ppu
+                        .record_pending_horizontal_scroll_write(budget.pending_ppu_cycles);
                     let flush = policy == ResumePolicy::FlushNow
                         || (policy == ResumePolicy::FlushIfEventDue
                             && (budget.pending_ppu_cycles
@@ -3516,6 +3619,9 @@ impl<G: NromGame> NromMachine<G> {
             let cycles = self.core.cpu_step() as usize;
             budget.cpu_cycle_guard += cycles;
             budget.pending_ppu_cycles += cycles * 3;
+            self.core
+                .ppu
+                .record_pending_horizontal_scroll_write(budget.pending_ppu_cycles);
             if budget.pending_ppu_cycles >= self.core.ppu.cycles_until_next_event()
                 || budget.cpu_cycle_guard >= CPU_CYCLES_PER_FRAME_GUARD
             {
@@ -3541,6 +3647,9 @@ impl<G: NromGame> NromMachine<G> {
             }
             match G::dispatch_fast_path(&mut self.core, &self.fast_paths, &mut budget) {
                 FastPathOutcome::Applied(policy) => {
+                    self.core
+                        .ppu
+                        .record_pending_horizontal_scroll_write(budget.pending_ppu_cycles);
                     let flush = policy == ResumePolicy::FlushNow
                         || (policy == ResumePolicy::FlushIfEventDue
                             && (budget.pending_ppu_cycles
@@ -3563,6 +3672,9 @@ impl<G: NromGame> NromMachine<G> {
             let cycles = self.core.cpu_step_profiled(profiler) as usize;
             budget.cpu_cycle_guard += cycles;
             budget.pending_ppu_cycles += cycles * 3;
+            self.core
+                .ppu
+                .record_pending_horizontal_scroll_write(budget.pending_ppu_cycles);
             if budget.pending_ppu_cycles >= self.core.ppu.cycles_until_next_event()
                 || budget.cpu_cycle_guard >= CPU_CYCLES_PER_FRAME_GUARD
             {
@@ -3676,6 +3788,13 @@ mod tests {
 
     const PPU_SPRITE0_DOT: usize = (PPU_VISIBLE_START_SCANLINE + 30) * PPU_DOTS_PER_SCANLINE + 1;
 
+    #[derive(Clone)]
+    struct TestPpuTiming;
+
+    impl PpuTiming for TestPpuTiming {
+        const SPRITE0_HIT_DOT: Option<usize> = None;
+    }
+
     fn resize_default_area_reference(src: &[u8], dst: &mut [u8]) {
         for dst_y in 0..DEFAULT_GRAY_RESIZE_HEIGHT {
             let y0 = (dst_y * DEFAULT_GRAY_CROP_HEIGHT) / DEFAULT_GRAY_RESIZE_HEIGHT;
@@ -3732,6 +3851,30 @@ mod tests {
         set_sprite(&mut ppu, 2, 190, 9, 0xc3, 250);
         ppu
     }
+
+    #[test]
+    fn portable_state_v2_round_trip_preserves_raster_split_state() {
+        let cart = Cartridge {
+            prg_rom: vec![0; 0x4000],
+            chr_rom: vec![0; 0x2000],
+            vertical_mirroring: true,
+        };
+        let mut source = NromCore::<TestPpuTiming>::new(cart.clone());
+        source.ppu.horizontal_scroll_write_pending = true;
+        source.ppu.current_status_bar_split_x = 23;
+        source.ppu.last_status_bar_split_x = 19;
+
+        let encoded = source.encode_portable_state();
+        assert!(encoded.starts_with(b"NROMST2\0"));
+
+        let mut restored = NromCore::<TestPpuTiming>::new(cart);
+        restored.decode_portable_state(&encoded).unwrap();
+        assert!(restored.ppu.horizontal_scroll_write_pending);
+        assert_eq!(restored.ppu.current_status_bar_split_x, 23);
+        assert_eq!(restored.ppu.last_status_bar_split_x, 19);
+        assert_eq!(restored.encode_portable_state(), encoded);
+    }
+
     #[test]
     fn gray_palette_cache_tracks_palette_writes() {
         let mut ppu = Ppu::new(vec![0; 8192], true, Some(PPU_SPRITE0_DOT));

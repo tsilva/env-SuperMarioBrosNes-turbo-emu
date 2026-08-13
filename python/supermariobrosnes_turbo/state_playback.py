@@ -55,9 +55,6 @@ def build_parser(*, prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--state-dir", type=Path, default=None)
     parser.add_argument("--runs-dir", type=Path, default=Path("runs"))
     parser.add_argument(
-        "--backend", choices=("auto", "native", "stable-retro"), default="auto"
-    )
-    parser.add_argument(
         "--view",
         choices=("raw", "preprocessed"),
         default="raw",
@@ -129,11 +126,9 @@ def _policy_args(args: argparse.Namespace, source: str | Path) -> argparse.Names
         model=str(source),
         filename=args.filename,
         cache_dir=args.cache_dir,
-        backend=args.backend,
         game=DEFAULT_GAME,
         rom_path=args.rom,
         state=args.state,
-        state_dir=args.state_dir,
         level_policy_root=args.runs_dir,
         view=args.view,
         fps=args.fps,

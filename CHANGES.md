@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.6.4 - 2026-08-12
+
+- Update release smoke for portable snapshot v2.
+
+## 0.6.3 - 2026-08-12
+
+- Add a ROM-backed TurboBench semantic-oracle gate against original Stable
+  Retro 1.0.1 across every public World 1 state, scalar and vector rollouts,
+  native and processed frames, CPU RAM, resets, and snapshot continuation.
+- Match Stable Retro's final skipped native frame and sprite-zero status-bar
+  split exactly, and version portable snapshots as codec v2 for the added
+  raster state.
+- Align native termination with Stable Retro's Mario scenario by ending only on
+  final game over, remove the private flag-completion switch, and leave life,
+  flag, and level task events to downstream systems.
+- Make vector rendering opt-in with `render_mode="rgb_array"`, default to no
+  rendering, and reject ignored scenario, info, integration, and render values.
+- Add repository citation metadata for research use.
+- Focus public benchmark positioning on the original Stable Retro comparison.
 - Limit published binary distributions to Apple-silicon macOS and x86-64
   Linux.
 

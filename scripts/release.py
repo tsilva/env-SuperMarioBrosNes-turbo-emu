@@ -21,6 +21,7 @@ RELEASE_FILES = (
     REPO_ROOT / "Cargo.toml",
     REPO_ROOT / "Cargo.lock",
     REPO_ROOT / "uv.lock",
+    REPO_ROOT / "CITATION.cff",
     CHANGES,
 )
 
@@ -204,6 +205,7 @@ def create_commit_and_tag(version: str) -> str:
             "Cargo.toml",
             "Cargo.lock",
             "uv.lock",
+            "CITATION.cff",
             "CHANGES.md",
         ]
     )
