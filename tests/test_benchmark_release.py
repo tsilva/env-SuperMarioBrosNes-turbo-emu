@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -46,10 +46,12 @@ def _payload(uploaded: datetime) -> dict:
 
 def test_supermario_project_is_exempt_from_package_quarantine(monkeypatch) -> None:
     module = _benchmark_release_module()
-    uploaded = datetime(2026, 8, 12, 12, 20, tzinfo=UTC)
+    uploaded = datetime(2026, 8, 12, 12, 20, tzinfo=timezone.utc)
     monkeypatch.setattr(module, "_request_pypi", lambda project: _payload(uploaded))
     monkeypatch.setattr(
-        module, "_now_utc", lambda: datetime(2026, 8, 13, 12, 20, tzinfo=UTC)
+        module,
+        "_now_utc",
+        lambda: datetime(2026, 8, 13, 12, 20, tzinfo=timezone.utc),
     )
 
     result = module.latest_release(
@@ -63,10 +65,12 @@ def test_supermario_project_is_exempt_from_package_quarantine(monkeypatch) -> No
 
 def test_other_projects_keep_the_seven_day_quarantine(monkeypatch) -> None:
     module = _benchmark_release_module()
-    uploaded = datetime(2026, 8, 12, 12, 20, tzinfo=UTC)
+    uploaded = datetime(2026, 8, 12, 12, 20, tzinfo=timezone.utc)
     monkeypatch.setattr(module, "_request_pypi", lambda project: _payload(uploaded))
     monkeypatch.setattr(
-        module, "_now_utc", lambda: datetime(2026, 8, 13, 12, 20, tzinfo=UTC)
+        module,
+        "_now_utc",
+        lambda: datetime(2026, 8, 13, 12, 20, tzinfo=timezone.utc),
     )
 
     with pytest.raises(ValueError, match="seven-day quarantine"):

@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 import urllib.request
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -52,15 +52,15 @@ def _parse_time(value: Any) -> datetime:
     if not text:
         raise ValueError("PyPI artifact has no upload timestamp")
     parsed = datetime.fromisoformat(text)
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _iso(value: datetime) -> str:
-    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _now_utc() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def _quarantine_for_project(project: str) -> timedelta:
@@ -288,7 +288,7 @@ def _bundle_entry(
         "bundle_id": bundle_id,
         "artifact_count": verified["artifact_count"],
         "shape_results": shape_results,
-        "published_at": _iso(datetime.now(UTC)),
+        "published_at": _iso(datetime.now(timezone.utc)),
     }
     return entry, verified
 
