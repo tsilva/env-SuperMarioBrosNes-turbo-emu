@@ -44,6 +44,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.13"
 
       - name: Install release environment
         run: uv sync --frozen --extra dev --group dev
@@ -144,6 +146,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.13"
 
       - name: Restore Cargo build cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -195,6 +199,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.13"
 
       - name: Install release environment
         run: uv sync --frozen --no-default-groups --group release
