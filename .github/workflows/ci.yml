@@ -59,7 +59,7 @@ jobs:
       - name: Audit universal dependency graph
         if: matrix.python-version == '3.14'
         run: >-
-          uv audit --locked
+          uv audit --frozen
           --ignore GHSA-6w46-j5rx-g56g
 
       - name: Check formatting and release compilation
