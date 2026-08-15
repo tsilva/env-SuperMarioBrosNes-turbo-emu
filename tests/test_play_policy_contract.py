@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +17,14 @@ from supermariobrosnes_turbo.action_run import (
 
 from supermariobrosnes_turbo import manual_playback
 from supermariobrosnes_turbo import policy_playback as play_policy
+
+
+class _JsonResponse(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
 
 
 def test_action_run_checkpoint_uses_native_lightweight_contract() -> None:
@@ -111,6 +121,59 @@ def test_level_counters_map_to_named_policy() -> None:
     assert play_policy.level_name_from_counters((0, 0)) == "Level1-1"
     assert play_policy.level_name_from_counters((0, 1)) == "Level1-2"
     assert play_policy.level_name_from_counters((1, 0)) == "Level2-1"
+
+
+def test_hugging_face_checkpoint_discovery_uses_the_public_json_api(
+    monkeypatch,
+) -> None:
+    payload = json.dumps(
+        [
+            {"path": "README.md", "type": "file"},
+            {"path": "policies/Level1-1.json", "type": "file"},
+        ]
+    ).encode()
+    captured: dict[str, object] = {}
+
+    def fake_urlopen(url: str, timeout: int):
+        captured.update(url=url, timeout=timeout)
+        return _JsonResponse(payload)
+
+    monkeypatch.setattr(play_policy.urllib.request, "urlopen", fake_urlopen)
+
+    assert (
+        play_policy.find_hf_checkpoint_filename("owner/policies", "v1")
+        == "policies/Level1-1.json"
+    )
+    assert captured == {
+        "url": "https://huggingface.co/api/models/owner/policies/tree/v1?recursive=true",
+        "timeout": 30,
+    }
+
+
+def test_direct_checkpoint_cache_cannot_escape_for_hostile_filename(
+    tmp_path: Path, monkeypatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_urlretrieve(url: str, target: Path):
+        captured.update(url=url, target=target)
+        Path(target).write_bytes(b"safe checkpoint")
+        return str(target), None
+
+    monkeypatch.setattr(play_policy.urllib.request, "urlretrieve", fake_urlretrieve)
+    cache_dir = tmp_path / "cache"
+
+    resolved = play_policy.download_direct_hf_file(
+        "owner/policies",
+        filename="../../outside.json",
+        revision="v1",
+        cache_dir=cache_dir,
+    )
+
+    assert resolved.parent == cache_dir / "direct"
+    assert resolved.read_bytes() == b"safe checkpoint"
+    assert captured["target"] == resolved
+    assert str(captured["url"]).startswith("https://huggingface.co/owner/policies/resolve/v1/")
 
 
 def test_player_activates_policy_for_new_level(tmp_path: Path) -> None:

@@ -54,6 +54,12 @@ jobs:
       - name: Install test environment
         run: uv sync --frozen --extra dev --group dev
 
+      - name: Audit universal dependency graph
+        if: matrix.python-version == '3.14'
+        run: >-
+          uv audit --locked
+          --ignore GHSA-6w46-j5rx-g56g
+
       - name: Check formatting and release compilation
         if: matrix.python-version == '3.14'
         run: |
