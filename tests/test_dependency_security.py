@@ -48,4 +48,4 @@ def test_playback_has_no_vulnerable_hugging_face_runtime_client() -> None:
 
     assert re.search(r"playback = \[\s*\]", pyproject)
     assert "from huggingface_hub" not in playback
-    assert 'https://huggingface.co/' in playback
+    assert "urllib.request.urlopen" in playback
