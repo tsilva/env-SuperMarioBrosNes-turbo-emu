@@ -53,7 +53,6 @@ Changelog = "https://github.com/tsilva/SuperMarioBros-Nes-turbo/blob/main/CHANGE
 
 [project.optional-dependencies]
 playback = [
-  "huggingface-hub>=1.8.0",
 ]
 oracle = [
   "stable-retro-turbo==1.0.1.post34; python_version == '3.14'",
@@ -62,7 +61,7 @@ test = [
   "pytest>=8",
 ]
 dev = [
-  "huggingface-hub>=1.8.0",
+  "huggingface-hub>=1.8.0; python_version >= '3.10'",
   "maturin>=1.9.3,<2",
   "pytest>=8",
   "stable-retro-turbo==1.0.1.post34; python_version == '3.14'",
@@ -85,6 +84,12 @@ exclude-newer-package = { stable-retro-turbo = false }
 constraint-dependencies = [
   "mistralai!=2.4.6",
   "guardrails-ai!=0.10.1",
+  "cryptography>=50.0.0; python_version >= '3.10'",
+  "filelock>=3.20.3; python_version >= '3.10'",
+  "pytest>=8.4.2,<9; python_version < '3.10'",
+  "pytest>=9.0.3; python_version >= '3.10'",
+  "requests>=2.33.0; python_version >= '3.10'",
+  "urllib3>=2.7.0; python_version >= '3.10'",
 ]
 
 [tool.pytest.ini_options]
@@ -96,12 +101,12 @@ markers = [
 
 [dependency-groups]
 dev = [
-    "cibuildwheel>=2.23.4,<4",
-    "huggingface-hub>=1.8.0",
-    "twine>=6.2.0",
+    "cibuildwheel>=2.23.4,<4; python_version >= '3.10'",
+    "huggingface-hub>=1.8.0; python_version >= '3.10'",
+    "twine>=6.2.0; python_version >= '3.10'",
 ]
 release = [
-    "cibuildwheel>=2.23.4,<4",
+    "cibuildwheel>=2.23.4,<4; python_version >= '3.10'",
     "maturin>=1.9.3,<2",
-    "twine>=6.2.0",
+    "twine>=6.2.0; python_version >= '3.10'",
 ]
