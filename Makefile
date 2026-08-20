@@ -39,7 +39,7 @@ test-retro-oracle:
 	if [ -z "$$output" ]; then output="$$(mktemp -d)/supermario-semantic-oracle"; fi; \
 	$(TURBOBENCH) oracle supermario/canonical-v2 \
 		--left stable-retro@1.0.1 \
-		--right supermariobrosnes-turbo@checkout:$(CURDIR) \
+		--right env-supermariobrosnes-turbo-emu@checkout:$(CURDIR) \
 		--output "$$output" \
 		--allow-dirty; \
 	echo "Semantic-oracle receipt: $$output"
@@ -49,6 +49,6 @@ verify-retro-oracle:
 		(echo "Set ORACLE_RECEIPT to an external TurboBench receipt" >&2; exit 2)
 	$(TURBOBENCH) verify-oracle "$(ORACLE_RECEIPT)" \
 		--require-canonical \
-		--require-provider supermariobrosnes-turbo
+		--require-provider env-supermariobrosnes-turbo-emu
 
 test: test-rust test-python

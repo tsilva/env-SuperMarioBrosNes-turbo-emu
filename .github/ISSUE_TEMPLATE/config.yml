@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Usage questions
-    url: https://github.com/tsilva/SuperMarioBros-Nes-turbo/discussions
+    url: https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/discussions
     about: Ask for installation and usage help in GitHub Discussions.
   - name: Security report
-    url: https://github.com/tsilva/SuperMarioBros-Nes-turbo/security/advisories/new
+    url: https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/security/advisories/new
     about: Report suspected vulnerabilities privately.

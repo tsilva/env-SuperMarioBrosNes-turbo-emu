@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump, commit, tag, and push a SuperMarioBros-Nes-turbo release."""
+"""Bump, commit, tag, and push an env-SuperMarioBrosNes-turbo-emu release."""
 
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ RELEASE_FILES = (
     REPO_ROOT / "CITATION.cff",
     CHANGES,
 )
+MIGRATION_VERSION = "0.7.0"
+REDIRECT_PACKAGE = "supermariobrosnes-turbo"
 
 
 def run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -101,6 +103,14 @@ def target_version(args: argparse.Namespace) -> str:
         )
     helper("check-version")
     helper("check-pypi", "--version", version)
+    if version == MIGRATION_VERSION:
+        helper(
+            "check-pypi",
+            "--version",
+            version,
+            "--package",
+            REDIRECT_PACKAGE,
+        )
     return version
 
 

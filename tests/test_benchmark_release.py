@@ -55,7 +55,7 @@ def test_supermario_project_is_exempt_from_package_quarantine(monkeypatch) -> No
     )
 
     result = module.latest_release(
-        "supermariobrosnes-turbo", require_eligible=True
+        "env-supermariobrosnes-turbo-emu", require_eligible=True
     )
 
     assert result["eligible"] is True

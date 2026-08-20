@@ -3,8 +3,8 @@ requires = ["maturin>=1.9.3,<2"]
 build-backend = "maturin"
 
 [project]
-name = "supermariobrosnes-turbo"
-version = "0.6.6"
+name = "env-supermariobrosnes-turbo-emu"
+version = "0.7.0"
 description = "Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -45,11 +45,11 @@ dependencies = [
 smb-turbo = "supermariobrosnes_turbo.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
-Documentation = "https://github.com/tsilva/SuperMarioBros-Nes-turbo#readme"
-Repository = "https://github.com/tsilva/SuperMarioBros-Nes-turbo.git"
-Issues = "https://github.com/tsilva/SuperMarioBros-Nes-turbo/issues"
-Changelog = "https://github.com/tsilva/SuperMarioBros-Nes-turbo/blob/main/CHANGES.md"
+Homepage = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
+Documentation = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu#readme"
+Repository = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu.git"
+Issues = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/issues"
+Changelog = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/CHANGES.md"
 
 [project.optional-dependencies]
 playback = [

@@ -240,7 +240,7 @@ class SdlExternalVecPlayer:
         try:
             self.rgb_window = SdlTextureWindow(
                 self,
-                "SuperMarioBros-Nes-turbo RGB",
+                "env-SuperMarioBrosNes-turbo-emu RGB",
                 self.raw_rgb_frame(),
                 self.scale,
                 64,
@@ -249,7 +249,7 @@ class SdlExternalVecPlayer:
             self.windows.append(self.rgb_window)
             self.stack_window = SdlTextureWindow(
                 self,
-                "SuperMarioBros-Nes-turbo frame stack",
+                "env-SuperMarioBrosNes-turbo-emu frame stack",
                 display_frame_from_obs(self.stack_obs, grayscale=True),
                 self.stack_scale,
                 64 + self.rgb_window.pixel_width + 24,
@@ -344,12 +344,12 @@ class SdlExternalVecPlayer:
         if now >= self.next_status_update:
             self.next_status_update = now + 0.1
             gameplay_title = (
-                "SuperMarioBros-Nes-turbo RGB  "
+                "env-SuperMarioBrosNes-turbo-emu RGB  "
                 f"action={ACTION_MEANINGS[self.current_action()]} "
                 f"x={self.info.get('x_pos', 0)} lives={self.info.get('lives', 0)} "
                 f"reward={self.reward:.1f} fps={self.display_fps:.0f}"
             )
-            stack_title = f"SuperMarioBros-Nes-turbo frame stack  obs={tuple(self.stack_obs.shape)}"
+            stack_title = f"env-SuperMarioBrosNes-turbo-emu frame stack  obs={tuple(self.stack_obs.shape)}"
             self.rgb_window.set_title(gameplay_title)
             self.stack_window.set_title(stack_title)
 

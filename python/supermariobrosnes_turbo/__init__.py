@@ -38,7 +38,7 @@ GYMNASIUM_ENV_ID = "SuperMarioBros-Nes-Turbo-v0"
 _GYMNASIUM_VECTOR_ENTRY_POINT = "supermariobrosnes_turbo:_make_gymnasium_vec_env"
 
 try:
-    __version__ = version("supermariobrosnes-turbo")
+    __version__ = version("env-supermariobrosnes-turbo-emu")
 except PackageNotFoundError:  # Source tree imported without an installed distribution.
     __version__ = "0+unknown"
 

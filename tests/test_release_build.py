@@ -57,13 +57,18 @@ def test_version_bump_updates_only_the_project_entries_in_lockfiles(tmp_path):
     lock = tmp_path / "lock.toml"
     lock.write_text(
         '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n'
-        '[[package]]\nname = "supermariobrosnes-turbo"\nversion = "0.4.2"\n'
+        '[[package]]\nname = "env-supermariobrosnes-turbo-emu"\nversion = "0.4.2"\n'
     )
 
-    release_build.replace_package_version(lock, "supermariobrosnes-turbo", "0.4.3")
+    release_build.replace_package_version(
+        lock, "env-supermariobrosnes-turbo-emu", "0.4.3"
+    )
 
     assert 'name = "dependency"\nversion = "9.9.9"' in lock.read_text()
-    assert 'name = "supermariobrosnes-turbo"\nversion = "0.4.3"' in lock.read_text()
+    assert (
+        'name = "env-supermariobrosnes-turbo-emu"\nversion = "0.4.3"'
+        in lock.read_text()
+    )
 
 
 def test_version_bump_updates_citation_release_metadata(tmp_path, monkeypatch):

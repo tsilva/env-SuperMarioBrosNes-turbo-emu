@@ -1,6 +1,6 @@
 # Support
 
-Use [GitHub Discussions](https://github.com/tsilva/SuperMarioBros-Nes-turbo/discussions)
+Use [GitHub Discussions](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/discussions)
 for usage questions and GitHub Issues for reproducible bugs or concrete feature
 requests. Security issues must follow [SECURITY.md](SECURITY.md).
 

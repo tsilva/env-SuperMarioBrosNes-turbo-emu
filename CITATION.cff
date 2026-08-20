@@ -1,7 +1,7 @@
 cff-version: 1.2.0
-message: "If you use SuperMarioBros-Nes-turbo in your research, please cite this software."
+message: "If you use env-SuperMarioBrosNes-turbo-emu in your research, please cite this software."
 type: software
-title: "SuperMarioBros-Nes-turbo"
+title: "env-SuperMarioBrosNes-turbo-emu"
 abstract: >-
   A high-throughput, deterministic, vectorized Gymnasium environment for
   reinforcement-learning research on the supported Super Mario Bros NES
@@ -9,11 +9,11 @@ abstract: >-
 authors:
   - family-names: Silva
     given-names: Tiago
-repository-code: "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
-url: "https://pypi.org/project/supermariobrosnes-turbo/"
+repository-code: "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
+url: "https://pypi.org/project/env-supermariobrosnes-turbo-emu/"
 license: MIT
-version: 0.6.6
-date-released: 2026-08-13
+version: 0.7.0
+date-released: 2026-08-20
 keywords:
   - Gymnasium
   - reinforcement learning

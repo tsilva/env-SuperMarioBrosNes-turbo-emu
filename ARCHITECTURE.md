@@ -1,6 +1,6 @@
 # Native architecture
 
-The published `supermariobrosnes-turbo` package is a statically specialized
+The published `env-supermariobrosnes-turbo-emu` package is a statically specialized
 Super Mario Bros extension. It does not discover games at runtime.
 
 ## Binary boundaries

@@ -1,11 +1,11 @@
 ---
 name: build-release
-description: Launch and monitor a SuperMarioBros-Nes-turbo PyPI release. Use when the user says /build-release, asks to cut a release, asks to tag/publish a version, asks whether a release made it to PyPI, or asks for supermariobrosnes-turbo release artifacts.
+description: Launch and monitor an env-supermariobrosnes-turbo-emu PyPI release. Use when the user says /build-release, asks to cut a release, asks to tag/publish a version, asks whether a release made it to PyPI, or asks for env-supermariobrosnes-turbo-emu release artifacts.
 ---
 
 # Build Release
 
-Use this skill to launch the repo-owned `supermariobrosnes-turbo` release flow
+Use this skill to launch the repo-owned `env-supermariobrosnes-turbo-emu` release flow
 and monitor it until the package is visible on PyPI. The release implementation
 lives in `scripts/release.py` and the `Makefile` `release` target. Prefer that
 path over manually replaying version bumps, tags, wheel builds, validation, or
@@ -138,7 +138,7 @@ import json
 import time
 import urllib.request
 
-package = "supermariobrosnes-turbo"
+package = "env-supermariobrosnes-turbo-emu"
 version = "<version>"
 url = f"https://pypi.org/pypi/{package}/json"
 
@@ -175,14 +175,14 @@ gh run view <run-id> --json url,status,conclusion,event,headBranch,headSha,displ
 The final PyPI package URLs are:
 
 ```
-https://pypi.org/project/supermariobrosnes-turbo/<version>/
-https://pypi.org/project/supermariobrosnes-turbo/
+https://pypi.org/project/env-supermariobrosnes-turbo-emu/<version>/
+https://pypi.org/project/env-supermariobrosnes-turbo-emu/
 ```
 
 The GitHub Actions workflow environment URL is:
 
 ```
-https://pypi.org/p/supermariobrosnes-turbo
+https://pypi.org/p/env-supermariobrosnes-turbo-emu
 ```
 
 Keep `.codex/skills/build-release/scripts/release_build.py` as the workflow's

@@ -1,10 +1,10 @@
 <div align="center">
-  <img src="image-assets/icon/icon-1024.png" alt="SuperMarioBros-Nes-turbo icon" width="240" />
+  <img src="image-assets/icon/icon-1024.png" alt="env-SuperMarioBrosNes-turbo-emu icon" width="240" />
 
   **🚀 Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning 🍄**
 </div>
 
-**SuperMarioBros-Nes-turbo** is a specialized Python environment for
+**env-SuperMarioBrosNes-turbo-emu** is a specialized Python environment for
 reinforcement-learning researchers who need fast, reproducible Super Mario Bros
 NES rollouts. It combines native Gymnasium vector lanes with deterministic
 lane-local episode control, reusable saved and live state, configurable actions
@@ -24,7 +24,7 @@ Install the CLI with [uv](https://docs.astral.sh/uv/) and launch Level 1-1 with
 your local ROM:
 
 ```bash
-uv tool install supermariobrosnes-turbo
+uv tool install env-supermariobrosnes-turbo-emu
 smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes
 ```
 
@@ -101,7 +101,7 @@ and release-receipt commands are in [CONTRIBUTING.md](CONTRIBUTING.md).
 Add the package to a uv-managed project:
 
 ```bash
-uv add supermariobrosnes-turbo
+uv add env-supermariobrosnes-turbo-emu
 ```
 
 ```python
@@ -214,7 +214,7 @@ uv tool install --refresh --force \
 
 ## Architecture
 
-![SuperMarioBros-Nes-turbo architecture diagram](architecture.png)
+![env-SuperMarioBrosNes-turbo-emu architecture diagram](architecture.png)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the native component boundaries and
 verification hooks.

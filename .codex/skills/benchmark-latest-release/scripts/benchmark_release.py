@@ -16,14 +16,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-PROJECT = "supermariobrosnes-turbo"
+PROJECT = "env-supermariobrosnes-turbo-emu"
 BASELINE = "stable-retro"
 BASELINE_VERSION = "1.0.1"
 PROFILE = "supermario/canonical-v1"
 TURBOBENCH_RESULT_VERSION = "1.0.1"
 TURBOBENCH_VERIFIER_VERSION = "1.0.2"
-HF_REPO_ID = "tsilva/supermariobros-nes-turbo-benchmarks"
-INDEX_SCHEMA = "supermariobrosnes-turbo.benchmark-index/v1"
+HF_REPO_ID = "tsilva/env-supermariobrosnes-turbo-emu-benchmarks"
+INDEX_SCHEMA = "env-supermariobrosnes-turbo-emu.benchmark-index/v1"
 ROM_SHA256 = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
 CANONICAL_CPU = "AMD Ryzen 5 7600X"
 QUARANTINE = timedelta(days=7)
@@ -71,7 +71,7 @@ def _quarantine_for_project(project: str) -> timedelta:
 def _request_pypi(project: str) -> dict[str, Any]:
     request = urllib.request.Request(
         PYPI_URL.format(project=project),
-        headers={"User-Agent": "supermariobrosnes-turbo-benchmark-publisher/1"},
+        headers={"User-Agent": "env-supermariobrosnes-turbo-emu-benchmark-publisher/1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
@@ -315,7 +315,7 @@ def _render_card(index: dict[str, Any]) -> str:
     path = latest["path"]
     lines = [
         "---",
-        'pretty_name: "SuperMarioBros-Nes-turbo TurboBench Evidence"',
+        'pretty_name: "env-SuperMarioBrosNes-turbo-emu TurboBench Evidence"',
         "tags:",
         "- reinforcement-learning",
         "- benchmark",
@@ -323,10 +323,10 @@ def _render_card(index: dict[str, Any]) -> str:
         "- emulator",
         "---",
         "",
-        "# SuperMarioBros-Nes-turbo TurboBench Evidence",
+        "# env-SuperMarioBrosNes-turbo-emu TurboBench Evidence",
         "",
         "Official, first-party TurboBench evidence for published "
-        "`supermariobrosnes-turbo` releases compared with `stable-retro==1.0.1`.",
+        "`env-supermariobrosnes-turbo-emu` releases compared with `stable-retro==1.0.1`.",
         "Every bundle is portable, hash-bound, and independently checkable with "
         "`turbobench verify`; this verifies integrity and consistency, not independent "
         "reproduction or author identity.",

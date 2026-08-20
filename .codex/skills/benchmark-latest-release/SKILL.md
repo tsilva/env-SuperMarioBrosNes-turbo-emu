@@ -1,6 +1,6 @@
 ---
 name: benchmark-latest-release
-description: Benchmark the newest stable supermariobrosnes-turbo PyPI release with the canonical TurboBench Super Mario workload, publish only verified official evidence to the project's Hugging Face dataset, verify the uploaded revision, and update local benchmark documentation. Use when the user says /benchmark-latest-release, asks to benchmark the latest/current/released version, asks to refresh official performance numbers, or asks to publish new SuperMarioBros-Nes-turbo benchmark evidence to Hugging Face.
+description: Benchmark the newest stable env-supermariobrosnes-turbo-emu PyPI release with the canonical TurboBench Super Mario workload, publish only verified official evidence to the project's Hugging Face dataset, verify the uploaded revision, and update local benchmark documentation. Use when the user says /benchmark-latest-release, asks to benchmark the latest/current/released version, asks to refresh official performance numbers, or asks to publish new env-SuperMarioBrosNes-turbo-emu benchmark evidence to Hugging Face.
 ---
 
 # Benchmark Latest Release
@@ -12,7 +12,7 @@ after every gate passes.
 ## Fixed contract
 
 - Candidate: newest stable version shown by PyPI for
-  `supermariobrosnes-turbo`. This project is explicitly exempt from the
+  `env-supermariobrosnes-turbo-emu`. This project is explicitly exempt from the
   seven-day package quarantine; all other TurboBench package quarantine policy
   remains unchanged.
 - Baseline: `stable-retro@1.0.1` only. Do not add `stable-retro-turbo` to the
@@ -27,21 +27,21 @@ after every gate passes.
 - Host: the documented canonical x86-64 Linux host with AMD Ryzen 5 7600X
   (`beast-3` when that SSH alias is available). Never silently replace the
   official time series with another host.
-- HF dataset: `tsilva/supermariobros-nes-turbo-benchmarks`.
+- HF dataset: `tsilva/env-supermariobrosnes-turbo-emu-benchmarks`.
 - Publication: exact PyPI artifacts only, no checkout, ROM, gameplay media,
   local paths, secrets, diagnostic bundles, or inconclusive/invalid claims.
 - History: add one immutable `v<VERSION>` HF tag per package version; never
   delete or replace an existing version with a different bundle ID.
 
 Treat TurboBench as the authority for eligibility. The explicit
-`supermariobrosnes-turbo` exemption permits its newest stable release to run
+`env-supermariobrosnes-turbo-emu` exemption permits its newest stable release to run
 immediately, but no other eligibility, exact-artifact, or validity gate is
 waived. Do not benchmark an older release while calling it latest and do not
 upload a diagnostic run.
 
 ## 1. Resolve and preflight
 
-From the SuperMarioBros-Nes-turbo repository root, resolve the public release:
+From the env-SuperMarioBrosNes-turbo-emu repository root, resolve the public release:
 
 ```bash
 python3 .codex/skills/benchmark-latest-release/scripts/benchmark_release.py \
@@ -87,7 +87,7 @@ tree. Substitute the resolved version exactly:
 
 ```bash
 turbobench compare supermario/canonical-v1 \
-  --left supermariobrosnes-turbo@<VERSION> \
+  --left env-supermariobrosnes-turbo-emu@<VERSION> \
   --right stable-retro@1.0.1 \
   --python 3.14 \
   --output <EXTERNAL_RESULTS>/smb-<VERSION>-vs-stable-retro-1.0.1
@@ -186,7 +186,7 @@ SHA; if the tag already exists, require it to resolve to the same commit:
 ```bash
 hf repos tag create tsilva/supermariobros-nes-turbo-benchmarks v<VERSION> \
   --type dataset --revision <HF_COMMIT_SHA> \
-  --message "Official TurboBench evidence for supermariobrosnes-turbo <VERSION>"
+  --message "Official TurboBench evidence for env-supermariobrosnes-turbo-emu <VERSION>"
 ```
 
 Download the tag into a fresh directory and verify the published bundle:

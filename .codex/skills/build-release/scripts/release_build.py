@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic helpers for SuperMarioBros-Nes-turbo release wheel builds."""
+"""Deterministic helpers for env-SuperMarioBrosNes-turbo-emu release builds."""
 
 from __future__ import annotations
 
@@ -33,7 +33,8 @@ CARGO_LOCK = REPO_ROOT / "Cargo.lock"
 UV_LOCK = REPO_ROOT / "uv.lock"
 CITATION = REPO_ROOT / "CITATION.cff"
 PYTHON = Path(sys.executable)
-PACKAGE_NAME = "supermariobrosnes-turbo"
+PACKAGE_NAME = "env-supermariobrosnes-turbo-emu"
+CARGO_PACKAGE_NAME = "supermariobrosnes-turbo"
 IMPORT_NAME = "supermariobrosnes_turbo"
 EXTENSION_NAME = "_supermariobrosnes_turbo"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+|\.dev\d+)?$")
@@ -126,7 +127,7 @@ def cargo_version() -> str:
 
 
 def cargo_lock_version() -> str:
-    return section_version(CARGO_LOCK, "package", package_name=PACKAGE_NAME)
+    return section_version(CARGO_LOCK, "package", package_name=CARGO_PACKAGE_NAME)
 
 
 def citation_version() -> str:
@@ -306,7 +307,7 @@ def bump_version(args: argparse.Namespace) -> None:
         write_version(target)
         replace_section_version(PYPROJECT, "project", target)
         replace_section_version(CARGO_TOML, "package", target)
-        replace_package_version(CARGO_LOCK, PACKAGE_NAME, target)
+        replace_package_version(CARGO_LOCK, CARGO_PACKAGE_NAME, target)
         replace_package_version(UV_LOCK, PACKAGE_NAME, target)
         replace_citation_release(target)
     print(target)
@@ -317,14 +318,14 @@ def sync_version(args: argparse.Namespace) -> None:
     validate_version(version)
     replace_section_version(PYPROJECT, "project", version)
     replace_section_version(CARGO_TOML, "package", version)
-    replace_package_version(CARGO_LOCK, PACKAGE_NAME, version)
+    replace_package_version(CARGO_LOCK, CARGO_PACKAGE_NAME, version)
     replace_package_version(UV_LOCK, PACKAGE_NAME, version)
     replace_citation_release(version)
     print(version)
 
 
-def fetch_pypi_project() -> dict[str, object]:
-    url = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
+def fetch_pypi_project(package: str = PACKAGE_NAME) -> dict[str, object]:
+    url = f"https://pypi.org/pypi/{package}/json"
     with urllib.request.urlopen(url, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -353,18 +354,19 @@ def latest_non_yanked_pypi_version(releases: object) -> str | None:
 
 def check_pypi(args: argparse.Namespace) -> None:
     validate_version(args.version)
+    package = args.package or PACKAGE_NAME
     try:
-        data = fetch_pypi_project()
+        data = fetch_pypi_project(package)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            print(json.dumps({"package": PACKAGE_NAME, "exists": False, "version_exists": False}, indent=2))
+            print(json.dumps({"package": package, "exists": False, "version_exists": False}, indent=2))
             return
         raise
     releases = data.get("releases", {})
     exists = args.version in releases and bool(releases[args.version])
-    print(json.dumps({"package": PACKAGE_NAME, "version": args.version, "version_exists": exists}, indent=2))
+    print(json.dumps({"package": package, "version": args.version, "version_exists": exists}, indent=2))
     if exists:
-        raise SystemExit(f"{PACKAGE_NAME} {args.version} already exists on PyPI")
+        raise SystemExit(f"{package} {args.version} already exists on PyPI")
 
 
 def latest_pypi(args: argparse.Namespace) -> None:
@@ -480,7 +482,7 @@ def prepare_sources(args: argparse.Namespace) -> None:
     validate_version(version)
     root = args.root or Path(
         tempfile.mkdtemp(
-            prefix=f"supermariobrosnes-turbo-v{version}-builds.",
+            prefix=f"env-supermariobrosnes-turbo-emu-v{version}-builds.",
             dir=release_temp_dir(),
         )
     )
@@ -956,6 +958,7 @@ def main() -> None:
 
     pypi = subparsers.add_parser("check-pypi", help="Fail if the target version exists on PyPI")
     pypi.add_argument("--version", required=True)
+    pypi.add_argument("--package")
     pypi.set_defaults(func=check_pypi)
 
     latest = subparsers.add_parser("latest-pypi", help="Print the latest non-yanked PyPI version")

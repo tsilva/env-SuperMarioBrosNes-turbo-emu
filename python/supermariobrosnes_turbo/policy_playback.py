@@ -326,7 +326,7 @@ class SdlPolicyPlayer:
             raise SdlUnavailableError(self.sdl_error())
         self.sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", b"nearest")
         self.window = self.sdl.SDL_CreateWindow(
-            b"SuperMarioBros-Nes-turbo player",
+            b"env-SuperMarioBrosNes-turbo-emu player",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             self.display_width * self.scale,

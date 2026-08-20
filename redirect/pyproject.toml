@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=83,<84", "wheel>=0.45,<1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supermariobrosnes-turbo"
+version = "0.7.0"
+description = "Migration package for env-supermariobrosnes-turbo-emu"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "Tiago Silva" }]
+dependencies = ["env-supermariobrosnes-turbo-emu==0.7.0"]
+classifiers = [
+  "Development Status :: 7 - Inactive",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+]
+
+[project.optional-dependencies]
+playback = ["env-supermariobrosnes-turbo-emu[playback]==0.7.0"]
+oracle = ["env-supermariobrosnes-turbo-emu[oracle]==0.7.0"]
+test = ["env-supermariobrosnes-turbo-emu[test]==0.7.0"]
+dev = ["env-supermariobrosnes-turbo-emu[dev]==0.7.0"]
+
+[project.urls]
+Migration = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
+
+[tool.setuptools]
+packages = []
+
+[tool.uv]
+exclude-newer = "7 days"
+constraint-dependencies = [
+  "mistralai!=2.4.6",
+  "guardrails-ai!=0.10.1",
+]

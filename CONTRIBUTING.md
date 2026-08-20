@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve SuperMarioBros-Nes-turbo. Contributions should
+Thank you for helping improve env-SuperMarioBrosNes-turbo-emu. Contributions should
 stay within the documented mapper 0/NROM scope and preserve the public
 Gymnasium, determinism, state, and performance contracts in `SPECS.md`.
 
@@ -11,8 +11,8 @@ Participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 Install [uv](https://docs.astral.sh/uv/) and a Rust toolchain, then run:
 
 ```bash
-git clone https://github.com/tsilva/SuperMarioBros-Nes-turbo.git
-cd SuperMarioBros-Nes-turbo
+git clone https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu.git
+cd env-SuperMarioBrosNes-turbo-emu
 uv sync --frozen --extra dev --group dev
 uv run maturin develop --release
 ```
@@ -41,7 +41,7 @@ not available from the default sibling checkout, and set `ORACLE_OUTPUT` to
 retain the receipt at a specific external path.
 
 Checkout receipts are development evidence. After publishing the candidate,
-regenerate the same oracle using `supermariobrosnes-turbo@VERSION` and fail
+regenerate the same oracle using `env-supermariobrosnes-turbo-emu@VERSION` and fail
 closed on the canonical workload and PyPI candidate identity:
 
 ```bash

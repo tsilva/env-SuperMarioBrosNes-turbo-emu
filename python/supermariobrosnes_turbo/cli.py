@@ -1,4 +1,4 @@
-"""Unified command-line interface for SuperMarioBros-Nes-turbo."""
+"""Unified command-line interface for env-SuperMarioBrosNes-turbo-emu."""
 
 from __future__ import annotations
 

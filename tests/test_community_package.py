@@ -85,7 +85,7 @@ def test_readme_leads_with_a_supported_first_run_path():
     pyproject = (ROOT / "pyproject.toml").read_text()
 
     assert readme.index("## Quick start") < readme.index("## What it provides")
-    assert "uv tool install supermariobrosnes-turbo" in readme
+    assert "uv tool install env-supermariobrosnes-turbo-emu" in readme
     assert "smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes" in readme
     assert "discoverable SDL2 runtime" in readme
     assert "Windows PowerShell" not in readme
@@ -228,7 +228,7 @@ def test_citation_metadata_describes_latest_release():
     citation = (ROOT / "CITATION.cff").read_text()
 
     assert "cff-version: 1.2.0" in citation
-    assert 'title: "SuperMarioBros-Nes-turbo"' in citation
+    assert 'title: "env-SuperMarioBrosNes-turbo-emu"' in citation
     assert "family-names: Silva" in citation
     assert "given-names: Tiago" in citation
     assert "license: MIT" in citation

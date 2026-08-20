@@ -103,6 +103,17 @@ jobs:
         if: github.event_name == 'push' && github.ref_type == 'tag'
         run: uv run python .codex/skills/build-release/scripts/release_build.py check-pypi --version "${{ steps.version.outputs.version }}"
 
+      - name: Check migration package source and PyPI version
+        if: steps.version.outputs.version == '0.7.0'
+        run: |
+          uv run python scripts/redirect_release.py check-source \
+            --version "${{ steps.version.outputs.version }}"
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            uv run python .codex/skills/build-release/scripts/release_build.py check-pypi \
+              --package supermariobrosnes-turbo \
+              --version "${{ steps.version.outputs.version }}"
+          fi
+
       - name: Run source checks
         run: |
           cargo fmt --check --all
@@ -223,14 +234,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p dist
-          cp wheelhouse/*.whl dist/
-          uv run maturin sdist --out dist
+          mkdir -p dist/primary
+          cp wheelhouse/*.whl dist/primary/
+          uv run maturin sdist --out dist/primary
           uv run python .codex/skills/build-release/scripts/release_build.py audit-sdist \
             --version "${{ needs.validate.outputs.version }}" \
-            dist/*.tar.gz
-          uv run python scripts/check_sdist_internal_crates.py dist/*.tar.gz
-          uv run twine check dist/*
+            dist/primary/*.tar.gz
+          uv run python scripts/check_sdist_internal_crates.py dist/primary/*.tar.gz
+          uv run twine check dist/primary/*
+
+      - name: Build and audit metadata-only migration distributions
+        if: needs.validate.outputs.version == '0.7.0'
+        run: |
+          uv run python scripts/redirect_release.py build \
+            --version "${{ needs.validate.outputs.version }}" \
+            --out-dir dist/redirect
+          uv run twine check dist/redirect/*
 
       - name: Smoke stable ABI on Python 3.9
         shell: bash
@@ -241,14 +260,14 @@ jobs:
             wheelhouse/*manylinux*x86_64*.whl \
             --python "$(uv python find 3.9)"
           uv run python .codex/skills/build-release/scripts/release_build.py smoke-sdist \
-            dist/*.tar.gz \
+            dist/primary/*.tar.gz \
             --python "$(uv python find 3.9)"
 
       - name: Upload audited distribution bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-v${{ needs.validate.outputs.version }}
-          path: dist/*
+          path: dist/**
           if-no-files-found: error
 
   publish:
@@ -260,7 +279,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment:
       name: pypi
-      url: https://pypi.org/p/supermariobrosnes-turbo
+      url: https://pypi.org/p/env-supermariobrosnes-turbo-emu
     permissions:
       id-token: write
     steps:
@@ -270,8 +289,16 @@ jobs:
           name: release-v${{ needs.validate.outputs.version }}
           path: dist
 
-      - name: Publish package distributions to PyPI
+      - name: Publish primary package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/primary
+
+      - name: Publish metadata-only migration distributions to PyPI
+        if: needs.validate.outputs.version == '0.7.0'
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/redirect
 
   github-release:
     name: Publish GitHub release
@@ -292,10 +319,11 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}"
-          dist/*
-          --repo "${GITHUB_REPOSITORY}"
-          --verify-tag
-          --generate-notes
-          --title "${GITHUB_REF_NAME}"
+        run: |
+          mkdir release-assets
+          find dist -type f -exec cp {} release-assets/ \;
+          gh release create "${GITHUB_REF_NAME}" release-assets/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --generate-notes \
+            --title "${GITHUB_REF_NAME}"
