@@ -4,6 +4,14 @@
 
 - Nothing yet.
 
+## 0.7.0 - 2026-08-20
+
+- Harden GitHub Actions (#20).
+- Add dependency review workflow.
+- fix: remediate all dependency vulnerabilities (#21).
+- Rename package to env-supermariobrosnes-turbo-emu.
+- Fix release feature smoke reset-source assertion.
+
 ## 0.6.6 - 2026-08-13
 
 - Migrate the vector environment to the breaking Turbo Vector API v2 common
