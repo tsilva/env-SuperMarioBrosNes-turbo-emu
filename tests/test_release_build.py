@@ -240,6 +240,7 @@ def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_availabl
         "decode_snapshots",
         '"snapshots": [decoded_handles[0], decoded_handles[0]]',
         'restored_infos["start_source"]',
+        'restored_infos["start_source"].dtype == np.int8',
         "np.testing.assert_array_equal(expected, actual)",
         "canonical SMB ROM is unavailable",
         "extra_info_descriptors",

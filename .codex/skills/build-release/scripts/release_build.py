@@ -829,9 +829,10 @@ else:
         }}
         restored, restored_infos = env.reset(options=reset_options)
         np.testing.assert_array_equal(restored[0], restored[1])
+        assert restored_infos["start_source"].dtype == np.int8
         assert restored_infos["start_source"].tolist() == [
-            "snapshot",
-            "snapshot",
+            1,
+            1,
         ]
 
         replay_actions = np.zeros_like(warmup)
