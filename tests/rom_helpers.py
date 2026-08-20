@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from supermariobrosnes_turbo import RETRO_DATA_PATH_ENV_VAR, default_rom_path
+from env_supermariobrosnes_turbo_emu import RETRO_DATA_PATH_ENV_VAR, default_rom_path
 
 
 ALLOW_MISSING_ROM_TESTS_ENV_VAR = "ALLOW_MISSING_ROM_TESTS"

@@ -26,7 +26,7 @@ from .env import (
     PlayerPower,
     PlayerTask,
     State,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
     action_batch,
     action_mask,
     list_available_states,
@@ -34,8 +34,8 @@ from .env import (
 )
 from .roms import RETRO_DATA_PATH_ENV_VAR, default_rom_path
 
-GYMNASIUM_ENV_ID = "SuperMarioBros-Nes-Turbo-v0"
-_GYMNASIUM_VECTOR_ENTRY_POINT = "supermariobrosnes_turbo:_make_gymnasium_vec_env"
+GYMNASIUM_ENV_ID = "EnvSuperMarioBrosNesTurboEmu-v0"
+_GYMNASIUM_VECTOR_ENTRY_POINT = "env_supermariobrosnes_turbo_emu:_make_gymnasium_vec_env"
 
 try:
     __version__ = version("env-supermariobrosnes-turbo-emu")
@@ -45,8 +45,8 @@ except PackageNotFoundError:  # Source tree imported without an installed distri
 
 def _make_gymnasium_vec_env(
     *, game: str, num_envs: int = 1, **kwargs: Any
-) -> SuperMarioBrosNesTurboVecEnv:
-    return SuperMarioBrosNesTurboVecEnv(
+) -> EnvSuperMarioBrosNesTurboEmuVecEnv:
+    return EnvSuperMarioBrosNesTurboEmuVecEnv(
         game=game,
         num_envs=num_envs,
         **kwargs,
@@ -103,7 +103,7 @@ __all__ = [
     "PlayerTask",
     "RETRO_DATA_PATH_ENV_VAR",
     "State",
-    "SuperMarioBrosNesTurboVecEnv",
+    "EnvSuperMarioBrosNesTurboEmuVecEnv",
     "action_batch",
     "action_mask",
     "default_rom_path",

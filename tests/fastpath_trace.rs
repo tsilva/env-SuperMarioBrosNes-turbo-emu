@@ -31,7 +31,7 @@ fn enabled_and_disabled_smb_fast_paths_match_canonical_state_traces() {
         eprintln!("skipping ROM-backed fast-path trace: ROM_PATH is unavailable");
         return;
     };
-    let state_root = Path::new("python/supermariobrosnes_turbo/data/SuperMarioBros-Nes-v0");
+    let state_root = Path::new("python/env_supermariobrosnes_turbo_emu/data/SuperMarioBros-Nes-v0");
     let cart = Cartridge::load_ines_for(rom_path, EXPECTED_SMB_ROM_SHA256).expect("load SMB ROM");
 
     for state_name in ["Level1-1", "Level1-2", "Level1-3", "Level1-4"] {

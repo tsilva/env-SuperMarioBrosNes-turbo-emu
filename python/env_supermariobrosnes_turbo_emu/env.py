@@ -16,7 +16,7 @@ from gymnasium import spaces
 from gymnasium.vector import AutoresetMode, VectorEnv
 from gymnasium.vector.utils import batch_space
 
-from ._supermariobrosnes_turbo import (
+from ._env_supermariobrosnes_turbo_emu import (
     _RetroVecEnv as _CoreRetroVecEnv,
     extra_info_descriptors as _native_extra_info_descriptors,
 )
@@ -526,7 +526,7 @@ def _normalize_retro_resize(
     return width, height
 
 
-class SuperMarioBrosNesTurboVecEnv(VectorEnv):
+class EnvSuperMarioBrosNesTurboEmuVecEnv(VectorEnv):
     """Gymnasium VectorEnv for the native Super Mario Bros NES fast path.
 
     ``state`` accepts one saved state. ``state_catalog`` accepts the ordered,
@@ -546,7 +546,7 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
     }
     supports_live_snapshots = True
     snapshot_codec_api_version = 2
-    snapshot_codec_id = "supermariobrosnes-turbo.portable-v2"
+    snapshot_codec_id = "env-supermariobrosnes-turbo-emu.portable-v2"
     snapshot_codec_metadata = MappingProxyType(
         {
             "api_version": snapshot_codec_api_version,
@@ -594,14 +594,14 @@ class SuperMarioBrosNesTurboVecEnv(VectorEnv):
         state_catalog: Sequence[StateSpec] | None = None,
     ) -> None:
         if str(game) != DEFAULT_STABLE_RETRO_GAME:
-            raise ValueError(f"SuperMarioBrosNesTurboVecEnv only supports {DEFAULT_STABLE_RETRO_GAME!r}")
+            raise ValueError(f"EnvSuperMarioBrosNesTurboEmuVecEnv only supports {DEFAULT_STABLE_RETRO_GAME!r}")
         if players != 1:
-            raise ValueError("SuperMarioBrosNesTurboVecEnv currently supports players=1")
+            raise ValueError("EnvSuperMarioBrosNesTurboEmuVecEnv currently supports players=1")
         if record:
-            raise ValueError("SuperMarioBrosNesTurboVecEnv does not support movie recording")
+            raise ValueError("EnvSuperMarioBrosNesTurboEmuVecEnv does not support movie recording")
         obs_type_name = getattr(obs_type, "name", obs_type)
         if obs_type is not None and str(obs_type_name).split(".")[-1].upper() != "IMAGE":
-            raise ValueError("SuperMarioBrosNesTurboVecEnv currently supports image observations only")
+            raise ValueError("EnvSuperMarioBrosNesTurboEmuVecEnv currently supports image observations only")
         if info not in (None, "data"):
             raise ValueError("info must be None or 'data'; SMB signals are built in")
         if scenario not in (None, "scenario"):

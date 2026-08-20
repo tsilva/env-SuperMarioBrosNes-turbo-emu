@@ -48,7 +48,7 @@ except ImportError:
 from . import (
     ACTION_SETS,
     Actions,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
     action_mask,
     resolve_required_rom_path,
 )
@@ -439,7 +439,7 @@ class SdlPolicyPlayer:
     def make_env(self, state: str | None = None):
         state = state or self.current_state
         raw_view = self.args.view == "raw"
-        env = SuperMarioBrosNesTurboVecEnv(
+        env = EnvSuperMarioBrosNesTurboEmuVecEnv(
             self.args.game,
             state=state,
             rom_path=self.rom_path,

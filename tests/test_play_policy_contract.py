@@ -8,15 +8,15 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from supermariobrosnes_turbo import ACTION_SETS
-from supermariobrosnes_turbo.action_run import (
+from env_supermariobrosnes_turbo_emu import ACTION_SETS
+from env_supermariobrosnes_turbo_emu.action_run import (
     ActionRun,
     ActionRunPolicy,
     policy_path_for_state,
 )
 
-from supermariobrosnes_turbo import manual_playback
-from supermariobrosnes_turbo import policy_playback as play_policy
+from env_supermariobrosnes_turbo_emu import manual_playback
+from env_supermariobrosnes_turbo_emu import policy_playback as play_policy
 
 
 class _JsonResponse(io.BytesIO):
@@ -93,7 +93,7 @@ def test_native_view_configures_a_directly_displayable_environment(
         def seed(self, seed: int) -> None:
             captured["seed"] = seed
 
-    monkeypatch.setattr(play_policy, "SuperMarioBrosNesTurboVecEnv", FakeEnv)
+    monkeypatch.setattr(play_policy, "EnvSuperMarioBrosNesTurboEmuVecEnv", FakeEnv)
     args = play_policy.parse_args(["policy.json", "--view", view])
     play_policy.apply_checkpoint_defaults(args, Path("policy.json"))
     player = play_policy.SdlPolicyPlayer.__new__(play_policy.SdlPolicyPlayer)

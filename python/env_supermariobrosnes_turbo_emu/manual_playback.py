@@ -18,7 +18,7 @@ from . import (
     CORE_ACTION_MEANINGS as ACTION_MEANINGS,
 )
 from . import (
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
     default_rom_path,
     resolve_required_rom_path,
 )
@@ -198,7 +198,7 @@ class SdlExternalVecPlayer:
         if args.crop_top < 0 or args.crop_bottom < 0:
             raise ValueError("--crop-top and --crop-bottom must be non-negative")
 
-        self.env = SuperMarioBrosNesTurboVecEnv(
+        self.env = EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             state=args.state,
             rom_path=resolve_required_rom_path(args.rom_path),

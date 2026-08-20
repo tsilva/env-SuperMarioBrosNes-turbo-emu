@@ -248,7 +248,7 @@ def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_availabl
         "smoke-feature-wheel",
         "feature-smoke Python must be CPython 3.9",
         "feature-smoke ROM SHA-256",
-        "supermariobrosnes-turbo.portable-v2",
+        "env-supermariobrosnes-turbo-emu.portable-v2",
         'b"SMBVEC2\\\\0"',
     ):
         assert required in source

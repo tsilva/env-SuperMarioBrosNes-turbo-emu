@@ -30,7 +30,7 @@ def _benchmark_release_module():
 
 def _payload(uploaded: datetime) -> dict:
     filename = (
-        "supermariobrosnes_turbo-0.6.4-cp39-abi3-"
+        "env_supermariobrosnes_turbo_emu-0.6.4-cp39-abi3-"
         "manylinux_2_17_x86_64.whl"
     )
     artifact = {

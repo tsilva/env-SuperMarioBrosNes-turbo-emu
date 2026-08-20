@@ -83,7 +83,7 @@ def _missing_rom_message(game: str) -> str:
     searched = ", ".join(str(path) for path in rom_candidates(game))
     message = (
         f"ROM required for {game}; pass rom_path or import it with "
-        f"`python -m supermariobrosnes_turbo.import /path/to/roms`. "
+        f"`python -m env_supermariobrosnes_turbo_emu.import /path/to/roms`. "
         f"Set {RETRO_DATA_PATH_ENV_VAR} to the data root containing "
         f"stable/{game}/{ROM_FILENAME}. Expected {expected}; searched: {searched}"
     )

@@ -9,7 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_PATH = ROOT / "ci" / "smb-extension-dependencies.txt"
-ROOT_PACKAGE = "supermariobrosnes-turbo"
+ROOT_PACKAGE = "env-supermariobrosnes-turbo-emu"
 
 
 def dependency_closure() -> list[str]:

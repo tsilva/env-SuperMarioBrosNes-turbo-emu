@@ -42,7 +42,7 @@ dependencies = [
 ]
 
 [project.scripts]
-smb-turbo = "supermariobrosnes_turbo.cli:main"
+smb-turbo = "env_supermariobrosnes_turbo_emu.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
@@ -68,15 +68,15 @@ dev = [
 ]
 
 [tool.maturin]
-module-name = "supermariobrosnes_turbo._supermariobrosnes_turbo"
+module-name = "env_supermariobrosnes_turbo_emu._env_supermariobrosnes_turbo_emu"
 python-source = "python"
 features = ["pyo3/extension-module"]
 include = [
-  "python/supermariobrosnes_turbo/data/**/*.state",
-  "python/supermariobrosnes_turbo/data/**/metadata.json",
-  "python/supermariobrosnes_turbo/py.typed",
+  "python/env_supermariobrosnes_turbo_emu/data/**/*.state",
+  "python/env_supermariobrosnes_turbo_emu/data/**/metadata.json",
+  "python/env_supermariobrosnes_turbo_emu/py.typed",
 ]
-exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]
+exclude = ["python/env_supermariobrosnes_turbo_emu/data/**/rom.nes"]
 
 [tool.uv]
 exclude-newer = "7 days"

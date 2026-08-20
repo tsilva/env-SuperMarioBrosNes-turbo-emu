@@ -141,8 +141,8 @@ Create a temporary staging directory with `mktemp -d`. First query the dataset.
 If it exists, download its current index into the staging parent:
 
 ```bash
-hf datasets info tsilva/supermariobros-nes-turbo-benchmarks --format json
-hf download tsilva/supermariobros-nes-turbo-benchmarks \
+hf datasets info tsilva/env-supermariobrosnes-turbo-emu-benchmarks --format json
+hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
   benchmark-index.json --type dataset --local-dir <CURRENT>
 ```
 
@@ -172,9 +172,9 @@ Create the public dataset if necessary, then upload the complete staging
 directory as one commit. Do not use `--delete`:
 
 ```bash
-hf repos create tsilva/supermariobros-nes-turbo-benchmarks \
+hf repos create tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
   --type dataset --public --exist-ok
-hf upload tsilva/supermariobros-nes-turbo-benchmarks \
+hf upload tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
   <UPLOAD_STAGE> . --type dataset \
   --commit-message "Add TurboBench evidence for v<VERSION>" \
   --format json
@@ -184,7 +184,7 @@ Capture the returned commit SHA. Create the immutable version tag at that exact
 SHA; if the tag already exists, require it to resolve to the same commit:
 
 ```bash
-hf repos tag create tsilva/supermariobros-nes-turbo-benchmarks v<VERSION> \
+hf repos tag create tsilva/env-supermariobrosnes-turbo-emu-benchmarks v<VERSION> \
   --type dataset --revision <HF_COMMIT_SHA> \
   --message "Official TurboBench evidence for env-supermariobrosnes-turbo-emu <VERSION>"
 ```
@@ -192,7 +192,7 @@ hf repos tag create tsilva/supermariobros-nes-turbo-benchmarks v<VERSION> \
 Download the tag into a fresh directory and verify the published bundle:
 
 ```bash
-hf download tsilva/supermariobros-nes-turbo-benchmarks \
+hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
   --type dataset --revision v<VERSION> --local-dir <DOWNLOADED>
 python3 .codex/skills/benchmark-latest-release/scripts/benchmark_release.py \
   verify-snapshot --root <DOWNLOADED> --version <VERSION>

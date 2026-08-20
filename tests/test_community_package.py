@@ -2,7 +2,7 @@ import importlib.util
 import re
 from pathlib import Path
 
-import supermariobrosnes_turbo
+import env_supermariobrosnes_turbo_emu
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,8 +18,8 @@ def _release_module():
 
 
 def test_public_package_exposes_distribution_version():
-    assert supermariobrosnes_turbo.__version__ != "0+unknown"
-    assert supermariobrosnes_turbo.__version__ == (ROOT / "VERSION.txt").read_text().strip()
+    assert env_supermariobrosnes_turbo_emu.__version__ != "0+unknown"
+    assert env_supermariobrosnes_turbo_emu.__version__ == (ROOT / "VERSION.txt").read_text().strip()
 
 
 def test_project_policy_files_exist():
@@ -45,7 +45,7 @@ def test_installed_commands_cover_import_and_play():
     pyproject = (ROOT / "pyproject.toml").read_text()
 
     assert "[project.scripts]" in pyproject
-    assert 'smb-turbo = "supermariobrosnes_turbo.cli:main"' in pyproject
+    assert 'smb-turbo = "env_supermariobrosnes_turbo_emu.cli:main"' in pyproject
     assert "smb-turbo-import" not in pyproject
     assert "smb-turbo-play" not in pyproject
     assert "smb-turbo-train" not in pyproject
@@ -146,7 +146,7 @@ def test_api_info_table_matches_available_info_key_order():
         )
     )
 
-    assert documented_keys == supermariobrosnes_turbo.AVAILABLE_INFO_KEYS
+    assert documented_keys == env_supermariobrosnes_turbo_emu.AVAILABLE_INFO_KEYS
 
 
 def test_api_snapshot_example_encodes_before_closing_source():
@@ -196,7 +196,7 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     commit = "917c3d70b04b54779a05f94055a748ceda524b20"
     tag_url = (
         "https://huggingface.co/datasets/tsilva/"
-        "supermariobros-nes-turbo-benchmarks/tree/v0.6.4"
+        "env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4"
     )
     bundle_url = (
         f"{tag_url}/bundles/v0.6.4/vs-stable-retro-1.0.1/"
@@ -239,8 +239,8 @@ def test_imported_rom_is_ignored_and_excluded_from_distributions():
     gitignore = (ROOT / ".gitignore").read_text()
     pyproject = (ROOT / "pyproject.toml").read_text()
 
-    assert "python/supermariobrosnes_turbo/data/**/rom.nes" in gitignore
-    assert 'exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]' in pyproject
+    assert "python/env_supermariobrosnes_turbo_emu/data/**/rom.nes" in gitignore
+    assert 'exclude = ["python/env_supermariobrosnes_turbo_emu/data/**/rom.nes"]' in pyproject
 
 
 def test_release_promotes_unreleased_changelog(tmp_path, monkeypatch):

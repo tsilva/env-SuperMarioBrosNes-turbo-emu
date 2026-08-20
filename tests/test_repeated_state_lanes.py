@@ -4,22 +4,22 @@ from pathlib import Path
 
 import numpy as np
 
-from supermariobrosnes_turbo import (
+from env_supermariobrosnes_turbo_emu import (
     Actions,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
     action_batch,
 )
 from rom_helpers import require_rom
 GROUP_STATES = ("Level1-1", "Level1-2", "Level1-3", "Level1-4")
 
 
-def make_env(rom_path: Path, state: str | list[str], num_envs: int) -> SuperMarioBrosNesTurboVecEnv:
+def make_env(rom_path: Path, state: str | list[str], num_envs: int) -> EnvSuperMarioBrosNesTurboEmuVecEnv:
     state_config = (
         {"state_catalog": tuple(dict.fromkeys(state))}
         if isinstance(state, list)
         else {"state": state}
     )
-    return SuperMarioBrosNesTurboVecEnv(
+    return EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         **state_config,
         rom_path=rom_path,
@@ -45,7 +45,7 @@ def assert_step_equal(
 
 
 def step_arrays(
-    env: SuperMarioBrosNesTurboVecEnv,
+    env: EnvSuperMarioBrosNesTurboEmuVecEnv,
     actions: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     obs, rewards, terminated, truncated, _infos = env.step(actions)
@@ -53,7 +53,7 @@ def step_arrays(
 
 
 def reset_obs(
-    env: SuperMarioBrosNesTurboVecEnv,
+    env: EnvSuperMarioBrosNesTurboEmuVecEnv,
     state_indices: np.ndarray | None = None,
 ) -> np.ndarray:
     options = None if state_indices is None else {"state_indices": state_indices}

@@ -1,5 +1,5 @@
 [package]
-name = "supermariobrosnes-turbo"
+name = "env-supermariobrosnes-turbo-emu"
 version = "0.7.0"
 edition = "2021"
 license = "MIT"
@@ -18,7 +18,7 @@ members = [
 resolver = "2"
 
 [lib]
-name = "_supermariobrosnes_turbo"
+name = "_env_supermariobrosnes_turbo_emu"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

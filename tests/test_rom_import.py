@@ -8,8 +8,8 @@ from zipfile import ZipFile
 
 import pytest
 
-from supermariobrosnes_turbo import default_rom_path, resolve_required_rom_path
-from supermariobrosnes_turbo import roms
+from env_supermariobrosnes_turbo_emu import default_rom_path, resolve_required_rom_path
+from env_supermariobrosnes_turbo_emu import roms
 
 
 def _write_importable_rom(
@@ -177,7 +177,7 @@ def test_import_cli_uses_retro_data_path(
     data = _write_importable_rom(monkeypatch, source)
     root = tmp_path / "retro-data"
     monkeypatch.setenv(roms.RETRO_DATA_PATH_ENV_VAR, str(root))
-    command = importlib.import_module("supermariobrosnes_turbo.import.__main__")
+    command = importlib.import_module("env_supermariobrosnes_turbo_emu.import.__main__")
 
     assert command.main([str(source)]) == 0
     destination = root / "stable" / roms.DEFAULT_GAME / "rom.nes"
@@ -188,7 +188,7 @@ def test_import_cli_uses_retro_data_path(
 def test_retro_data_path_states_are_discoverable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from supermariobrosnes_turbo import list_available_states
+    from env_supermariobrosnes_turbo_emu import list_available_states
 
     root = tmp_path / "retro-data"
     state = root / "stable" / roms.DEFAULT_GAME / "Custom.state"

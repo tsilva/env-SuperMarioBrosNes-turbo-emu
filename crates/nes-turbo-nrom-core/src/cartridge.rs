@@ -126,15 +126,15 @@ mod tests {
     #[test]
     fn sha256_hex_matches_known_digest() {
         assert_eq!(
-            sha256_hex(b"SuperMarioBros-Nes-turbo"),
-            "f361123acc0af3ad64fae36fb1c7ce16ef0995cccaa5ef2cb7c8b3699518f112"
+            sha256_hex(b"env-SuperMarioBrosNes-turbo-emu"),
+            "fa92cd8cc46508c6a673dd9e26e31bcecc913c2d3419c9b6cff723a0981fd43a"
         );
     }
 
     #[test]
     fn load_ines_rejects_unexpected_rom_digest_before_header() {
         let path = std::env::temp_dir().join(format!(
-            "supermariobrosnes-turbo-wrong-rom-{}.nes",
+            "env-supermariobrosnes-turbo-emu-wrong-rom-{}.nes",
             std::process::id()
         ));
         fs::write(&path, b"not an iNES file").expect("write test ROM");

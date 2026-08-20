@@ -24,10 +24,6 @@ RELEASE_FILES = (
     REPO_ROOT / "CITATION.cff",
     CHANGES,
 )
-MIGRATION_VERSION = "0.7.0"
-REDIRECT_PACKAGE = "supermariobrosnes-turbo"
-
-
 def run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(args))
     return subprocess.run(args, cwd=REPO_ROOT, env=env, check=True, text=True)
@@ -103,14 +99,6 @@ def target_version(args: argparse.Namespace) -> str:
         )
     helper("check-version")
     helper("check-pypi", "--version", version)
-    if version == MIGRATION_VERSION:
-        helper(
-            "check-pypi",
-            "--version",
-            version,
-            "--package",
-            REDIRECT_PACKAGE,
-        )
     return version
 
 

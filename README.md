@@ -12,7 +12,7 @@ and observations, and opt-in semantic game data. Supply your own supported ROM,
 then play immediately or use the vector API from Python.
 
 In the [verified `0.6.4` benchmarks](BENCHMARKS.md), backed by the
-[immutable published evidence](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4),
+[immutable published evidence](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4),
 it measured **15.42× to 17.27×** the throughput of original
 [Stable Retro](https://github.com/Farama-Foundation/stable-retro) across the
 matched vector shapes.
@@ -107,13 +107,13 @@ uv add env-supermariobrosnes-turbo-emu
 ```python
 import gymnasium as gym
 
-from supermariobrosnes_turbo import (
+from env_supermariobrosnes_turbo_emu import (
     Actions,
     action_batch,
 )
 
 env = gym.make_vec(
-    "supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0",
+    "env_supermariobrosnes_turbo_emu:EnvSuperMarioBrosNesTurboEmu-v0",
     game="SuperMarioBros-Nes-v0",
     state="Level1-1",
     rom_path="/absolute/path/to/SuperMarioBros.nes",
@@ -138,7 +138,7 @@ finally:
 
 The module-qualified ID imports the package and registers the factory. This ID
 is vector-only and requires an explicit `game`; the native
-`SuperMarioBrosNesTurboVecEnv` constructor remains available for direct use.
+`EnvSuperMarioBrosNesTurboEmuVecEnv` constructor remains available for direct use.
 It implements Turbo Vector API v2 with NumPy transitions, shared 84x84
 grayscale CHW defaults, immutable capability and signal declarations, and
 disabled-by-default rendering.
@@ -186,8 +186,8 @@ For source builds, tests, and contribution commands, see
 
 [BENCHMARKS.md](BENCHMARKS.md) contains the exact workloads, results, machine
 profile, and reproduction commands. The current result is preserved in the
-immutable Hugging Face [`v0.6.4` tag](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4),
-including the [exact verified bundle](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21).
+immutable Hugging Face [`v0.6.4` tag](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4),
+including the [exact verified bundle](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21).
 Install the public [TurboBench 1.0.2](https://pypi.org/project/turbobench-cli/1.0.2/)
 verifier with:
 

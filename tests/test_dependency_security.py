@@ -44,7 +44,7 @@ def test_python_39_pytest_exception_is_test_only_and_explicit() -> None:
 
 def test_playback_has_no_vulnerable_hugging_face_runtime_client() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text()
-    playback = (ROOT / "python/supermariobrosnes_turbo/policy_playback.py").read_text()
+    playback = (ROOT / "python/env_supermariobrosnes_turbo_emu/policy_playback.py").read_text()
 
     assert re.search(r"playback = \[\s*\]", pyproject)
     assert "from huggingface_hub" not in playback

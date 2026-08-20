@@ -19,4 +19,4 @@
 __pycache__/
 *.py[cod]
 *.so
-python/supermariobrosnes_turbo/data/**/rom.nes
+python/env_supermariobrosnes_turbo_emu/data/**/rom.nes

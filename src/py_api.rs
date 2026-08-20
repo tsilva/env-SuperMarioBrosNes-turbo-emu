@@ -32,7 +32,10 @@ pub struct RetroVecEnv {
     snapshot_owner: Arc<()>,
 }
 
-#[pyclass(frozen, module = "supermariobrosnes_turbo._supermariobrosnes_turbo")]
+#[pyclass(
+    frozen,
+    module = "env_supermariobrosnes_turbo_emu._env_supermariobrosnes_turbo_emu"
+)]
 pub struct MarioLiveSnapshot {
     owner: Arc<()>,
     snapshot: LiveSnapshot,
@@ -1014,7 +1017,7 @@ fn extra_info_descriptors() -> Vec<(u8, String, usize, String, Option<String>)> 
 }
 
 #[pymodule]
-fn _supermariobrosnes_turbo(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _env_supermariobrosnes_turbo_emu(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<MarioLiveSnapshot>()?;
     m.add_class::<RetroVecEnv>()?;
     m.add_function(wrap_pyfunction!(extra_info_descriptors, m)?)?;

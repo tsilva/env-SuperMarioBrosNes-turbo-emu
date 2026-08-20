@@ -5,14 +5,14 @@ from pathlib import Path
 
 import numpy as np
 
-from supermariobrosnes_turbo import (
+from env_supermariobrosnes_turbo_emu import (
     ACTION_BUTTONS,
     BUTTON_TO_INDEX,
     CORE_ACTION_MEANINGS as ACTION_MEANINGS,
     NES_BUTTONS,
 )
-from supermariobrosnes_turbo import Actions
-from supermariobrosnes_turbo import SuperMarioBrosNesTurboVecEnv, default_rom_path, resolve_required_rom_path
+from env_supermariobrosnes_turbo_emu import Actions
+from env_supermariobrosnes_turbo_emu import EnvSuperMarioBrosNesTurboEmuVecEnv, default_rom_path, resolve_required_rom_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def info_summary(env: SuperMarioBrosNesTurboVecEnv) -> str:
+def info_summary(env: EnvSuperMarioBrosNesTurboEmuVecEnv) -> str:
     return (
         f"x_pos={env.x_pos.tolist()} lives={env.lives.tolist()} "
         f"coins={env.coins.tolist()} score={env.score.tolist()} "
@@ -37,7 +37,7 @@ def info_summary(env: SuperMarioBrosNesTurboVecEnv) -> str:
     )
 
 
-def actions(env: SuperMarioBrosNesTurboVecEnv, name: str) -> np.ndarray:
+def actions(env: EnvSuperMarioBrosNesTurboEmuVecEnv, name: str) -> np.ndarray:
     batch = np.zeros((env.num_envs, len(NES_BUTTONS)), dtype=np.uint8)
     for button in ACTION_BUTTONS[name]:
         batch[:, BUTTON_TO_INDEX[button]] = 1
@@ -46,7 +46,7 @@ def actions(env: SuperMarioBrosNesTurboVecEnv, name: str) -> np.ndarray:
 
 def main() -> None:
     args = parse_args()
-    env = SuperMarioBrosNesTurboVecEnv(
+    env = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         rom_path=resolve_required_rom_path(args.rom_path),
         num_envs=4,

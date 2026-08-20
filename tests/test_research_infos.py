@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from rom_helpers import require_rom
-from supermariobrosnes_turbo import (
+from env_supermariobrosnes_turbo_emu import (
     AVAILABLE_INFO_KEYS,
     EXTRA_INFO_KEYS,
     INFO_KEYS,
@@ -16,7 +16,7 @@ from supermariobrosnes_turbo import (
     PlayerMotion,
     PlayerPower,
     PlayerTask,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
 )
 
 
@@ -58,7 +58,7 @@ def make_env(
     frame_skip: int = 1,
     info_filter: object = "all",
 ):
-    return SuperMarioBrosNesTurboVecEnv(
+    return EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=require_rom(),
@@ -103,7 +103,7 @@ def test_public_catalog_and_enums_are_stable() -> None:
 
 def test_explicit_info_keys_validate_and_canonicalize_before_rom_loading() -> None:
     with pytest.raises(ValueError, match="unknown info key"):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing.nes",
             info_filter={"keys": ["not_a_signal"]},

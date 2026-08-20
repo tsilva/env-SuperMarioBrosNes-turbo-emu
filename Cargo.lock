@@ -90,6 +90,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 
 [[package]]
+name = "env-supermariobrosnes-turbo-emu"
+version = "0.7.0"
+dependencies = [
+ "nes-turbo-nrom-core",
+ "numpy",
+ "pyo3",
+ "rayon",
+ "smb-turbo-driver",
+]
+
+[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -330,17 +341,6 @@ name = "smb-turbo-driver"
 version = "0.3.1"
 dependencies = [
  "nes-turbo-nrom-core",
-]
-
-[[package]]
-name = "supermariobrosnes-turbo"
-version = "0.7.0"
-dependencies = [
- "nes-turbo-nrom-core",
- "numpy",
- "pyo3",
- "rayon",
- "smb-turbo-driver",
 ]
 
 [[package]]

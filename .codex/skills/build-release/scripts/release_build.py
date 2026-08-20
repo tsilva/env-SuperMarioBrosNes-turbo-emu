@@ -34,9 +34,9 @@ UV_LOCK = REPO_ROOT / "uv.lock"
 CITATION = REPO_ROOT / "CITATION.cff"
 PYTHON = Path(sys.executable)
 PACKAGE_NAME = "env-supermariobrosnes-turbo-emu"
-CARGO_PACKAGE_NAME = "supermariobrosnes-turbo"
-IMPORT_NAME = "supermariobrosnes_turbo"
-EXTENSION_NAME = "_supermariobrosnes_turbo"
+CARGO_PACKAGE_NAME = "env-supermariobrosnes-turbo-emu"
+IMPORT_NAME = "env_supermariobrosnes_turbo_emu"
+EXTENSION_NAME = "_env_supermariobrosnes_turbo_emu"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+|\.dev\d+)?$")
 RELEASE_PLATFORMS = (
     "macos-arm64",
@@ -599,7 +599,7 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
         "no_training_source": f"{IMPORT_NAME}/training.py" not in names,
         "has_playback_source": f"{IMPORT_NAME}/state_playback.py" in names,
         "has_unified_entry_point": (
-            "smb-turbo=supermariobrosnes_turbo.cli:main" in entry_points.replace(" ", "")
+            "smb-turbo=env_supermariobrosnes_turbo_emu.cli:main" in entry_points.replace(" ", "")
         ),
         "no_legacy_entry_points": not any(
             command in entry_points
@@ -758,10 +758,10 @@ from {IMPORT_NAME} import (
 print({IMPORT_NAME}.__file__)
 print({EXTENSION_NAME}.__file__)
 assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
-assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.supports_live_snapshots is True
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_api_version == 2
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_id == "supermariobrosnes-turbo.portable-v2"
+assert hasattr({IMPORT_NAME}, "EnvSuperMarioBrosNesTurboEmuVecEnv")
+assert {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv.supports_live_snapshots is True
+assert {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv.snapshot_codec_api_version == 2
+assert {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv.snapshot_codec_id == "env-supermariobrosnes-turbo-emu.portable-v2"
 assert len(INFO_KEYS) == 10
 assert len(EXTRA_INFO_KEYS) > 0
 assert AVAILABLE_INFO_KEYS == INFO_KEYS + EXTRA_INFO_KEYS
@@ -775,7 +775,7 @@ if rom_path is None:
     assert {feature_smoke_required!r} is False
     print("ROM-backed feature smoke skipped: ABI surface passed, canonical SMB ROM is unavailable")
 else:
-    env = {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv(
+    env = {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=rom_path,
