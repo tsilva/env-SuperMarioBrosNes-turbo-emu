@@ -297,8 +297,8 @@ def test_all_filtered_and_discrete_step_the_same_36_native_states() -> None:
 
 
 @pytest.mark.retro_oracle
-def test_conversion_semantics_match_live_sibling_stable_retro_turbo() -> None:
-    sibling = Path(__file__).resolve().parents[2] / "stable-retro-turbo"
+def test_conversion_semantics_match_live_sibling_env_stableretro_turbo() -> None:
+    sibling = Path(__file__).resolve().parents[2] / "env-StableRetro-turbo"
     python = sibling / ".venv" / "bin" / "python"
     if not python.is_file():
         pytest.skip(f"live sibling Stable Retro environment not found at {python}")

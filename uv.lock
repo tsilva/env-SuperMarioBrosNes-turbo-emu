@@ -14,7 +14,7 @@ exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for 
 exclude-newer-span = "P7D"
 
 [options.exclude-newer-package]
-stable-retro-turbo = false
+env-stableretro-turbo = false
 
 [manifest]
 constraints = [
@@ -473,6 +473,22 @@ wheels = [
 ]
 
 [[package]]
+name = "env-stableretro-turbo"
+version = "1.0.1.post44"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "farama-notifications", marker = "python_full_version == '3.14.*'" },
+    { name = "gymnasium", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.14.*'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.14.*'" },
+    { name = "pyglet", marker = "python_full_version == '3.14.*'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/7a/394f308bc7dda55f5974fee28ece6a74fcae06fe682db233d3f998bcaa69/env_stableretro_turbo-1.0.1.post44.tar.gz", hash = "sha256:39270faa21c3523aa6528dc1763b13208dfea66d799761172ba8cd5ff78e72cb", size = 96176974, upload-time = "2026-08-20T12:13:27.239Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/f4/4e2d0cb8be5329d0b7194bf2a14b8c100d0ce564398fbb3d5e8592b1035c/env_stableretro_turbo-1.0.1.post44-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:70fe4c4aab83c025c85a2d03d3efe16b2a377531dae2e784a5bb9c9adb14dbbf", size = 85866424, upload-time = "2026-08-20T12:13:11.898Z" },
+    { url = "https://files.pythonhosted.org/packages/79/0e/9e34e4fda94e5eac98d140ed158547639128c918beb21c5d8002d58e15b4/env_stableretro_turbo-1.0.1.post44-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:bbc59d33fa51b6f92005d34e3b4da4f3d3ef6e4019f9d432da8467333952e918", size = 91576904, upload-time = "2026-08-20T12:13:19.327Z" },
+]
+
+[[package]]
 name = "env-supermariobrosnes-turbo-emu"
 version = "0.7.0"
 source = { editable = "." }
@@ -487,14 +503,14 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "env-stableretro-turbo", marker = "python_full_version == '3.14.*'" },
     { name = "huggingface-hub", marker = "python_full_version >= '3.10'" },
     { name = "maturin" },
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "pytest", version = "9.1.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
-    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*'" },
 ]
 oracle = [
-    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*'" },
+    { name = "env-stableretro-turbo", marker = "python_full_version == '3.14.*'" },
 ]
 test = [
     { name = "pytest", version = "8.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -517,14 +533,14 @@ release = [
 
 [package.metadata]
 requires-dist = [
+    { name = "env-stableretro-turbo", marker = "python_full_version == '3.14.*' and extra == 'dev'", specifier = "==1.0.1.post44" },
+    { name = "env-stableretro-turbo", marker = "python_full_version == '3.14.*' and extra == 'oracle'", specifier = "==1.0.1.post44" },
     { name = "gymnasium", specifier = ">=1.1,<2" },
     { name = "huggingface-hub", marker = "python_full_version >= '3.10' and extra == 'dev'", specifier = ">=1.8.0" },
     { name = "maturin", marker = "extra == 'dev'", specifier = ">=1.9.3,<2" },
     { name = "numpy", specifier = ">=1.26,<3" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
-    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'dev'", specifier = "==1.0.1.post34" },
-    { name = "stable-retro-turbo", marker = "python_full_version == '3.14.*' and extra == 'oracle'", specifier = "==1.0.1.post34" },
 ]
 provides-extras = ["playback", "oracle", "test", "dev"]
 
@@ -1504,20 +1520,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137", size = 15554, upload-time = "2025-11-23T19:02:51.545Z" },
-]
-
-[[package]]
-name = "stable-retro-turbo"
-version = "1.0.1.post34"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "farama-notifications", marker = "python_full_version == '3.14.*'" },
-    { name = "gymnasium", version = "1.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.14.*'" },
-    { name = "pyglet", marker = "python_full_version == '3.14.*'" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/03/0d6dc035121c3007cf17c152b6645d5bdc1b59c26988c0f1903c4eada8c9/stable_retro_turbo-1.0.1.post34-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:f81115a5326a619e7a80b37136463feb514e67d8f4488a34b6a8683c8cf00bbc", size = 85903336, upload-time = "2026-07-20T22:19:09.152Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/17/56da1d00bcb05d9c740ef1ea7b40695459683ceddea095b3bd1999cb5c66/stable_retro_turbo-1.0.1.post34-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5b47f81cdbde560d6a63342fcf59912dc27d1ee841ad1d6bc6ae9a3cae353259", size = 91578397, upload-time = "2026-07-20T22:19:13.399Z" },
 ]
 
 [[package]]

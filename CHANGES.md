@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Nothing yet.
+- Point the optional Stable Retro oracle and development dependency at the
+  renamed `env-stableretro-turbo` distribution.
 
 ## 0.7.0 - 2026-08-20
 
