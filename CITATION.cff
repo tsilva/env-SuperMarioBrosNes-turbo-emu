@@ -12,7 +12,7 @@ authors:
 repository-code: "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
 url: "https://pypi.org/project/env-supermariobrosnes-turbo-emu/"
 license: MIT
-version: 0.7.1
+version: 0.7.2
 date-released: 2026-08-31
 keywords:
   - Gymnasium
