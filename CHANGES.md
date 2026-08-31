@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Point the optional Stable Retro oracle and development dependency at the
-  renamed `env-stableretro-turbo` distribution.
+- Delegate cross-provider parity to TurboBench, remove the duplicated local
+  comparator dependency, and gate releases on an exact final wheel receipt.
 
 ## 0.7.0 - 2026-08-20
 
