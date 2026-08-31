@@ -211,7 +211,7 @@ jobs:
 
       - name: Install canonical game payload
         env:
-          SMB_ROM_URL: ${{ secrets.SMB_ROM_URL }}
+          SMB_ROM_GZIP_BASE64: ${{ secrets.SMB_ROM_GZIP_BASE64 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -235,14 +235,21 @@ jobs:
           for state in Level1-1 Level1-2 Level1-3 Level1-4; do
             cp "$state_root/$state.state" "$game_dir/$state.state"
           done
-          curl --fail --location --silent --show-error "$SMB_ROM_URL" --output "$game_dir/rom.nes"
           .parity-venv/bin/python - "$game_dir/rom.nes" <<'PY'
+          import base64
+          import gzip
           import hashlib
+          import os
           import pathlib
           import sys
 
+          path = pathlib.Path(sys.argv[1])
+          encoded = os.environ.get("SMB_ROM_GZIP_BASE64")
+          if not encoded:
+              raise SystemExit("SMB_ROM_GZIP_BASE64 is not configured")
+          path.write_bytes(gzip.decompress(base64.b64decode(encoded)))
           expected = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
-          observed = hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()
+          observed = hashlib.sha256(path.read_bytes()).hexdigest()
           if observed != expected:
               raise SystemExit(f"unexpected Super Mario Bros. ROM SHA-256: {observed}")
           PY
