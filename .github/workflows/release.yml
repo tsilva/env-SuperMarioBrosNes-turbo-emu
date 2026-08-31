@@ -408,7 +408,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir release-assets
-          find dist -type f -exec cp {} release-assets/ \;
+          find dist -type f ! -empty -exec cp {} release-assets/ \;
           gh release create "${GITHUB_REF_NAME}" release-assets/* \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
