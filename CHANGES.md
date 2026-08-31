@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Nothing yet.
+
+## 0.7.1 - 2026-08-31
+
 - Delegate cross-provider parity to TurboBench, remove the duplicated local
   comparator dependency, and gate releases on an exact final wheel receipt.
 
