@@ -206,7 +206,8 @@ jobs:
         run: |
           uv venv --python 3.11 .parity-venv
           uv pip install --exclude-newer "7 days" --python .parity-venv/bin/python \
-            "stable-retro==1.0.1" "turbobench-cli==2.0.0"
+            --exclude-newer-package turbobench-cli=2026-09-01T00:00:00Z \
+            "stable-retro==1.0.1" "turbobench-cli==2.0.1"
 
       - name: Install canonical game payload
         env:
