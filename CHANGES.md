@@ -4,6 +4,10 @@
 
 - Nothing yet.
 
+## 0.7.2 - 2026-08-31
+
+- Restore protected Mario parity asset.
+
 ## 0.7.1 - 2026-08-31
 
 - Delegate cross-provider parity to TurboBench, remove the duplicated local

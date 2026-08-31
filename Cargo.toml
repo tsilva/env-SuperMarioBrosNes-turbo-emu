@@ -1,6 +1,6 @@
 [package]
 name = "env-supermariobrosnes-turbo-emu"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2021"
 license = "MIT"
 description = "High-throughput vectorized Super Mario Bros NES environment for reinforcement learning"
