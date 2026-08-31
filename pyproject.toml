@@ -54,9 +54,6 @@ Changelog = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main
 [project.optional-dependencies]
 playback = [
 ]
-oracle = [
-  "env-stableretro-turbo==1.0.1.post44; python_version == '3.14'",
-]
 test = [
   "pytest>=8",
 ]
@@ -64,7 +61,6 @@ dev = [
   "huggingface-hub>=1.8.0; python_version >= '3.10'",
   "maturin>=1.9.3,<2",
   "pytest>=8",
-  "env-stableretro-turbo==1.0.1.post44; python_version == '3.14'",
 ]
 
 [tool.maturin]
@@ -80,7 +76,6 @@ exclude = ["python/env_supermariobrosnes_turbo_emu/data/**/rom.nes"]
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = { env-stableretro-turbo = false }
 constraint-dependencies = [
   "mistralai!=2.4.6",
   "guardrails-ai!=0.10.1",
@@ -94,10 +89,7 @@ constraint-dependencies = [
 
 [tool.pytest.ini_options]
 pythonpath = [".", "python"]
-addopts = "--basetemp=.pytest-tmp -m 'not retro_oracle'"
-markers = [
-  "retro_oracle: manual acceptance tests that compare against env-stableretro-turbo and require the local ROM",
-]
+addopts = "--basetemp=.pytest-tmp"
 
 [dependency-groups]
 dev = [

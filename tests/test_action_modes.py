@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 from importlib import resources
-import os
-from pathlib import Path
-import subprocess
 
 import numpy as np
 import pytest
@@ -294,81 +291,3 @@ def test_all_filtered_and_discrete_step_the_same_36_native_states() -> None:
     finally:
         for env in envs:
             env.close()
-
-
-@pytest.mark.retro_oracle
-def test_conversion_semantics_match_live_sibling_env_stableretro_turbo() -> None:
-    sibling = Path(__file__).resolve().parents[2] / "env-StableRetro-turbo"
-    python = sibling / ".venv" / "bin" / "python"
-    if not python.is_file():
-        pytest.skip(f"live sibling Stable Retro environment not found at {python}")
-
-    script = r"""
-import json
-import stable_retro as retro
-
-def bits(mask):
-    return sum(int(value) << index for index, value in enumerate(mask))
-
-payload = {"version": getattr(retro, "__version__", "unknown")}
-for name in ("ALL", "FILTERED", "DISCRETE"):
-    mode = getattr(retro.Actions, name)
-    env = retro.make(
-        "SuperMarioBros-Nes-v0",
-        state="Level1-1",
-        use_restricted_actions=mode,
-        render_mode="rgb_array",
-    )
-    try:
-        payload.setdefault("buttons", env.buttons)
-        payload.setdefault("button_combos", env.button_combos)
-        if name == "DISCRETE":
-            payload[name] = [bits(env.action_to_array(action)[0]) for action in range(36)]
-        else:
-            payload[name] = [
-                bits(env.action_to_array([(action >> index) & 1 for index in range(9)])[0])
-                for action in range(512)
-            ]
-    finally:
-        env.close()
-print("ACTION_ORACLE=" + json.dumps(payload, separators=(",", ":")))
-"""
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(sibling)
-    result = subprocess.run(
-        [str(python), "-c", script],
-        cwd=sibling,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    oracle_line = next(
-        line.removeprefix("ACTION_ORACLE=")
-        for line in result.stdout.splitlines()
-        if line.startswith("ACTION_ORACLE=")
-    )
-    oracle = json.loads(oracle_line)
-
-    assert oracle["version"].startswith("1.0.1")
-    assert oracle["buttons"] == [
-        "B",
-        None,
-        "SELECT",
-        "START",
-        "UP",
-        "DOWN",
-        "LEFT",
-        "RIGHT",
-        "A",
-    ]
-    assert oracle["button_combos"] == [list(group) for group in FILTER_GROUPS]
-    assert [expected_controller_byte(bits) for bits in oracle["ALL"]] == action_lookup(
-        "ALL"
-    ).tolist()
-    assert [
-        expected_controller_byte(bits) for bits in oracle["FILTERED"]
-    ] == action_lookup("FILTERED").tolist()
-    assert [
-        expected_controller_byte(bits) for bits in oracle["DISCRETE"]
-    ] == DISCRETE_CONTROLLER_BYTES.tolist()

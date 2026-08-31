@@ -178,11 +178,107 @@ jobs:
           path: wheelhouse-v${{ needs.validate.outputs.version }}-${{ matrix.platform }}/*.whl
           if-no-files-found: error
 
+  parity:
+    name: Verify exact macOS wheel parity
+    needs:
+      - validate
+      - build
+    runs-on: macos-15
+    environment: parity
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.13"
+
+      - name: Download canonical wheel
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-wheel-v${{ needs.validate.outputs.version }}-macos-arm64
+          path: candidate
+
+      - name: Install pinned parity tools
+        run: |
+          uv venv --python 3.11 .parity-venv
+          uv pip install --exclude-newer "7 days" --python .parity-venv/bin/python \
+            "stable-retro==1.0.1" "turbobench-cli==2.0.0"
+
+      - name: Install canonical game payload
+        env:
+          SMB_ROM_URL: ${{ secrets.SMB_ROM_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset_root="$(.parity-venv/bin/python -c \
+            'from pathlib import Path; import stable_retro; print(Path(stable_retro.__file__).parent / "data" / "stable")')"
+          game_dir="$asset_root/SuperMarioBros-Nes-v0"
+          shopt -s nullglob
+          wheels=(candidate/*.whl)
+          if (( ${#wheels[@]} != 1 )); then
+            printf 'expected one canonical wheel, found %s\n' "${#wheels[@]}" >&2
+            exit 1
+          fi
+          mkdir candidate-assets
+          unzip -q "${wheels[0]}" -d candidate-assets
+          state_root="$(find candidate-assets -type d \
+            -path '*/data/SuperMarioBros-Nes-v0' -print -quit)"
+          if [[ -z "$state_root" ]]; then
+            echo "candidate wheel does not contain the canonical state catalog" >&2
+            exit 1
+          fi
+          for state in Level1-1 Level1-2 Level1-3 Level1-4; do
+            cp "$state_root/$state.state" "$game_dir/$state.state"
+          done
+          curl --fail --location --silent --show-error "$SMB_ROM_URL" --output "$game_dir/rom.nes"
+          .parity-venv/bin/python - "$game_dir/rom.nes" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+
+          expected = "f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de"
+          observed = hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest()
+          if observed != expected:
+              raise SystemExit(f"unexpected Super Mario Bros. ROM SHA-256: {observed}")
+          PY
+          echo "TURBOBENCH_ASSET_ROOT=$asset_root" >> "$GITHUB_ENV"
+
+      - name: Run and verify exact parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(candidate/*.whl)
+          if (( ${#wheels[@]} != 1 )); then
+            printf 'expected one canonical wheel, found %s\n' "${#wheels[@]}" >&2
+            exit 1
+          fi
+          wheel="$(cd "$(dirname "${wheels[0]}")" && pwd)/$(basename "${wheels[0]}")"
+          .parity-venv/bin/turbobench parity supermario/canonical-v2 \
+            --candidate "env-supermariobrosnes-turbo-emu@artifact:$wheel" \
+            --python 3.11 \
+            --output parity-receipt
+          .parity-venv/bin/turbobench verify-parity parity-receipt \
+            --require-canonical \
+            --require-provider env-supermariobrosnes-turbo-emu
+
+      - name: Upload parity receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: parity-receipt-v${{ needs.validate.outputs.version }}
+          path: parity-receipt/**
+          if-no-files-found: error
+
   final-check:
     name: Audit release distributions
     needs:
       - validate
       - build
+      - parity
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -212,6 +308,12 @@ jobs:
           path: wheelhouse
           merge-multiple: true
 
+      - name: Download parity receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: parity-receipt-v${{ needs.validate.outputs.version }}
+          path: parity-receipt
+
       - name: Audit complete wheel set
         shell: bash
         run: >-
@@ -231,6 +333,8 @@ jobs:
             dist/primary/*.tar.gz
           uv run python scripts/check_sdist_internal_crates.py dist/primary/*.tar.gz
           uv run twine check dist/primary/*
+          mkdir -p dist/evidence
+          cp -R parity-receipt dist/evidence/
 
       - name: Smoke stable ABI on Python 3.9
         shell: bash

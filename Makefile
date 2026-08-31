@@ -1,4 +1,4 @@
-.PHONY: develop develop-release play release test test-python test-rust test-retro-oracle verify-retro-oracle
+.PHONY: develop develop-release parity parity-release play release test test-python test-rust verify-parity
 
 PYTHON ?= .venv/bin/python
 UV_CACHE_DIR ?= .uv-cache
@@ -11,8 +11,9 @@ endif
 PLAY_ARGS ?= Level1-1
 PYTEST_ARGS ?=
 TURBOBENCH ?= $(abspath ../turbobench/.venv/bin/turbobench)
-ORACLE_OUTPUT ?=
-ORACLE_RECEIPT ?=
+PARITY_OUTPUT ?=
+PARITY_RECEIPT ?=
+PARITY_WHEEL ?=
 
 develop:
 	UV_CACHE_DIR=$(UV_CACHE_DIR) $(PYTHON) -m maturin develop
@@ -31,23 +32,30 @@ test-rust:
 	RUSTFLAGS="$(RUSTFLAGS_EXT)" cargo test --workspace
 
 test-python:
-	$(PYTHON) -m pytest -m "not retro_oracle" $(PYTEST_ARGS)
+	$(PYTHON) -m pytest $(PYTEST_ARGS)
 
-test-retro-oracle:
-	$(PYTHON) -m pytest -m retro_oracle $(PYTEST_ARGS)
-	@output="$(ORACLE_OUTPUT)"; \
-	if [ -z "$$output" ]; then output="$$(mktemp -d)/supermario-semantic-oracle"; fi; \
-	$(TURBOBENCH) oracle supermario/canonical-v2 \
-		--left stable-retro@1.0.1 \
-		--right env-supermariobrosnes-turbo-emu@checkout:$(CURDIR) \
+parity:
+	@output="$(PARITY_OUTPUT)"; \
+	if [ -z "$$output" ]; then output="$$(mktemp -d)/supermario-parity"; fi; \
+	$(TURBOBENCH) parity supermario/canonical-v2 \
+		--candidate env-supermariobrosnes-turbo-emu@checkout:$(CURDIR) \
 		--output "$$output" \
-		--allow-dirty; \
-	echo "Semantic-oracle receipt: $$output"
+		--allow-dirty --quick; \
+	echo "Diagnostic parity receipt: $$output"
 
-verify-retro-oracle:
-	@test -n "$(ORACLE_RECEIPT)" || \
-		(echo "Set ORACLE_RECEIPT to an external TurboBench receipt" >&2; exit 2)
-	$(TURBOBENCH) verify-oracle "$(ORACLE_RECEIPT)" \
+parity-release:
+	@test -f "$(PARITY_WHEEL)" || (echo "Set PARITY_WHEEL to the exact final wheel" >&2; exit 2)
+	@test -n "$(PARITY_OUTPUT)" || (echo "Set PARITY_OUTPUT to an external receipt path" >&2; exit 2)
+	$(TURBOBENCH) parity supermario/canonical-v2 \
+		--candidate env-supermariobrosnes-turbo-emu@artifact:$(abspath $(PARITY_WHEEL)) \
+		--output "$(PARITY_OUTPUT)"
+	$(TURBOBENCH) verify-parity "$(PARITY_OUTPUT)" --require-canonical \
+		--require-provider env-supermariobrosnes-turbo-emu
+
+verify-parity:
+	@test -n "$(PARITY_RECEIPT)" || \
+		(echo "Set PARITY_RECEIPT to an external TurboBench receipt" >&2; exit 2)
+	$(TURBOBENCH) verify-parity "$(PARITY_RECEIPT)" \
 		--require-canonical \
 		--require-provider env-supermariobrosnes-turbo-emu
 
