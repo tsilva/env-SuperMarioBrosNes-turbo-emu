@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "env-supermariobrosnes-turbo-emu"
-version = "0.7.2"
+version = "0.7.3"
 description = "Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning."
 readme = "README.md"
 requires-python = ">=3.9"

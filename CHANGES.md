@@ -4,6 +4,10 @@
 
 - Nothing yet.
 
+## 0.7.3 - 2026-08-31
+
+- Skip empty GitHub release assets.
+
 ## 0.7.2 - 2026-08-31
 
 - Restore protected Mario parity asset.
