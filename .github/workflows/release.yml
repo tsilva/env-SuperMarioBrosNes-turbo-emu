@@ -206,8 +206,8 @@ jobs:
         run: |
           uv venv --python 3.11 .parity-venv
           uv pip install --exclude-newer "7 days" --python .parity-venv/bin/python \
-            --exclude-newer-package turbobench-cli=2026-09-01T00:00:00Z \
-            "stable-retro==1.0.1" "turbobench-cli==2.0.1"
+            --exclude-newer-package turbobench-cli=2026-09-02T14:27:04.219491Z \
+            "stable-retro==1.0.1" "turbobench-cli==2.0.6"
 
       - name: Install canonical game payload
         env:
@@ -266,7 +266,7 @@ jobs:
             exit 1
           fi
           wheel="$(cd "$(dirname "${wheels[0]}")" && pwd)/$(basename "${wheels[0]}")"
-          .parity-venv/bin/turbobench parity supermario/canonical-v2 \
+          .parity-venv/bin/turbobench parity supermario/world1-v1 \
             --candidate "env-supermariobrosnes-turbo-emu@artifact:$wheel" \
             --python 3.11 \
             --output parity-receipt
