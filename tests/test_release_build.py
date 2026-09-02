@@ -93,6 +93,16 @@ def test_release_validates_python_314_with_stable_abi_wheels():
 
     assert 'PYTHON_VERSION: "3.14"' in workflow
     assert 'features = ["abi3-py39", "extension-module"]' in cargo
+    assert '"turbobench-cli==2.0.6"' in workflow
+    assert "turbobench-cli=2026-09-02T14:27:04.219491Z" in workflow
+    assert "turbobench parity supermario/world1-v1" in workflow
+
+
+def test_diagnostic_parity_propagates_turbobench_failures():
+    root = Path(__file__).resolve().parents[1]
+    makefile = (root / "Makefile").read_text(encoding="utf-8")
+
+    assert 'parity:\n\t@set -e; \\' in makefile
 
 
 def test_local_release_runs_the_ci_source_gates():
