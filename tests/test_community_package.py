@@ -56,15 +56,15 @@ def test_readme_delegates_training_to_pinned_gradlab_recipes():
 
     assert (
         "uvx gradlab@0.2.1 train "
-        "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom "
+        "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom-path "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
     assert (
         "uvx gradlab@0.2.1 train "
-        "SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom "
+        "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom-path "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
-    assert "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m" not in readme
+    assert "SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m" not in readme
     assert "smb-turbo train" not in readme
     assert "train.py" not in readme
 
