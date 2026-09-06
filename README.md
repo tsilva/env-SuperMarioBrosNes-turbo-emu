@@ -4,6 +4,11 @@
   <strong>🚀 Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning 🍄</strong>
 </p>
 
+[![CI](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/env-supermariobrosnes-turbo-emu)](https://pypi.org/project/env-supermariobrosnes-turbo-emu/)
+[![Python](https://img.shields.io/pypi/pyversions/env-supermariobrosnes-turbo-emu)](https://pypi.org/project/env-supermariobrosnes-turbo-emu/)
+[![License](https://img.shields.io/pypi/l/env-supermariobrosnes-turbo-emu)](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/LICENSE)
+
 **env-SuperMarioBrosNes-turbo-emu** is a specialized Python environment for
 reinforcement-learning researchers who need fast, reproducible Super Mario Bros
 NES rollouts. Supply your own supported ROM, then play immediately or use its
