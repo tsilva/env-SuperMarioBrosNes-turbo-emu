@@ -55,12 +55,12 @@ def test_readme_delegates_training_to_pinned_gradlab_recipes():
     readme = (ROOT / "README.md").read_text()
 
     assert (
-        "uvx gradlab@0.1.1 train "
+        "uvx gradlab@0.2.1 train "
         "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
     assert (
-        "uvx gradlab@0.1.1 train "
+        "uvx gradlab@0.2.1 train "
         "SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme

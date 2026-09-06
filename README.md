@@ -114,10 +114,10 @@ published, version-pinned recipe from any directory with your local ROM.
 
 ```bash
 # Short PPO demonstration
-uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /absolute/path/to/SuperMarioBros.nes
+uvx gradlab@0.2.1 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom /absolute/path/to/SuperMarioBros.nes
 
 # Go-Explore trajectory discovery capped at 20 million transitions
-uvx gradlab@0.1.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom /absolute/path/to/SuperMarioBros.nes
+uvx gradlab@0.2.1 train SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom /absolute/path/to/SuperMarioBros.nes
 ```
 
 GradLab verifies the ROM, shows live progress, writes a playable
