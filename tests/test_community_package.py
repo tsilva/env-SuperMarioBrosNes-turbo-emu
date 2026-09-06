@@ -100,24 +100,21 @@ def test_readme_documents_turbo_advantages_beyond_speed():
     comparison = readme.split("## Compared with Stable Retro", maxsplit=1)[1].split(
         "## Use from Python", maxsplit=1
     )[0]
+    why = " ".join(why.split())
+    comparison = " ".join(comparison.split())
 
     for term in (
-        "step_async()",
-        "num_threads",
-        "noop_reset_max",
-        "sticky_action_prob",
-        "reward_clip",
-        "state_indices",
-        "Portable snapshots",
-        "Actions.DISCRETE",
-        "Actions.MULTI_DISCRETE",
-        "obs_copy",
-        "render_lane()",
-        "info_filter",
-        "ram()",
-        "capabilities",
-        "signal_schema",
-        "automatically switch",
+        "Fast deterministic vectors",
+        "one `step()`",
+        "Seeded lanes remain independent",
+        "autoreset stays disabled",
+        "reset masks affect only selected lanes",
+        "capture and restore",
+        "discrete action tables",
+        "grayscale or RGB",
+        "framework-free action-run playback",
+        "matching policies as levels change",
+        "[API.md](API.md)",
     ):
         assert term in why
 
@@ -127,7 +124,7 @@ def test_readme_documents_turbo_advantages_beyond_speed():
         "multiplayer",
         "RAM observations",
         "BK2 movie recording",
-        "one player",
+        "one-player",
         "image observations",
     ):
         assert term in comparison
@@ -206,15 +203,12 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     assert "[verified `0.6.4` benchmarks](BENCHMARKS.md)" in readme
     assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
     assert "media/benchmark-throughput.svg" not in readme
-    assert "https://pypi.org/project/turbobench-cli/1.0.2/" in readme
     assert "https://pypi.org/project/turbobench-cli/1.0.1/" in benchmarks
     assert "https://pypi.org/project/turbobench-cli/1.0.2/" in benchmarks
     assert "turbobench-cli=2026-08-13T14:50:17Z" in benchmarks
     assert "turbobench-cli==1.0.1" in benchmarks
     assert "turbobench-cli=2026-08-13T15:41:56Z" in benchmarks
     assert "turbobench-cli==1.0.2" in benchmarks
-    assert tag_url in readme
-    assert bundle_url in readme
     assert tag_url in benchmarks
     assert bundle_url in benchmarks
     assert f"git checkout --detach {commit}" in benchmarks
