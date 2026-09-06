@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tsilva/env-SuperMarioBrosNes-turbo-emu/main/image-assets/icon/icon-1024.png" alt="env-SuperMarioBrosNes-turbo-emu icon" width="240" />
+  <img src="https://raw.githubusercontent.com/tsilva/env-SuperMarioBrosNes-turbo-emu/main/image-assets/logo/logo-1024.png" alt="env-SuperMarioBrosNes-turbo-emu logo" width="240" />
   <br />
   <strong>🚀 Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning 🍄</strong>
 </p>
