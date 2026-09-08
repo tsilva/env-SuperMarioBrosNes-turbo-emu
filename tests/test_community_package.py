@@ -95,25 +95,20 @@ def test_readme_leads_with_a_supported_first_run_path():
 def test_readme_documents_turbo_advantages_beyond_speed():
     readme = (ROOT / "README.md").read_text()
     why = readme.split("## What it provides", maxsplit=1)[1].split(
-        "## Compared with Stable Retro", maxsplit=1
+        "\n## ", maxsplit=1
     )[0]
     comparison = readme.split("## Compared with Stable Retro", maxsplit=1)[1].split(
-        "## Use from Python", maxsplit=1
+        "\n## ", maxsplit=1
     )[0]
     why = " ".join(why.split())
     comparison = " ".join(comparison.split())
 
     for term in (
-        "Fast deterministic vectors",
-        "one `step()`",
-        "Seeded lanes remain independent",
-        "autoreset stays disabled",
-        "reset masks affect only selected lanes",
-        "capture and restore",
-        "discrete action tables",
-        "grayscale or RGB",
-        "framework-free action-run playback",
-        "matching policies as levels change",
+        "independent, seeded environments",
+        "native batched emulation and observation processing",
+        "saved states or live snapshots",
+        "Reset or restore selected environments without disturbing the others",
+        "actions, observations, and game signals",
         "[API.md](API.md)",
     ):
         assert term in why
@@ -200,7 +195,8 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
         "65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21"
     )
 
-    assert "[verified `0.6.4` benchmarks](BENCHMARKS.md)" in readme
+    assert re.search(r"\[[^\]]+\]\(BENCHMARKS\.md\)", readme)
+    assert "v0.6.4 against Stable Retro v1.0.1" in readme
     assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
     assert "media/benchmark-throughput.svg" not in readme
     assert "https://pypi.org/project/turbobench-cli/1.0.1/" in benchmarks
