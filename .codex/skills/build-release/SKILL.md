@@ -5,6 +5,17 @@ description: Launch and monitor an env-supermariobrosnes-turbo-emu PyPI release.
 
 # Build Release
 
+Read and apply the shared `$release-workflow` skill at
+`/Users/tsilva/.codex/skills/release-workflow/SKILL.md` before execution.
+It owns common preflight, publication safeguards, `$push` integration,
+workflow monitoring, verification, and reporting. The rules below are this
+project's adapter; they retain its invocation default and required gates.
+If the shared skill is unavailable, stop and report the missing dependency.
+
+A bare `$build-release` or `/build-release` invocation requests the full
+publication flow. Explicitly local, dry-run, or inspection requests must not
+launch `make release` or its publishing script.
+
 Use this skill to launch the repo-owned `env-supermariobrosnes-turbo-emu` release flow
 and monitor it until the package is visible on PyPI. The release implementation
 lives in `scripts/release.py` and the `Makefile` `release` target. Prefer that
@@ -19,10 +30,9 @@ versions unless the user explicitly asks for one.
 `scripts/release.py`. The script enforces a clean tree, configured upstream,
 synced remote state, unused PyPI version, version consistency, locked dependency
 resolution, local checks, release commit, tag creation, and atomic push. It
-uses any checked-in `CHANGES.md` `Unreleased` prose when present and otherwise
-generates concise notes from commit subjects since the previous release tag.
-It promotes those notes to the target version and release date, creates a fresh
-`Unreleased` section, and stages the changelog with the version and lock files.
+leaves release history in GitHub Releases, where the workflow generates notes
+from committed changes since the previous release. It stages only version and lock
+metadata; no checked-in changelog is required.
 An untagged project version is treated as a pending release; otherwise the
 default is the next patch version. Failed preparation restores the release
 files it changed. The pushed tag triggers
@@ -34,6 +44,17 @@ artifacts.
 Do not upload to PyPI manually unless the user explicitly asks for a manual
 recovery path after the GitHub Actions publish path fails. Never print or commit
 PyPI tokens. Do not create or switch branches unless the user explicitly asks.
+
+## Required certification
+
+Before launching a publishing command, confirm the following existing
+specification requirements in the repository-owned release path.
+
+The root specification additionally requires the exact final canonical-host
+wheel to pass immutable TurboBench parity for the canonical ROM and public
+Level1-1 through Level1-4 corpus. Confirm that evidence and provider-owned
+cross-platform consistency checks before publication; the CPython 3.9 feature
+smoke and ROM-free ABI smoke do not replace parity certification.
 
 ## Flow
 
@@ -72,8 +93,8 @@ Do not manually duplicate the old local wheel-building checklist. If
 `make release` fails, report the failing stage and exact relevant error, then
 stop. Common failures include a dirty worktree, unsynced upstream, an existing
 PyPI version, formatting/test failures, tag collisions, or push failures.
-No release-note preparation is required from the user. When `Unreleased` is
-empty, let the script generate notes from the commits since the previous tag.
+No release-note preparation is required from the user. Follow the shared
+release-note policy; the GitHub Release job generates the initial notes.
 
 Releases containing the processed research-info catalog also require a
 fail-closed installed-wheel feature smoke on CPython 3.9 in a maintainer
@@ -108,92 +129,40 @@ If needed, confirm the tag after the command succeeds:
 git describe --tags --exact-match HEAD
 ```
 
-4. Monitor the GitHub Actions release workflow for the pushed tag.
+4. Follow the shared monitoring and verification procedure for the `release.yml`
+tag-push run at the full `v<version>` commit SHA. A `workflow_dispatch` run
+validates artifacts but never publishes. Verify PyPI project `env-supermariobrosnes-turbo-emu` and
+the GitHub Release for the same tag.
 
-Use `gh` if it is available:
-
-```bash
-release_sha="$(git rev-list -n 1 v<version>)"
-gh run list --workflow release.yml --commit "$release_sha" --limit 5 \
-  --json databaseId,status,conclusion,event,headBranch,headSha,displayTitle,url
-gh run watch <run-id> --exit-status
-```
-
-If the commit-filtered query does not find the run, list recent release runs and
-pick the run whose event/ref corresponds to the pushed tag:
-
-```bash
-gh run list --workflow release.yml --limit 10 \
-  --json databaseId,status,conclusion,event,headBranch,headSha,displayTitle,url
-```
-
-The workflow publishes only for tag-push events. `workflow_dispatch` builds are
-validation builds and do not publish.
-
-5. After the workflow succeeds, poll PyPI until the released version appears.
-
-```bash
-python - <<'PY'
-import json
-import time
-import urllib.request
-
-package = "env-supermariobrosnes-turbo-emu"
-version = "<version>"
-url = f"https://pypi.org/pypi/{package}/json"
-
-for attempt in range(30):
-    with urllib.request.urlopen(url, timeout=20) as response:
-        data = json.load(response)
-    files = data.get("releases", {}).get(version, [])
-    if files:
-        print(f"https://pypi.org/project/{package}/{version}/")
-        print(f"https://pypi.org/project/{package}/")
-        for file in files:
-            print(file["filename"])
-        break
-    print(f"waiting for PyPI to show {package} {version} ({attempt + 1}/30)")
-    time.sleep(20)
-else:
-    raise SystemExit(f"{package} {version} did not appear on PyPI yet")
-PY
-```
-
-6. If PyPI still does not show the version after a successful workflow, wait a
-little longer and retry before declaring failure. PyPI indexing can lag briefly.
-If the publish job failed, report the job URL and the failing step; do not try a
-manual Twine upload unless the user explicitly asks.
-
-## Useful Inspection Commands
-
-```bash
-gh run view <run-id> --web
-gh run view <run-id> --log-failed
-gh run view <run-id> --json url,status,conclusion,event,headBranch,headSha,displayTitle
-```
-
-The final PyPI package URLs are:
-
-```
-https://pypi.org/project/env-supermariobrosnes-turbo-emu/<version>/
-https://pypi.org/project/env-supermariobrosnes-turbo-emu/
-```
-
-The GitHub Actions workflow environment URL is:
-
-```
-https://pypi.org/p/env-supermariobrosnes-turbo-emu
-```
+Require the macOS arm64 and Linux x86_64 wheels plus one source distribution.
+Allow 30 attempts at 20-second intervals for PyPI visibility, with a
+20-second request timeout; report unresolved visibility before any bounded retry.
 
 Keep `.codex/skills/build-release/scripts/release_build.py` as the workflow's
 release helper and for narrow diagnostics. Use it directly only when inspecting
 versions, PyPI presence, or workflow build failures; do not re-create the
 release locally unless the user asks for manual recovery.
 
-## Final Response
+## Update GradLab after successful publication
 
-When the release reaches PyPI, lead with the PyPI version URL. Also report the
-tag, GitHub Actions run URL, workflow conclusion, GitHub Release URL, and all
-published wheel and source-distribution filenames.
-If the release did not reach PyPI, report the exact failed command/job/step and
-the next recovery action.
+After the release succeeds and the exact PyPI version and required GitHub
+Release artifacts pass external verification, update GradLab to consume the
+latest successfully published `env-supermariobrosnes-turbo-emu` version. Complete
+this step as part of the full publication flow; local builds, dry runs, and
+inspection-only requests do not trigger it.
+
+Read `/Users/tsilva/repos/tsilva/gradlab/AGENTS.md` and its required
+specifications before editing. Synchronize GradLab's current branch with its
+configured upstream and preserve existing work. Update every matching exact
+pin in `pyproject.toml`, including platform-specific project dependencies and
+the `train-runtime` dependency group. Use the just-verified release version;
+if GradLab already consumes a newer verified publication, do not downgrade it.
+Regenerate `uv.lock` with `uv lock --upgrade-package env-supermariobrosnes-turbo-emu`,
+preserving unrelated pins, supply-chain constraints, and existing per-package
+release-age exceptions. Review the dependency diff, validate lock consistency,
+and run GradLab's relevant provider compatibility checks.
+
+Report the GradLab version/pin and lockfile update separately from release
+success. If synchronization, resolution, or validation fails, preserve the
+published release and report the downstream update as incomplete with its
+blocker; do not repeat publication.

@@ -49,7 +49,7 @@ Homepage = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
 Documentation = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu#readme"
 Repository = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu.git"
 Issues = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/issues"
-Changelog = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/CHANGES.md"
+Changelog = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/releases"
 
 [project.optional-dependencies]
 playback = [

@@ -17,3 +17,10 @@ Before every task in this repository, use the `$specs-author` skill to read the 
   with the canonical TurboBench workflow, publish verified official evidence
   to Hugging Face, and refresh the project benchmark documentation. Skill:
   `.codex/skills/benchmark-latest-release/SKILL.md`.
+
+## Shared release procedure
+
+The project `build-release` skill composes `$release-workflow` from
+`/Users/tsilva/.codex/skills/release-workflow/SKILL.md`.
+Read both for release work; keep project commands, version policy, artifact
+requirements, and approval gates in the project adapter.

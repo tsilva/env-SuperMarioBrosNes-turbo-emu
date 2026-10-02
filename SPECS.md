@@ -4,6 +4,7 @@ Provide reinforcement-learning researchers with a high-throughput, vectorized Gy
 
 ## PROJECT REQUIREMENTS
 
+- Serve both RL beginners and researchers, prioritizing a quick out-of-the-box path for beginners to train an agent to complete Level1-1 and watch the trained policy play, while preserving researcher-facing compatibility and reproducibility requirements.
 - Use `SuperMarioBrosNes-turbo` as the project name and `env-SuperMarioBrosNes-turbo-emu` as the GitHub repository name, `env-supermariobrosnes-turbo-emu` as the Python distribution name, and `env_supermariobrosnes_turbo_emu` as the public Python import package; current project-owned identities must not use any former project, distribution, import, or command identifier.
 - Support only Super Mario Bros NES on mapper 0/NROM unless broader emulator scope is deliberately added and validated without regressing the specialized workload.
 - Keep ROM content out of the repository and distributions, allow users to import it through module and installed command entry points and run without supplying its path through the Stable Retro-compatible `RETRO_DATA_PATH` layout, and require canonical validation and performance comparisons to use ROM SHA-256 `f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de`.

@@ -54,7 +54,7 @@ in the README, and keep provenance receipts outside the repository.
 - Open an issue first for public API, scope, saved-state, determinism, or
   performance-contract changes.
 - Keep changes focused and add regression tests for observable behavior.
-- Update `CHANGES.md` and public documentation when behavior changes.
+- Update public documentation when behavior changes; release history lives in GitHub Releases.
 - Describe validation, compatibility effects, and any benchmark evidence in
   the pull request template.
 - Do not add ROMs, extracted game assets, proprietary firmware, secrets,

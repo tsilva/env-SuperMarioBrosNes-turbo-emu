@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
 import os
 import subprocess
 import sys
@@ -14,7 +13,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_HELPER = REPO_ROOT / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
 PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
-CHANGES = REPO_ROOT / "CHANGES.md"
 RELEASE_FILES = (
     REPO_ROOT / "VERSION.txt",
     REPO_ROOT / "pyproject.toml",
@@ -22,7 +20,6 @@ RELEASE_FILES = (
     REPO_ROOT / "Cargo.lock",
     REPO_ROOT / "uv.lock",
     REPO_ROOT / "CITATION.cff",
-    CHANGES,
 )
 def run(args: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(args))
@@ -78,13 +75,6 @@ def tag_exists(tag: str) -> bool:
     ).returncode == 0
 
 
-def latest_release_tag() -> str | None:
-    try:
-        return capture(["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"])
-    except subprocess.CalledProcessError:
-        return None
-
-
 def target_version(args: argparse.Namespace) -> str:
     if args.to:
         version = args.to
@@ -107,62 +97,6 @@ def refresh_locks() -> None:
     env.setdefault("UV_CACHE_DIR", ".uv-cache")
     run(["uv", "lock", "--check"], env=env)
     run(["cargo", "metadata", "--locked", "--no-deps"])
-
-
-def generated_release_notes(base_ref: str | None) -> str:
-    revision = f"{base_ref}..HEAD" if base_ref else "HEAD"
-    subjects = capture(["git", "log", "--format=%s", revision]).splitlines()
-    ignored_prefixes = ("Release v", "Bump version to ")
-    notes = []
-    for subject in reversed(subjects):
-        subject = subject.strip()
-        if not subject or subject.startswith(ignored_prefixes) or subject in notes:
-            continue
-        notes.append(subject)
-    if not notes:
-        raise SystemExit("no releasable commits found for automatic release notes")
-    return "\n".join(f"- {subject.rstrip('.')}." for subject in notes)
-
-
-def promote_changelog(
-    version: str,
-    *,
-    release_date: str | None = None,
-    generated_notes: str | None = None,
-) -> None:
-    text = CHANGES.read_text(encoding="utf-8")
-    prefix = "# Changelog\n\n## Unreleased\n\n"
-    if not text.startswith(prefix):
-        raise SystemExit("CHANGES.md must begin with an Unreleased section")
-    tail = text[len(prefix) :]
-    separator = tail.find("\n## ")
-    if separator < 0:
-        unreleased = tail.strip()
-        history = ""
-    else:
-        unreleased = tail[:separator].strip()
-        history = tail[separator + 1 :].strip()
-    version_heading = f"## {version} "
-    if version_heading in text:
-        if not unreleased or unreleased == "- Nothing yet.":
-            return
-        heading_start = history.index(version_heading)
-        body_start = history.index("\n\n", heading_start) + 2
-        history = f"{history[:body_start]}{unreleased}\n{history[body_start:]}"
-        CHANGES.write_text(f"{prefix}- Nothing yet.\n\n{history.rstrip()}\n", encoding="utf-8")
-        return
-    if not unreleased or unreleased == "- Nothing yet.":
-        unreleased = generated_notes or ""
-    if not unreleased:
-        raise SystemExit("could not generate release notes from commits")
-    released = release_date or date.today().isoformat()
-    updated = (
-        f"{prefix}- Nothing yet.\n\n"
-        f"## {version} - {released}\n\n{unreleased}\n"
-    )
-    if history:
-        updated += f"\n{history}\n"
-    CHANGES.write_text(updated, encoding="utf-8")
 
 
 def run_checks(skip_checks: bool) -> None:
@@ -204,7 +138,6 @@ def create_commit_and_tag(version: str) -> str:
             "Cargo.lock",
             "uv.lock",
             "CITATION.cff",
-            "CHANGES.md",
         ]
     )
     if subprocess.run(
@@ -247,17 +180,10 @@ def main() -> None:
         raise SystemExit("expected release environment at .venv/bin/python; run `uv sync --extra dev --group dev`")
     ensure_clean()
     remote, branch = ensure_synced()
-    base_ref = latest_release_tag()
     version = target_version(args)
     snapshots = {path: path.read_bytes() for path in RELEASE_FILES}
     try:
         helper("bump-version", "--to", version, "--write")
-        release_date = date.today().isoformat()
-        promote_changelog(
-            version,
-            release_date=release_date,
-            generated_notes=generated_release_notes(base_ref),
-        )
         refresh_locks()
         helper("check-version", "--version", version)
         run_checks(args.skip_checks)
