@@ -12,7 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_HELPER = REPO_ROOT / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
-PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
+PYTHON = Path(sys.executable)
 RELEASE_FILES = (
     REPO_ROOT / "VERSION.txt",
     REPO_ROOT / "pyproject.toml",
@@ -56,6 +56,8 @@ def ensure_synced() -> tuple[str, str]:
             f"current branch must be synced with {upstream} before release; "
             f"ahead={ahead} behind={behind}"
         )
+    if branch != "main" or capture(["git", "branch", "--show-current"]) != "main":
+        raise SystemExit("publication requires synchronized main")
     return remote, branch
 
 
@@ -95,33 +97,9 @@ def target_version(args: argparse.Namespace) -> str:
 def refresh_locks() -> None:
     env = os.environ.copy()
     env.setdefault("UV_CACHE_DIR", ".uv-cache")
+    env["UV_CONFIG_FILE"] = str(REPO_ROOT / "uv-tool.toml")
     run(["uv", "lock", "--check"], env=env)
     run(["cargo", "metadata", "--locked", "--no-deps"])
-
-
-def run_checks(skip_checks: bool) -> None:
-    if skip_checks:
-        return
-    env = os.environ.copy()
-    env.setdefault("UV_CACHE_DIR", ".uv-cache")
-    env.setdefault("ALLOW_MISSING_ROM_TESTS", "1")
-    run(["cargo", "fmt", "--check", "--all"])
-    run(
-        [
-            "cargo",
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--all-features",
-            "--",
-            "-D",
-            "warnings",
-        ]
-    )
-    run(["cargo", "check", "--workspace", "--release"])
-    run([str(PYTHON), "scripts/check_smb_dependency_closure.py"], env=env)
-    run([str(PYTHON), "-m", "maturin", "develop", "--release"], env=env)
-    run(["make", "test", "PYTHON=.venv/bin/python"], env=env)
 
 
 def create_commit_and_tag(version: str) -> str:
@@ -145,7 +123,7 @@ def create_commit_and_tag(version: str) -> str:
         cwd=REPO_ROOT,
     ).returncode != 0:
         run(["git", "commit", "-m", f"Release {tag}"])
-    run(["git", "tag", tag, "HEAD"])
+    run(["git", "tag", "-a", tag, "-m", f"Release {tag}"])
     return tag
 
 
@@ -168,16 +146,31 @@ def parse_args() -> argparse.Namespace:
         choices=("patch", "minor", "major"),
         help="Version component to bump; by default reuse an untagged project version or bump patch",
     )
-    parser.add_argument("--skip-checks", action="store_true", help="Skip local cargo/maturin/test gates")
     parser.add_argument("--dry-run-push", action="store_true", help="Create the commit and tag, but dry-run the push")
-    return parser.parse_args()
+    parser.add_argument("--validate", action="store_true", help="validate the pushed main commit in Actions without publication")
+    args = parser.parse_args()
+    if args.validate and (args.to or args.part or args.dry_run_push):
+        parser.error("--validate cannot be combined with version or push options")
+    return args
+
+
+def validate() -> None:
+    upstream = upstream_ref()
+    remote, _, branch = upstream.partition("/")
+    if branch != "main":
+        raise SystemExit("validation requires a main upstream")
+    run(["git", "fetch", remote, "main"])
+    sha = capture(["git", "rev-parse", f"{remote}/main"])
+    run(["gh", "workflow", "run", "release.yml", "--ref", "main", "-f", f"ref={sha}"])
+    print(f"validation-sha\t{sha}")
 
 
 def main() -> None:
     args = parse_args()
     os.chdir(REPO_ROOT)
-    if not PYTHON.exists():
-        raise SystemExit("expected release environment at .venv/bin/python; run `uv sync --extra dev --group dev`")
+    if args.validate:
+        validate()
+        return
     ensure_clean()
     remote, branch = ensure_synced()
     version = target_version(args)
@@ -186,7 +179,7 @@ def main() -> None:
         helper("bump-version", "--to", version, "--write")
         refresh_locks()
         helper("check-version", "--version", version)
-        run_checks(args.skip_checks)
+        run(["git", "diff", "--check"])
         tag = create_commit_and_tag(version)
     except BaseException:
         for path, contents in snapshots.items():

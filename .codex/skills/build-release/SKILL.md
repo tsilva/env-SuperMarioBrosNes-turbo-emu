@@ -26,13 +26,11 @@ This repo is not a fork, so versioning is owned here: use normal project
 versions from `pyproject.toml` and `Cargo.toml`, not upstream-aligned `.postN`
 versions unless the user explicitly asks for one.
 
-`make release` runs `uv sync --extra dev --group dev` and then
-`scripts/release.py`. The script enforces a clean tree, configured upstream,
-synced remote state, unused PyPI version, version consistency, locked dependency
-resolution, local checks, release commit, tag creation, and atomic push. It
-leaves release history in GitHub Releases, where the workflow generates notes
-from committed changes since the previous release. It stages only version and lock
-metadata; no checked-in changelog is required.
+`make release` runs the metadata-only Python operator. It requires no local
+virtual environment and performs version/lock checks, the release commit,
+annotated tag, and atomic push. All Rust checks, extension builds, source tests,
+wheel/sdist builds, and artifact certification run only in GitHub Actions.
+No checked-in changelog is required.
 An untagged project version is treated as a pending release; otherwise the
 default is the next patch version. Failed preparation restores the release
 files it changed. The pushed tag triggers
@@ -69,18 +67,15 @@ script directly because the Make target does not pass arguments through. Choose
 exactly one `scripts/release.py` invocation:
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv sync --extra dev --group dev
-scripts/release.py --to <version>
+python3 scripts/release.py --to <version>
 ```
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv sync --extra dev --group dev
-scripts/release.py --part minor
+python3 scripts/release.py --part minor
 ```
 
 ```bash
-UV_CACHE_DIR=.uv-cache uv sync --extra dev --group dev
-scripts/release.py --part major
+python3 scripts/release.py --part major
 ```
 
 For "next version" or no version preference, use `make release`; it defaults to
@@ -96,23 +91,23 @@ PyPI version, formatting/test failures, tag collisions, or push failures.
 No release-note preparation is required from the user. Follow the shared
 release-note policy; the GitHub Release job generates the initial notes.
 
-Releases containing the processed research-info catalog also require a
-fail-closed installed-wheel feature smoke on CPython 3.9 in a maintainer
-environment that has the canonical ROM. Run the helper against the exact wheel
-being released and keep its JSON evidence outside the repository:
+The parity environment also runs the fail-closed `smoke-feature-wheel`
+helper against the exact macOS wheel on CPython 3.9, with its protected canonical
+ROM, and uploads JSON evidence in the final bundle. Require both this feature
+smoke and canonical parity before publication; ROM-free ABI smoke is insufficient.
+
+For validation without version changes, tags, or publication:
 
 ```bash
-uv run python .codex/skills/build-release/scripts/release_build.py \
-  smoke-feature-wheel <wheel> \
-  --python <python3.9> \
-  --rom <canonical-rom.nes> \
-  --evidence <external-artifact-dir>/research-info-smoke.json
+python3 scripts/release.py --validate
 ```
 
-The command must fail when Python is not 3.9, the ROM is absent or has the
-wrong canonical hash, or the installed wheel does not exercise mixed legacy
-and extra infos. Do not describe a ROM-free public-CI smoke as feature-level
-validation; it validates only the stable ABI surface.
+This dispatches the exact pushed main SHA, permits unrelated dirty local work,
+and exercises the complete source, cross-platform, feature-smoke, parity, and
+artifact gates. Monitor that SHA and download/audit its final distribution
+bundle, parity receipt, feature evidence, and SHA-256 hashes. Local pending files
+are excluded. Explicit local build diagnosis remains available in the helper;
+normal release and validation builds use only Actions.
 
 3. Capture the released tag and version.
 
