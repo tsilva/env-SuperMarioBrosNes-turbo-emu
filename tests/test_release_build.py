@@ -104,16 +104,18 @@ def test_diagnostic_parity_propagates_turbobench_failures():
     assert 'parity:\n\t@set -e; \\' in makefile
 
 
-def test_local_release_runs_the_ci_source_gates():
+def test_release_runs_source_gates_in_actions_and_metadata_locally():
     root = Path(__file__).resolve().parents[1]
     release_script = (root / "scripts" / "release.py").read_text(encoding="utf-8")
 
-    assert '"fmt", "--check", "--all"' in release_script
-    assert '"clippy"' in release_script
-    assert '"--workspace"' in release_script
-    assert '"--all-targets"' in release_script
-    assert '"--all-features"' in release_script
-    assert "check_smb_dependency_closure.py" in release_script
+    workflow = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "cargo fmt --check --all" in workflow
+    assert "cargo clippy --workspace --all-targets --all-features -- -D warnings" in workflow
+    assert "cargo check --workspace --release" in workflow
+    assert "uv run python scripts/check_smb_dependency_closure.py" in workflow
+    assert "uv run maturin develop --release" in workflow
+    assert "make test PYTHON=.venv/bin/python" in workflow
+    assert "--skip-checks" not in release_script
     assert '"uv", "lock", "--check"' in release_script
     assert '"cargo", "metadata", "--locked", "--no-deps"' in release_script
     assert '"cargo", "generate-lockfile"' not in release_script
