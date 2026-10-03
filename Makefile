@@ -25,8 +25,7 @@ play: develop-release
 	$(PYTHON) play.py $(PLAY_ARGS)
 
 release:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) uv sync --frozen --extra dev --group dev
-	scripts/release.py
+	python3 scripts/release.py
 
 test-rust:
 	RUSTFLAGS="$(RUSTFLAGS_EXT)" cargo test --workspace

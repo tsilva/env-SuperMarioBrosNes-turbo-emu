@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: Optional git ref to build
-        required: false
+        description: Exact main commit to validate without publication
+        required: true
         type: string
 
 permissions:
@@ -22,6 +22,7 @@ env:
   CARGO_TERM_COLOR: always
   PYTHON_VERSION: "3.14"
   UV_CACHE_DIR: .uv-cache
+  UV_CONFIG_FILE: ${{ github.workspace }}/uv-tool.toml
 
 jobs:
   validate:
@@ -37,6 +38,19 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
+      - name: Verify source identity
+        env:
+          REQUESTED: ${{ inputs.ref || github.sha }}
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED"
+          if [ "$EVENT" = workflow_dispatch ]; then
+            test "$DISPATCH_REF" = refs/heads/main
+            [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]
+            git merge-base --is-ancestor "$REQUESTED" origin/main
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -46,6 +60,9 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.11.13"
+
+      - name: Check lock consistency
+        run: uv lock --check
 
       - name: Install release environment
         run: uv sync --frozen --extra dev --group dev
@@ -139,6 +156,19 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Verify source identity
+        env:
+          REQUESTED: ${{ inputs.ref || github.sha }}
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED"
+          if [ "$EVENT" = workflow_dispatch ]; then
+            test "$DISPATCH_REF" = refs/heads/main
+            [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]
+            git merge-base --is-ancestor "$REQUESTED" origin/main
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -156,6 +186,9 @@ jobs:
           key: cargo-target-v2-${{ matrix.platform }}-${{ steps.source.outputs.sha }}
           restore-keys: |
             cargo-target-v2-${{ matrix.platform }}-
+
+      - name: Check lock consistency
+        run: uv lock --check
 
       - name: Install release environment
         run: uv sync --frozen --no-default-groups --group release
@@ -186,6 +219,26 @@ jobs:
     runs-on: macos-15
     environment: parity
     steps:
+      - name: Checkout release helpers
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Verify source identity
+        env:
+          REQUESTED: ${{ inputs.ref || github.sha }}
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED"
+          if [ "$EVENT" = workflow_dispatch ]; then
+            test "$DISPATCH_REF" = refs/heads/main
+            [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]
+            git merge-base --is-ancestor "$REQUESTED" origin/main
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -255,6 +308,23 @@ jobs:
           PY
           echo "TURBOBENCH_ASSET_ROOT=$asset_root" >> "$GITHUB_ENV"
 
+      - name: Smoke research features on exact wheel with CPython 3.9
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.9
+          python .codex/skills/build-release/scripts/release_build.py smoke-feature-wheel \
+            candidate/*.whl --python "$(uv python find 3.9)" \
+            --rom "$TURBOBENCH_ASSET_ROOT/SuperMarioBros-Nes-v0/rom.nes" \
+            --evidence feature-smoke/research-info-smoke.json
+
+      - name: Upload feature smoke evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: feature-smoke-v${{ needs.validate.outputs.version }}
+          path: feature-smoke/*.json
+          if-no-files-found: error
+
       - name: Run and verify exact parity
         shell: bash
         run: |
@@ -296,6 +366,19 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
 
+      - name: Verify source identity
+        env:
+          REQUESTED: ${{ inputs.ref || github.sha }}
+          EVENT: ${{ github.event_name }}
+          DISPATCH_REF: ${{ github.ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$REQUESTED"
+          if [ "$EVENT" = workflow_dispatch ]; then
+            test "$DISPATCH_REF" = refs/heads/main
+            [[ "$REQUESTED" =~ ^[0-9a-f]{40}$ ]]
+            git merge-base --is-ancestor "$REQUESTED" origin/main
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
@@ -305,6 +388,9 @@ jobs:
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           version: "0.11.13"
+
+      - name: Check lock consistency
+        run: uv lock --check
 
       - name: Install release environment
         run: uv sync --frozen --no-default-groups --group release
@@ -321,6 +407,12 @@ jobs:
         with:
           name: parity-receipt-v${{ needs.validate.outputs.version }}
           path: parity-receipt
+
+      - name: Download feature smoke evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: feature-smoke-v${{ needs.validate.outputs.version }}
+          path: dist/evidence/feature-smoke
 
       - name: Audit complete wheel set
         shell: bash
@@ -355,6 +447,9 @@ jobs:
           uv run python .codex/skills/build-release/scripts/release_build.py smoke-sdist \
             dist/primary/*.tar.gz \
             --python "$(uv python find 3.9)"
+
+      - name: Hash final distribution bundle
+        run: sha256sum dist/primary/*
 
       - name: Upload audited distribution bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
