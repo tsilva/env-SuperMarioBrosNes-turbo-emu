@@ -1,7 +1,9 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/tsilva/env-SuperMarioBrosNes-turbo-emu/main/image-assets/logo/logo-1024.png" alt="SuperMarioBrosNes-turbo logo" width="240" />
   <br />
-  <strong>🍄 More Mario rollouts. Less waiting. ⚡</strong>
+  <!-- repo-tagline:start -->
+  <strong>🍄 More Mario rollouts. Less waiting ⚡</strong>
+  <!-- repo-tagline:end -->
 </p>
 
 <p align="center">
