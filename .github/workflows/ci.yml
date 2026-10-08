@@ -194,3 +194,18 @@ jobs:
           name: ci-distributions
           path: dist/*
           if-no-files-found: error
+
+  validation-result:
+    name: Validate
+    needs: [validate, minimum-dependencies]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require all validation jobs to pass
+        env:
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          MINIMUM_RESULT: ${{ needs.minimum-dependencies.result }}
+        run: |
+          test "$VALIDATE_RESULT" = success
+          test "$MINIMUM_RESULT" = success
