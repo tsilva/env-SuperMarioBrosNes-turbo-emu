@@ -12,8 +12,8 @@ authors:
 repository-code: "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
 url: "https://pypi.org/project/env-supermariobrosnes-turbo-emu/"
 license: MIT
-version: 0.7.3
-date-released: 2026-08-31
+version: 0.7.4
+date-released: 2026-10-03
 keywords:
   - Gymnasium
   - reinforcement learning
