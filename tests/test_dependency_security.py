@@ -26,7 +26,7 @@ def test_universal_python_lock_keeps_runtime_families_patched() -> None:
     assert locked_versions(lockfile, "cryptography") == {"50.0.0"}
     assert locked_versions(lockfile, "filelock") == {"3.32.2"}
     assert locked_versions(lockfile, "requests") == {"2.34.2"}
-    assert locked_versions(lockfile, "urllib3") == {"2.7.0"}
+    assert locked_versions(lockfile, "urllib3") == {"2.8.0"}
 
 
 def test_python_39_pytest_exception_is_test_only_and_explicit() -> None:

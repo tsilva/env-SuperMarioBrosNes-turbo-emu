@@ -137,6 +137,8 @@ ROM files are never included in this repository or its distributions.
   `f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de`.
 - Source builds, tests, parity checks, and contribution instructions are in
   [CONTRIBUTING.md](CONTRIBUTING.md).
+- Dependabot patch updates are queued for auto-merge only on bot-created events;
+  updates prepared by a maintainer are reviewed and merged manually.
 - This unofficial research project is not affiliated with or endorsed by
   Nintendo. See [NOTICE.md](NOTICE.md).
 

@@ -70,3 +70,10 @@ the required correctness checks.
 Only contribute code and assets you are authorized to redistribute. Gameplay
 captures, logos, packaged states, names, and marks require separate rights
 review and are not granted rights by the MIT license. See [NOTICE.md](NOTICE.md).
+
+## Dependency updates
+
+The patch auto-merge workflow requires both the PR author and event sender to be
+Dependabot. Maintainer-prepared updates retain the normal CI checks and require
+a manual merge. Dependency versions remain subject to the seven-day release-age
+policy.
