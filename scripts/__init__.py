@@ -1,1 +1,1 @@
-"""Installed command support for SuperMarioBros-Nes-turbo."""
+"""Installed command support for env-SuperMarioBrosNes-turbo-emu."""

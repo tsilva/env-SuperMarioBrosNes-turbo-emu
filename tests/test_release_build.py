@@ -35,7 +35,6 @@ def test_version_file_is_the_single_source_of_truth():
         "Cargo.lock",
         "uv.lock",
         "CITATION.cff",
-        "CHANGES.md",
     ):
         assert f'"{release_file}"' in release_script
 
@@ -57,13 +56,18 @@ def test_version_bump_updates_only_the_project_entries_in_lockfiles(tmp_path):
     lock = tmp_path / "lock.toml"
     lock.write_text(
         '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n'
-        '[[package]]\nname = "supermariobrosnes-turbo"\nversion = "0.4.2"\n'
+        '[[package]]\nname = "env-supermariobrosnes-turbo-emu"\nversion = "0.4.2"\n'
     )
 
-    release_build.replace_package_version(lock, "supermariobrosnes-turbo", "0.4.3")
+    release_build.replace_package_version(
+        lock, "env-supermariobrosnes-turbo-emu", "0.4.3"
+    )
 
     assert 'name = "dependency"\nversion = "9.9.9"' in lock.read_text()
-    assert 'name = "supermariobrosnes-turbo"\nversion = "0.4.3"' in lock.read_text()
+    assert (
+        'name = "env-supermariobrosnes-turbo-emu"\nversion = "0.4.3"'
+        in lock.read_text()
+    )
 
 
 def test_version_bump_updates_citation_release_metadata(tmp_path, monkeypatch):
@@ -88,18 +92,30 @@ def test_release_validates_python_314_with_stable_abi_wheels():
 
     assert 'PYTHON_VERSION: "3.14"' in workflow
     assert 'features = ["abi3-py39", "extension-module"]' in cargo
+    assert '"turbobench-cli==2.0.6"' in workflow
+    assert "turbobench-cli=2026-09-02T14:27:04.219491Z" in workflow
+    assert "turbobench parity supermario/world1-v1" in workflow
 
 
-def test_local_release_runs_the_ci_source_gates():
+def test_diagnostic_parity_propagates_turbobench_failures():
+    root = Path(__file__).resolve().parents[1]
+    makefile = (root / "Makefile").read_text(encoding="utf-8")
+
+    assert 'parity:\n\t@set -e; \\' in makefile
+
+
+def test_release_runs_source_gates_in_actions_and_metadata_locally():
     root = Path(__file__).resolve().parents[1]
     release_script = (root / "scripts" / "release.py").read_text(encoding="utf-8")
 
-    assert '"fmt", "--check", "--all"' in release_script
-    assert '"clippy"' in release_script
-    assert '"--workspace"' in release_script
-    assert '"--all-targets"' in release_script
-    assert '"--all-features"' in release_script
-    assert "check_smb_dependency_closure.py" in release_script
+    workflow = (root / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    assert "cargo fmt --check --all" in workflow
+    assert "cargo clippy --workspace --all-targets --all-features -- -D warnings" in workflow
+    assert "cargo check --workspace --release" in workflow
+    assert "uv run python scripts/check_smb_dependency_closure.py" in workflow
+    assert "uv run maturin develop --release" in workflow
+    assert "make test PYTHON=.venv/bin/python" in workflow
+    assert "--skip-checks" not in release_script
     assert '"uv", "lock", "--check"' in release_script
     assert '"cargo", "metadata", "--locked", "--no-deps"' in release_script
     assert '"cargo", "generate-lockfile"' not in release_script
@@ -235,6 +251,7 @@ def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_availabl
         "decode_snapshots",
         '"snapshots": [decoded_handles[0], decoded_handles[0]]',
         'restored_infos["start_source"]',
+        'restored_infos["start_source"].dtype == np.int8',
         "np.testing.assert_array_equal(expected, actual)",
         "canonical SMB ROM is unavailable",
         "extra_info_descriptors",
@@ -242,7 +259,7 @@ def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_availabl
         "smoke-feature-wheel",
         "feature-smoke Python must be CPython 3.9",
         "feature-smoke ROM SHA-256",
-        "supermariobrosnes-turbo.portable-v2",
+        "env-supermariobrosnes-turbo-emu.portable-v2",
         'b"SMBVEC2\\\\0"',
     ):
         assert required in source

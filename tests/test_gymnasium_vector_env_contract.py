@@ -11,17 +11,17 @@ import sys
 import gymnasium as gym
 import numpy as np
 import pytest
-import supermariobrosnes_turbo as smb_turbo
+import env_supermariobrosnes_turbo_emu as smb_turbo
 from gymnasium import spaces
 from gymnasium.envs.registration import EnvSpec
 from gymnasium.vector import AutoresetMode, VectorEnv
 
 from rom_helpers import require_rom
-from supermariobrosnes_turbo import (
+from env_supermariobrosnes_turbo_emu import (
     Actions,
     Integrations,
     NES_BUTTONS,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
     list_available_states,
 )
 
@@ -32,13 +32,13 @@ CANONICAL_LEVEL_STATES = tuple(
 )
 
 
-def make_env(**kwargs: object) -> SuperMarioBrosNesTurboVecEnv:
+def make_env(**kwargs: object) -> EnvSuperMarioBrosNesTurboEmuVecEnv:
     state_kwargs = (
         {}
         if "state_catalog" in kwargs and "state" not in kwargs
         else {"state": kwargs.pop("state", "Level1-1")}
     )
-    return SuperMarioBrosNesTurboVecEnv(
+    return EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         **state_kwargs,
         rom_path=require_rom(),
@@ -65,7 +65,7 @@ def test_generic_gymnasium_registration_is_vector_only_and_idempotent(
     spec = gym.spec(smb_turbo.GYMNASIUM_ENV_ID)
     assert spec.entry_point is None
     assert spec.vector_entry_point == (
-        "supermariobrosnes_turbo:_make_gymnasium_vec_env"
+        "env_supermariobrosnes_turbo_emu:_make_gymnasium_vec_env"
     )
     assert spec.kwargs == {}
     smb_turbo._register_gymnasium_env()
@@ -99,19 +99,19 @@ def test_module_qualified_gymnasium_id_registers_in_a_clean_process() -> None:
             sys.executable,
             "-c",
             'exec("""import gymnasium as gym\n'
-            "assert 'SuperMarioBros-Nes-Turbo-v0' not in gym.registry\n"
+            "assert 'EnvSuperMarioBrosNesTurboEmu-v0' not in gym.registry\n"
             "try:\n"
             "    gym.make_vec(\n"
-            "        'supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0',\n"
+            "        'env_supermariobrosnes_turbo_emu:EnvSuperMarioBrosNesTurboEmu-v0',\n"
             "        num_envs=1,\n"
             "    )\n"
             "except TypeError as exc:\n"
             "    assert 'game' in str(exc)\n"
             "else:\n"
             "    raise AssertionError('game was not required')\n"
-            "spec = gym.spec('SuperMarioBros-Nes-Turbo-v0')\n"
+            "spec = gym.spec('EnvSuperMarioBrosNesTurboEmu-v0')\n"
             "assert spec.vector_entry_point == "
-            '\'supermariobrosnes_turbo:_make_gymnasium_vec_env\'\n""")',
+            '\'env_supermariobrosnes_turbo_emu:_make_gymnasium_vec_env\'\n""")',
         ],
         check=True,
         cwd=root,
@@ -121,7 +121,7 @@ def test_module_qualified_gymnasium_id_registers_in_a_clean_process() -> None:
 
 def test_generic_gymnasium_factory_runs_native_vector_env() -> None:
     env = gym.make_vec(
-        "supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0",
+        "env_supermariobrosnes_turbo_emu:EnvSuperMarioBrosNesTurboEmu-v0",
         game="SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=require_rom(),
@@ -132,7 +132,7 @@ def test_generic_gymnasium_factory_runs_native_vector_env() -> None:
         frame_stack=1,
     )
     try:
-        assert isinstance(env, SuperMarioBrosNesTurboVecEnv)
+        assert isinstance(env, EnvSuperMarioBrosNesTurboEmuVecEnv)
         observations, _infos = env.reset(seed=7)
         assert env.observation_space.contains(observations)
         transition = env.step(noop(2))
@@ -142,7 +142,7 @@ def test_generic_gymnasium_factory_runs_native_vector_env() -> None:
 
 
 def test_public_surface_is_manual_reset_only() -> None:
-    signature = inspect.signature(SuperMarioBrosNesTurboVecEnv)
+    signature = inspect.signature(EnvSuperMarioBrosNesTurboEmuVecEnv)
     assert tuple(signature.parameters) == (
         "game", "state", "scenario", "info", "use_restricted_actions",
         "record", "players", "inttype", "obs_type", "render_mode",
@@ -179,22 +179,22 @@ def test_public_surface_is_manual_reset_only() -> None:
         "initial_state_names",
         "active_states",
     ):
-        assert not hasattr(SuperMarioBrosNesTurboVecEnv, name)
-    assert SuperMarioBrosNesTurboVecEnv.metadata["autoreset_mode"] is AutoresetMode.DISABLED
-    assert SuperMarioBrosNesTurboVecEnv.metadata["turbo_api_version"] == 2
-    assert SuperMarioBrosNesTurboVecEnv.metadata["transition_transport"] == "numpy"
-    assert not hasattr(SuperMarioBrosNesTurboVecEnv, "step_wait_gymnasium")
+        assert not hasattr(EnvSuperMarioBrosNesTurboEmuVecEnv, name)
+    assert EnvSuperMarioBrosNesTurboEmuVecEnv.metadata["autoreset_mode"] is AutoresetMode.DISABLED
+    assert EnvSuperMarioBrosNesTurboEmuVecEnv.metadata["turbo_api_version"] == 2
+    assert EnvSuperMarioBrosNesTurboEmuVecEnv.metadata["transition_transport"] == "numpy"
+    assert not hasattr(EnvSuperMarioBrosNesTurboEmuVecEnv, "step_wait_gymnasium")
     with pytest.raises(TypeError, match="done_on"):
-        SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", done_on=[])
+        EnvSuperMarioBrosNesTurboEmuVecEnv("SuperMarioBros-Nes-v0", done_on=[])
     with pytest.raises(TypeError, match="autoreset_mode"):
-        SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", autoreset_mode="Disabled")
+        EnvSuperMarioBrosNesTurboEmuVecEnv("SuperMarioBros-Nes-v0", autoreset_mode="Disabled")
     with pytest.raises(TypeError, match="state_dir"):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             state_dir="/tmp/states",
         )
     with pytest.raises(ValueError, match="use_fire_reset"):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
             use_fire_reset=True,
@@ -216,7 +216,7 @@ def test_ignored_compatibility_values_fail_before_rom_loading(
     message: str,
 ) -> None:
     with pytest.raises(ValueError, match=message):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
             **{option: value},
@@ -226,7 +226,7 @@ def test_ignored_compatibility_values_fail_before_rom_loading(
 @pytest.mark.parametrize("inttype", ["stable", "STABLE", 1, Integrations.STABLE])
 def test_stable_integration_forms_reach_rom_loading(inttype: object) -> None:
     with pytest.raises(RuntimeError, match="failed to read ROM"):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
             inttype=inttype,
@@ -236,7 +236,7 @@ def test_stable_integration_forms_reach_rom_loading(inttype: object) -> None:
 @pytest.mark.parametrize("num_threads", [0, -1])
 def test_num_threads_must_be_positive_before_rom_loading(num_threads: int) -> None:
     with pytest.raises(ValueError, match="num_threads must be > 0"):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             rom_path="/definitely/missing/SuperMarioBros-Nes-v0.nes",
             num_threads=num_threads,
@@ -269,9 +269,9 @@ def test_automatic_num_threads_honors_rayon_environment_in_fresh_process() -> No
     child_env["SMB_TEST_ROM"] = str(require_rom())
     script = """
 import os
-from supermariobrosnes_turbo import SuperMarioBrosNesTurboVecEnv
+from env_supermariobrosnes_turbo_emu import EnvSuperMarioBrosNesTurboEmuVecEnv
 
-env = SuperMarioBrosNesTurboVecEnv(
+env = EnvSuperMarioBrosNesTurboEmuVecEnv(
     "SuperMarioBros-Nes-v0",
     state="Level1-1",
     rom_path=os.environ["SMB_TEST_ROM"],
@@ -337,7 +337,7 @@ def test_explicit_thread_counts_preserve_deterministic_lane_contract() -> None:
 
 
 def test_named_basic_action_set_is_discrete_and_maps_indices() -> None:
-    env = SuperMarioBrosNesTurboVecEnv(
+    env = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=require_rom(),
@@ -371,7 +371,7 @@ def test_named_basic_action_set_is_discrete_and_maps_indices() -> None:
 
 def test_removed_constructor_action_set_is_rejected() -> None:
     with pytest.raises(TypeError, match="action_set"):
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             action_set="basic",
         )
@@ -564,7 +564,7 @@ def test_portable_snapshot_codec_restores_exactly_across_environment_instances()
         handles = source.capture_snapshots(mask)
         payloads = source.encode_snapshots(handles)
         assert source.snapshot_codec_api_version == 2
-        assert source.snapshot_codec_id == "supermariobrosnes-turbo.portable-v2"
+        assert source.snapshot_codec_id == "env-supermariobrosnes-turbo-emu.portable-v2"
         assert source.snapshot_codec_metadata["payload_kind"] == "portable_bytes"
         assert all(payload is not None and payload.startswith(b"SMBVEC2\0") for payload in payloads)
 
@@ -658,7 +658,7 @@ def test_live_snapshot_restore_is_bit_exact_and_lane_local(num_threads: int) -> 
         return actions
 
     def freeze_lane(
-        target: SuperMarioBrosNesTurboVecEnv,
+        target: EnvSuperMarioBrosNesTurboEmuVecEnv,
         result: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, object]],
         lane: int,
     ) -> dict[str, object]:
@@ -938,7 +938,7 @@ def test_rendering_is_disabled_by_default() -> None:
 
 
 def test_v2_shared_defaults_resolve_filtered_chw_stack() -> None:
-    env = SuperMarioBrosNesTurboVecEnv(
+    env = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         rom_path=require_rom(),
     )
@@ -1019,7 +1019,7 @@ def test_rgb_render_uses_latest_frame_during_injury_transition() -> None:
     state_path = (
         Path(__file__).resolve().parents[1]
         / "python"
-        / "supermariobrosnes_turbo"
+        / "env_supermariobrosnes_turbo_emu"
         / "data"
         / "SuperMarioBros-Nes-v0"
         / "Level1-1.state"
@@ -1030,8 +1030,8 @@ def test_rgb_render_uses_latest_frame_during_injury_transition() -> None:
     state[ram_offset + 0x0756] = 1  # PlayerStatus: big
     state[ram_offset + 0x0754] = 0  # PlayerSize: big
 
-    def transition_env(frame_skip: int) -> SuperMarioBrosNesTurboVecEnv:
-        return SuperMarioBrosNesTurboVecEnv(
+    def transition_env(frame_skip: int) -> EnvSuperMarioBrosNesTurboEmuVecEnv:
+        return EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             state=bytes(state),
             rom_path=require_rom(),

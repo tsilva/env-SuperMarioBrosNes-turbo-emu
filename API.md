@@ -1,6 +1,6 @@
 # API reference
 
-`SuperMarioBrosNesTurboVecEnv` is the public Gymnasium vector environment for
+`EnvSuperMarioBrosNesTurboEmuVecEnv` is the public Gymnasium vector environment for
 the supported `SuperMarioBros-Nes-v0` mapper 0/NROM workload. This reference
 collects the contracts that are intentionally summarized in the README.
 
@@ -33,10 +33,10 @@ is permanently disabled: stepping a terminal lane again is an error until that
 lane is explicitly reset through `options["reset_mask"]`.
 
 Construct it through the vector-only Gymnasium factory with
-`gym.make_vec("supermariobrosnes_turbo:SuperMarioBros-Nes-Turbo-v0",
+`gym.make_vec("env_supermariobrosnes_turbo_emu:EnvSuperMarioBrosNesTurboEmu-v0",
 game="SuperMarioBros-Nes-v0", ...)`. The module-qualified ID imports and
 registers the package; `game` is required. Direct construction through
-`SuperMarioBrosNesTurboVecEnv` has the same environment options.
+`EnvSuperMarioBrosNesTurboEmuVecEnv` has the same environment options.
 
 ## Actions and observations
 
@@ -99,9 +99,9 @@ Index zero is the deterministic default.
 ```python
 import numpy as np
 
-from supermariobrosnes_turbo import SuperMarioBrosNesTurboVecEnv
+from env_supermariobrosnes_turbo_emu import EnvSuperMarioBrosNesTurboEmuVecEnv
 
-env = SuperMarioBrosNesTurboVecEnv(
+env = EnvSuperMarioBrosNesTurboEmuVecEnv(
     "SuperMarioBros-Nes-v0",
     rom_path="/absolute/path/to/SuperMarioBros.nes",
     num_envs=4,
@@ -136,11 +136,11 @@ including another process or host:
 ```python
 import numpy as np
 
-from supermariobrosnes_turbo import SuperMarioBrosNesTurboVecEnv
+from env_supermariobrosnes_turbo_emu import EnvSuperMarioBrosNesTurboEmuVecEnv
 
 
 def make_env():
-    return SuperMarioBrosNesTurboVecEnv(
+    return EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path="/absolute/path/to/SuperMarioBros.nes",
@@ -189,7 +189,7 @@ finally:
 Live handles are reusable, same-instance, session-local, and intentionally not
 pickleable. Portable bytes bind decoded handles to a compatible destination.
 The immutable `snapshot_codec_metadata` declaration identifies
-`supermariobrosnes-turbo.portable-v2`. One masked reset can mix snapshot starts
+`env-supermariobrosnes-turbo-emu.portable-v2`. One masked reset can mix snapshot starts
 with ordinary `state_indices`; `infos["start_source"]` distinguishes
 `"snapshot"` from `"environment"`.
 
@@ -199,9 +199,9 @@ The original `INFO_KEYS` remain the default. Additional semantic game state is
 opt-in, so only explicitly requested extra keys are decoded and returned:
 
 ```python
-from supermariobrosnes_turbo import AreaType, PlayerMotion
+from env_supermariobrosnes_turbo_emu import AreaType, PlayerMotion
 
-env = SuperMarioBrosNesTurboVecEnv(
+env = EnvSuperMarioBrosNesTurboEmuVecEnv(
     "SuperMarioBros-Nes-v0",
     state="Level1-1",
     rom_path="/absolute/path/to/SuperMarioBros.nes",

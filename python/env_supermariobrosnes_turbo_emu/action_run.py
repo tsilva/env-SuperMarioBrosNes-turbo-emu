@@ -248,7 +248,7 @@ class ActionRunPolicy:
         return {
             "schema_version": ACTION_RUN_POLICY_SCHEMA_VERSION,
             "algorithm_id": "action-run",
-            "model_class": "supermariobrosnes_turbo.action_run.ActionRunPolicy",
+            "model_class": "env_supermariobrosnes_turbo_emu.action_run.ActionRunPolicy",
             "action_names": list(self.action_names),
             "action_runs": [[run.action, run.duration] for run in self.action_runs],
             "fallback_action": self.fallback_action,

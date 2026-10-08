@@ -1,13 +1,13 @@
 # Benchmarks
 
 This page contains the official, host-specific TurboBench package results for
-SuperMarioBros-Nes-turbo. The comparison remains bound to its paired evidence
+env-SuperMarioBrosNes-turbo-emu. The comparison remains bound to its paired evidence
 bundle.
 
 ## Official TurboBench package results
 
 On 2026-08-13,
-[`supermariobrosnes-turbo==0.6.4`](https://pypi.org/project/supermariobrosnes-turbo/0.6.4/)
+[`env-supermariobrosnes-turbo-emu==0.6.4`](https://pypi.org/project/env-supermariobrosnes-turbo-emu/0.6.4/)
 was compared using the [documented machine profile](#machine-profile) against
 the original
 [`stable-retro==1.0.1`](https://pypi.org/project/stable-retro/1.0.1/). The
@@ -26,11 +26,11 @@ SPS means environment steps per second.
 
 | Comparison | Immutable evidence | Bundle ID |
 | --- | --- | --- |
-| `supermariobrosnes-turbo==0.6.4` versus `stable-retro==1.0.1` | [Hugging Face bundle](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21) | `65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21` |
+| `env-supermariobrosnes-turbo-emu==0.6.4` versus `stable-retro==1.0.1` | [Hugging Face bundle](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21) | `65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21` |
 
 The 119 hash-bound artifacts are published in the immutable
-[`v0.6.4` dataset tag](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4)
-at [commit `adaeb62c3c4c45aa6fa439d874945b786c97bc3f`](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/commit/adaeb62c3c4c45aa6fa439d874945b786c97bc3f).
+[`v0.6.4` dataset tag](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4)
+at [commit `adaeb62c3c4c45aa6fa439d874945b786c97bc3f`](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/commit/adaeb62c3c4c45aa6fa439d874945b786c97bc3f).
 A fresh download of that tag passed `turbobench verify` without errors using
 [TurboBench 1.0.2](https://pypi.org/project/turbobench-cli/1.0.2/). This is
 first-party, self-verified evidence, not an independent reproduction or author
@@ -57,7 +57,7 @@ Download and verify the exact publication with:
 uv tool install --refresh --force \
   --exclude-newer-package turbobench-cli=2026-08-13T15:41:56Z \
   turbobench-cli==1.0.2
-hf download tsilva/supermariobros-nes-turbo-benchmarks \
+hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
   --type dataset --revision v0.6.4 --local-dir ./benchmark-evidence
 turbobench verify \
   ./benchmark-evidence/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21
@@ -102,7 +102,7 @@ export TURBOBENCH_ASSET_ROOT=/absolute/path/to/stable-retro/data/stable
 uv run turbobench doctor supermario/canonical-v1
 
 uv run turbobench compare supermario/canonical-v1 \
-  --left supermariobrosnes-turbo@0.6.4 \
+  --left env-supermariobrosnes-turbo-emu@0.6.4 \
   --right stable-retro@1.0.1
 ```
 

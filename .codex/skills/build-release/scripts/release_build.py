@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic helpers for SuperMarioBros-Nes-turbo release wheel builds."""
+"""Deterministic helpers for env-SuperMarioBrosNes-turbo-emu release builds."""
 
 from __future__ import annotations
 
@@ -33,9 +33,10 @@ CARGO_LOCK = REPO_ROOT / "Cargo.lock"
 UV_LOCK = REPO_ROOT / "uv.lock"
 CITATION = REPO_ROOT / "CITATION.cff"
 PYTHON = Path(sys.executable)
-PACKAGE_NAME = "supermariobrosnes-turbo"
-IMPORT_NAME = "supermariobrosnes_turbo"
-EXTENSION_NAME = "_supermariobrosnes_turbo"
+PACKAGE_NAME = "env-supermariobrosnes-turbo-emu"
+CARGO_PACKAGE_NAME = "env-supermariobrosnes-turbo-emu"
+IMPORT_NAME = "env_supermariobrosnes_turbo_emu"
+EXTENSION_NAME = "_env_supermariobrosnes_turbo_emu"
 VERSION_RE = re.compile(r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+|\.post\d+|\.dev\d+)?$")
 RELEASE_PLATFORMS = (
     "macos-arm64",
@@ -126,7 +127,7 @@ def cargo_version() -> str:
 
 
 def cargo_lock_version() -> str:
-    return section_version(CARGO_LOCK, "package", package_name=PACKAGE_NAME)
+    return section_version(CARGO_LOCK, "package", package_name=CARGO_PACKAGE_NAME)
 
 
 def citation_version() -> str:
@@ -306,7 +307,7 @@ def bump_version(args: argparse.Namespace) -> None:
         write_version(target)
         replace_section_version(PYPROJECT, "project", target)
         replace_section_version(CARGO_TOML, "package", target)
-        replace_package_version(CARGO_LOCK, PACKAGE_NAME, target)
+        replace_package_version(CARGO_LOCK, CARGO_PACKAGE_NAME, target)
         replace_package_version(UV_LOCK, PACKAGE_NAME, target)
         replace_citation_release(target)
     print(target)
@@ -317,14 +318,14 @@ def sync_version(args: argparse.Namespace) -> None:
     validate_version(version)
     replace_section_version(PYPROJECT, "project", version)
     replace_section_version(CARGO_TOML, "package", version)
-    replace_package_version(CARGO_LOCK, PACKAGE_NAME, version)
+    replace_package_version(CARGO_LOCK, CARGO_PACKAGE_NAME, version)
     replace_package_version(UV_LOCK, PACKAGE_NAME, version)
     replace_citation_release(version)
     print(version)
 
 
-def fetch_pypi_project() -> dict[str, object]:
-    url = f"https://pypi.org/pypi/{PACKAGE_NAME}/json"
+def fetch_pypi_project(package: str = PACKAGE_NAME) -> dict[str, object]:
+    url = f"https://pypi.org/pypi/{package}/json"
     with urllib.request.urlopen(url, timeout=20) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -353,18 +354,19 @@ def latest_non_yanked_pypi_version(releases: object) -> str | None:
 
 def check_pypi(args: argparse.Namespace) -> None:
     validate_version(args.version)
+    package = args.package or PACKAGE_NAME
     try:
-        data = fetch_pypi_project()
+        data = fetch_pypi_project(package)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            print(json.dumps({"package": PACKAGE_NAME, "exists": False, "version_exists": False}, indent=2))
+            print(json.dumps({"package": package, "exists": False, "version_exists": False}, indent=2))
             return
         raise
     releases = data.get("releases", {})
     exists = args.version in releases and bool(releases[args.version])
-    print(json.dumps({"package": PACKAGE_NAME, "version": args.version, "version_exists": exists}, indent=2))
+    print(json.dumps({"package": package, "version": args.version, "version_exists": exists}, indent=2))
     if exists:
-        raise SystemExit(f"{PACKAGE_NAME} {args.version} already exists on PyPI")
+        raise SystemExit(f"{package} {args.version} already exists on PyPI")
 
 
 def latest_pypi(args: argparse.Namespace) -> None:
@@ -480,7 +482,7 @@ def prepare_sources(args: argparse.Namespace) -> None:
     validate_version(version)
     root = args.root or Path(
         tempfile.mkdtemp(
-            prefix=f"supermariobrosnes-turbo-v{version}-builds.",
+            prefix=f"env-supermariobrosnes-turbo-emu-v{version}-builds.",
             dir=release_temp_dir(),
         )
     )
@@ -597,7 +599,7 @@ def audit_wheel(wheel: Path, version: str) -> dict[str, object]:
         "no_training_source": f"{IMPORT_NAME}/training.py" not in names,
         "has_playback_source": f"{IMPORT_NAME}/state_playback.py" in names,
         "has_unified_entry_point": (
-            "smb-turbo=supermariobrosnes_turbo.cli:main" in entry_points.replace(" ", "")
+            "smb-turbo=env_supermariobrosnes_turbo_emu.cli:main" in entry_points.replace(" ", "")
         ),
         "no_legacy_entry_points": not any(
             command in entry_points
@@ -756,10 +758,10 @@ from {IMPORT_NAME} import (
 print({IMPORT_NAME}.__file__)
 print({EXTENSION_NAME}.__file__)
 assert {IMPORT_NAME}.__file__.startswith({str(environment)!r})
-assert hasattr({IMPORT_NAME}, "SuperMarioBrosNesTurboVecEnv")
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.supports_live_snapshots is True
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_api_version == 2
-assert {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv.snapshot_codec_id == "supermariobrosnes-turbo.portable-v2"
+assert hasattr({IMPORT_NAME}, "EnvSuperMarioBrosNesTurboEmuVecEnv")
+assert {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv.supports_live_snapshots is True
+assert {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv.snapshot_codec_api_version == 2
+assert {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv.snapshot_codec_id == "env-supermariobrosnes-turbo-emu.portable-v2"
 assert len(INFO_KEYS) == 10
 assert len(EXTRA_INFO_KEYS) > 0
 assert AVAILABLE_INFO_KEYS == INFO_KEYS + EXTRA_INFO_KEYS
@@ -773,7 +775,7 @@ if rom_path is None:
     assert {feature_smoke_required!r} is False
     print("ROM-backed feature smoke skipped: ABI surface passed, canonical SMB ROM is unavailable")
 else:
-    env = {IMPORT_NAME}.SuperMarioBrosNesTurboVecEnv(
+    env = {IMPORT_NAME}.EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=rom_path,
@@ -827,9 +829,10 @@ else:
         }}
         restored, restored_infos = env.reset(options=reset_options)
         np.testing.assert_array_equal(restored[0], restored[1])
+        assert restored_infos["start_source"].dtype == np.int8
         assert restored_infos["start_source"].tolist() == [
-            "snapshot",
-            "snapshot",
+            1,
+            1,
         ]
 
         replay_actions = np.zeros_like(warmup)
@@ -956,6 +959,7 @@ def main() -> None:
 
     pypi = subparsers.add_parser("check-pypi", help="Fail if the target version exists on PyPI")
     pypi.add_argument("--version", required=True)
+    pypi.add_argument("--package")
     pypi.set_defaults(func=check_pypi)
 
     latest = subparsers.add_parser("latest-pypi", help="Print the latest non-yanked PyPI version")

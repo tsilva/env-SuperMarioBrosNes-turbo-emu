@@ -1,4 +1,4 @@
-"""Unified command-line interface for SuperMarioBros-Nes-turbo."""
+"""Unified command-line interface for env-SuperMarioBrosNes-turbo-emu."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ Command = Callable[[Optional[list[str]]], int]
 def _import_command(argv: list[str] | None) -> int:
     from importlib import import_module
 
-    command = import_module("supermariobrosnes_turbo.import.__main__")
+    command = import_module("env_supermariobrosnes_turbo_emu.import.__main__")
     return int(command.main(argv, prog="smb-turbo import"))
 
 

@@ -9,7 +9,7 @@ affects the latest release.
 ## Reporting a vulnerability
 
 Do not open a public issue for a suspected vulnerability. Use
-[GitHub's private vulnerability report](https://github.com/tsilva/SuperMarioBros-Nes-turbo/security/advisories/new)
+[GitHub's private vulnerability report](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/security/advisories/new)
 and include:
 
 - the affected version and platform;

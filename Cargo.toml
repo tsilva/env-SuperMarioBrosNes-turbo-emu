@@ -1,11 +1,11 @@
 [package]
-name = "supermariobrosnes-turbo"
-version = "0.6.6"
+name = "env-supermariobrosnes-turbo-emu"
+version = "0.7.4"
 edition = "2021"
 license = "MIT"
 description = "High-throughput vectorized Super Mario Bros NES environment for reinforcement learning"
-repository = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
-homepage = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
+repository = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
+homepage = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
 readme = "README.md"
 publish = false
 
@@ -18,14 +18,14 @@ members = [
 resolver = "2"
 
 [lib]
-name = "_supermariobrosnes_turbo"
+name = "_env_supermariobrosnes_turbo_emu"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 nes-turbo-nrom-core = { path = "crates/nes-turbo-nrom-core" }
 smb-turbo-driver = { path = "crates/smb-turbo-driver" }
-numpy = "0.22"
-pyo3 = { version = "0.22", features = ["abi3-py39", "extension-module"] }
+numpy = "0.29"
+pyo3 = { version = "0.29", features = ["abi3-py39", "extension-module"] }
 rayon = "1"
 
 [dev-dependencies]

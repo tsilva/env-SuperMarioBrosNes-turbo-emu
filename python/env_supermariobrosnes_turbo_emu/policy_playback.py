@@ -48,7 +48,7 @@ except ImportError:
 from . import (
     ACTION_SETS,
     Actions,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
     action_mask,
     resolve_required_rom_path,
 )
@@ -115,23 +115,12 @@ def resolve_model_path(source: str, filename: str | None, cache_dir: Path) -> Pa
     if cached_path is not None:
         return cached_path
 
-    try:
-        from huggingface_hub import hf_hub_download
-    except ImportError:
-        return download_direct_hf_file(
-            repo_id,
-            filename=target_filename,
-            revision=revision or "main",
-            cache_dir=cache_dir,
-        )
-
-    path = hf_hub_download(
-        repo_id=repo_id,
+    return download_direct_hf_file(
+        repo_id,
         filename=target_filename,
-        revision=revision,
+        revision=revision or "main",
         cache_dir=cache_dir,
     )
-    return Path(path)
 
 
 def cached_hf_file(
@@ -208,11 +197,19 @@ def find_cached_hf_checkpoint_filename(
 
 
 def find_hf_checkpoint_filename(repo_id: str, revision: str | None) -> str | None:
+    quoted_repo = "/".join(urllib.parse.quote(part, safe="") for part in repo_id.split("/"))
+    quoted_revision = urllib.parse.quote(revision or "main", safe="")
+    url = f"https://huggingface.co/api/models/{quoted_repo}/tree/{quoted_revision}?recursive=true"
     try:
-        from huggingface_hub import list_repo_files
-    except ImportError:
+        with urllib.request.urlopen(url, timeout=30) as response:
+            listing = json.load(response)
+    except (OSError, ValueError):
         return None
-    files = list_repo_files(repo_id, revision=revision)
+    files = [
+        entry["path"]
+        for entry in listing
+        if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+    ]
     checkpoint_files = sorted(
         path for path in files if path.endswith((".zip", ".json"))
     )
@@ -329,7 +326,7 @@ class SdlPolicyPlayer:
             raise SdlUnavailableError(self.sdl_error())
         self.sdl.SDL_SetHint(b"SDL_RENDER_SCALE_QUALITY", b"nearest")
         self.window = self.sdl.SDL_CreateWindow(
-            b"SuperMarioBros-Nes-turbo player",
+            b"env-SuperMarioBrosNes-turbo-emu player",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             self.display_width * self.scale,
@@ -442,7 +439,7 @@ class SdlPolicyPlayer:
     def make_env(self, state: str | None = None):
         state = state or self.current_state
         raw_view = self.args.view == "raw"
-        env = SuperMarioBrosNesTurboVecEnv(
+        env = EnvSuperMarioBrosNesTurboEmuVecEnv(
             self.args.game,
             state=state,
             rom_path=self.rom_path,

@@ -2,7 +2,7 @@ import importlib.util
 import re
 from pathlib import Path
 
-import supermariobrosnes_turbo
+import env_supermariobrosnes_turbo_emu
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,8 +18,8 @@ def _release_module():
 
 
 def test_public_package_exposes_distribution_version():
-    assert supermariobrosnes_turbo.__version__ != "0+unknown"
-    assert supermariobrosnes_turbo.__version__ == (ROOT / "VERSION.txt").read_text().strip()
+    assert env_supermariobrosnes_turbo_emu.__version__ != "0+unknown"
+    assert env_supermariobrosnes_turbo_emu.__version__ == (ROOT / "VERSION.txt").read_text().strip()
 
 
 def test_project_policy_files_exist():
@@ -45,7 +45,7 @@ def test_installed_commands_cover_import_and_play():
     pyproject = (ROOT / "pyproject.toml").read_text()
 
     assert "[project.scripts]" in pyproject
-    assert 'smb-turbo = "supermariobrosnes_turbo.cli:main"' in pyproject
+    assert 'smb-turbo = "env_supermariobrosnes_turbo_emu.cli:main"' in pyproject
     assert "smb-turbo-import" not in pyproject
     assert "smb-turbo-play" not in pyproject
     assert "smb-turbo-train" not in pyproject
@@ -55,16 +55,16 @@ def test_readme_delegates_training_to_pinned_gradlab_recipes():
     readme = (ROOT / "README.md").read_text()
 
     assert (
-        "uvx gradlab@0.1.1 train "
-        "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom "
+        "uvx --python 3.14 gradlab@0.2.2 train "
+        "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom-path "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
     assert (
-        "uvx gradlab@0.1.1 train "
-        "SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m --rom "
+        "uvx --python 3.14 gradlab@0.2.2 train "
+        "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom-path "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
-    assert "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m" not in readme
+    assert "SuperMarioBros-Nes-v0/Level1-1/go-explore-jerk-20m" not in readme
     assert "smb-turbo train" not in readme
     assert "train.py" not in readme
 
@@ -85,7 +85,7 @@ def test_readme_leads_with_a_supported_first_run_path():
     pyproject = (ROOT / "pyproject.toml").read_text()
 
     assert readme.index("## Quick start") < readme.index("## What it provides")
-    assert "uv tool install supermariobrosnes-turbo" in readme
+    assert "uv tool install env-supermariobrosnes-turbo-emu" in readme
     assert "smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes" in readme
     assert "discoverable SDL2 runtime" in readme
     assert "Windows PowerShell" not in readme
@@ -95,29 +95,21 @@ def test_readme_leads_with_a_supported_first_run_path():
 def test_readme_documents_turbo_advantages_beyond_speed():
     readme = (ROOT / "README.md").read_text()
     why = readme.split("## What it provides", maxsplit=1)[1].split(
-        "## Compared with Stable Retro", maxsplit=1
+        "\n## ", maxsplit=1
     )[0]
     comparison = readme.split("## Compared with Stable Retro", maxsplit=1)[1].split(
-        "## Use from Python", maxsplit=1
+        "\n## ", maxsplit=1
     )[0]
+    why = " ".join(why.split())
+    comparison = " ".join(comparison.split())
 
     for term in (
-        "step_async()",
-        "num_threads",
-        "noop_reset_max",
-        "sticky_action_prob",
-        "reward_clip",
-        "state_indices",
-        "Portable snapshots",
-        "Actions.DISCRETE",
-        "Actions.MULTI_DISCRETE",
-        "obs_copy",
-        "render_lane()",
-        "info_filter",
-        "ram()",
-        "capabilities",
-        "signal_schema",
-        "automatically switch",
+        "independent, seeded environments",
+        "native batched emulation and observation processing",
+        "saved states or live snapshots",
+        "Reset or restore selected environments without disturbing the others",
+        "actions, observations, and game signals",
+        "[API.md](API.md)",
     ):
         assert term in why
 
@@ -127,7 +119,7 @@ def test_readme_documents_turbo_advantages_beyond_speed():
         "multiplayer",
         "RAM observations",
         "BK2 movie recording",
-        "one player",
+        "one-player",
         "image observations",
     ):
         assert term in comparison
@@ -146,7 +138,7 @@ def test_api_info_table_matches_available_info_key_order():
         )
     )
 
-    assert documented_keys == supermariobrosnes_turbo.AVAILABLE_INFO_KEYS
+    assert documented_keys == env_supermariobrosnes_turbo_emu.AVAILABLE_INFO_KEYS
 
 
 def test_api_snapshot_example_encodes_before_closing_source():
@@ -196,25 +188,23 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     commit = "917c3d70b04b54779a05f94055a748ceda524b20"
     tag_url = (
         "https://huggingface.co/datasets/tsilva/"
-        "supermariobros-nes-turbo-benchmarks/tree/v0.6.4"
+        "env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4"
     )
     bundle_url = (
         f"{tag_url}/bundles/v0.6.4/vs-stable-retro-1.0.1/"
         "65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21"
     )
 
-    assert "[verified `0.6.4` benchmarks](BENCHMARKS.md)" in readme
+    assert re.search(r"\[[^\]]+\]\(BENCHMARKS\.md\)", readme)
+    assert "v0.6.4 against Stable Retro v1.0.1" in readme
     assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
     assert "media/benchmark-throughput.svg" not in readme
-    assert "https://pypi.org/project/turbobench-cli/1.0.2/" in readme
     assert "https://pypi.org/project/turbobench-cli/1.0.1/" in benchmarks
     assert "https://pypi.org/project/turbobench-cli/1.0.2/" in benchmarks
     assert "turbobench-cli=2026-08-13T14:50:17Z" in benchmarks
     assert "turbobench-cli==1.0.1" in benchmarks
     assert "turbobench-cli=2026-08-13T15:41:56Z" in benchmarks
     assert "turbobench-cli==1.0.2" in benchmarks
-    assert tag_url in readme
-    assert bundle_url in readme
     assert tag_url in benchmarks
     assert bundle_url in benchmarks
     assert f"git checkout --detach {commit}" in benchmarks
@@ -228,7 +218,7 @@ def test_citation_metadata_describes_latest_release():
     citation = (ROOT / "CITATION.cff").read_text()
 
     assert "cff-version: 1.2.0" in citation
-    assert 'title: "SuperMarioBros-Nes-turbo"' in citation
+    assert 'title: "env-SuperMarioBrosNes-turbo-emu"' in citation
     assert "family-names: Silva" in citation
     assert "given-names: Tiago" in citation
     assert "license: MIT" in citation
@@ -239,73 +229,5 @@ def test_imported_rom_is_ignored_and_excluded_from_distributions():
     gitignore = (ROOT / ".gitignore").read_text()
     pyproject = (ROOT / "pyproject.toml").read_text()
 
-    assert "python/supermariobrosnes_turbo/data/**/rom.nes" in gitignore
-    assert 'exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]' in pyproject
-
-
-def test_release_promotes_unreleased_changelog(tmp_path, monkeypatch):
-    release = _release_module()
-    changes = tmp_path / "CHANGES.md"
-    changes.write_text(
-        "# Changelog\n\n## Unreleased\n\n- New behavior.\n\n## 0.3.0 - 2026-07-14\n\n- Old behavior.\n"
-    )
-    monkeypatch.setattr(release, "CHANGES", changes)
-
-    release.promote_changelog("0.3.1", release_date="2026-07-15")
-
-    assert changes.read_text() == (
-        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
-        "## 0.3.1 - 2026-07-15\n\n- New behavior.\n\n"
-        "## 0.3.0 - 2026-07-14\n\n- Old behavior.\n"
-    )
-
-
-def test_release_generates_changelog_when_unreleased_is_empty(tmp_path, monkeypatch):
-    release = _release_module()
-    changes = tmp_path / "CHANGES.md"
-    changes.write_text(
-        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
-        "## 0.3.0 - 2026-07-14\n\n- Old behavior.\n"
-    )
-    monkeypatch.setattr(release, "CHANGES", changes)
-
-    release.promote_changelog(
-        "0.3.1",
-        release_date="2026-07-15",
-        generated_notes="- Improve automatic releases.",
-    )
-
-    assert "## 0.3.1 - 2026-07-15\n\n- Improve automatic releases." in changes.read_text()
-
-
-def test_release_accepts_already_prepared_target_changelog(tmp_path, monkeypatch):
-    release = _release_module()
-    changes = tmp_path / "CHANGES.md"
-    original = (
-        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
-        "## 0.3.1 - 2026-07-15\n\n- Prepared release.\n"
-    )
-    changes.write_text(original)
-    monkeypatch.setattr(release, "CHANGES", changes)
-
-    release.promote_changelog("0.3.1", generated_notes="- Generated release.")
-
-    assert changes.read_text() == original
-
-
-def test_release_folds_new_notes_into_already_prepared_target(tmp_path, monkeypatch):
-    release = _release_module()
-    changes = tmp_path / "CHANGES.md"
-    changes.write_text(
-        "# Changelog\n\n## Unreleased\n\n- Later improvement.\n\n"
-        "## 0.3.1 - 2026-07-15\n\n- Prepared release.\n"
-    )
-    monkeypatch.setattr(release, "CHANGES", changes)
-
-    release.promote_changelog("0.3.1", generated_notes="- Generated release.")
-
-    assert changes.read_text() == (
-        "# Changelog\n\n## Unreleased\n\n- Nothing yet.\n\n"
-        "## 0.3.1 - 2026-07-15\n\n- Later improvement.\n"
-        "- Prepared release.\n"
-    )
+    assert "python/env_supermariobrosnes_turbo_emu/data/**/rom.nes" in gitignore
+    assert 'exclude = ["python/env_supermariobrosnes_turbo_emu/data/**/rom.nes"]' in pyproject

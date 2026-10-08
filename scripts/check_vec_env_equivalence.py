@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
-from supermariobrosnes_turbo import ACTION_BUTTONS, BUTTON_TO_INDEX, NES_BUTTONS, Actions
-from supermariobrosnes_turbo import SuperMarioBrosNesTurboVecEnv, default_rom_path, resolve_required_rom_path
+from env_supermariobrosnes_turbo_emu import ACTION_BUTTONS, BUTTON_TO_INDEX, NES_BUTTONS, Actions
+from env_supermariobrosnes_turbo_emu import EnvSuperMarioBrosNesTurboEmuVecEnv, default_rom_path, resolve_required_rom_path
 
 
 DEFAULT_ROM = default_rom_path()
@@ -23,8 +23,8 @@ INFO_ARRAYS = (
 )
 
 
-def make_env(rom_path: Path, num_envs: int) -> SuperMarioBrosNesTurboVecEnv:
-    return SuperMarioBrosNesTurboVecEnv(
+def make_env(rom_path: Path, num_envs: int) -> EnvSuperMarioBrosNesTurboEmuVecEnv:
+    return EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         rom_path=rom_path.expanduser(),
         num_envs=num_envs,
@@ -51,7 +51,7 @@ def action_batch(names: str | list[str], num_envs: int) -> np.ndarray:
 
 
 def step_uniform(
-    env: SuperMarioBrosNesTurboVecEnv, action: str, count: int
+    env: EnvSuperMarioBrosNesTurboEmuVecEnv, action: str, count: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     actions = action_batch(action, env.num_envs)
     result = None
@@ -61,7 +61,7 @@ def step_uniform(
     return result
 
 
-def assert_uniform_info(vec: SuperMarioBrosNesTurboVecEnv, one: SuperMarioBrosNesTurboVecEnv) -> None:
+def assert_uniform_info(vec: EnvSuperMarioBrosNesTurboEmuVecEnv, one: EnvSuperMarioBrosNesTurboEmuVecEnv) -> None:
     for attr, dtype in INFO_ARRAYS:
         vec_values = getattr(vec, attr)
         one_values = getattr(one, attr)
@@ -71,12 +71,12 @@ def assert_uniform_info(vec: SuperMarioBrosNesTurboVecEnv, one: SuperMarioBrosNe
         )
 
 
-def assert_lane_info(vec: SuperMarioBrosNesTurboVecEnv, lane: int, ref: SuperMarioBrosNesTurboVecEnv) -> None:
+def assert_lane_info(vec: EnvSuperMarioBrosNesTurboEmuVecEnv, lane: int, ref: EnvSuperMarioBrosNesTurboEmuVecEnv) -> None:
     for attr, _dtype in INFO_ARRAYS:
         assert getattr(vec, attr)[lane] == getattr(ref, attr)[0]
 
 
-def reset_obs(env: SuperMarioBrosNesTurboVecEnv) -> np.ndarray:
+def reset_obs(env: EnvSuperMarioBrosNesTurboEmuVecEnv) -> np.ndarray:
     obs, _infos = env.reset()
     return obs
 

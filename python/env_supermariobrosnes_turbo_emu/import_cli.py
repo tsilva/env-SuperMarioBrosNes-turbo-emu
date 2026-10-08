@@ -7,5 +7,5 @@ from typing import Sequence
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    importer = import_module("supermariobrosnes_turbo.import.__main__")
+    importer = import_module("env_supermariobrosnes_turbo_emu.import.__main__")
     return int(importer.main(argv))

@@ -1,6 +1,6 @@
 # Legal and asset notices
 
-SuperMarioBros-Nes-turbo is an independent, unofficial research project. It is
+env-SuperMarioBrosNes-turbo-emu is an independent, unofficial research project. It is
 not affiliated with, endorsed by, or sponsored by Nintendo. Super Mario Bros,
 Nintendo Entertainment System, NES, Nintendo, and related names and marks are
 the property of their respective owners. No trademark rights are granted by

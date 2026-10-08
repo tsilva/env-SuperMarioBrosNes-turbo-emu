@@ -32,7 +32,10 @@ pub struct RetroVecEnv {
     snapshot_owner: Arc<()>,
 }
 
-#[pyclass(frozen, module = "supermariobrosnes_turbo._supermariobrosnes_turbo")]
+#[pyclass(
+    frozen,
+    module = "env_supermariobrosnes_turbo_emu._env_supermariobrosnes_turbo_emu"
+)]
 pub struct MarioLiveSnapshot {
     owner: Arc<()>,
     snapshot: LiveSnapshot,
@@ -46,7 +49,7 @@ impl MarioLiveSnapshot {
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> Bound<'py, PyBytes> {
-        PyBytes::new_bound(py, &self.snapshot.encode_portable())
+        PyBytes::new(py, &self.snapshot.encode_portable())
     }
 
     fn __reduce__(&self) -> PyResult<()> {
@@ -318,7 +321,7 @@ impl RetroVecEnv {
             .ok_or_else(|| PyValueError::new_err("extra info output must be C-contiguous"))?;
         let pool = self.thread_pool.as_ref();
         let inner = &self.inner;
-        py.allow_threads(|| install_in_pool(pool, || inner.extra_info_into(output_slice)));
+        py.detach(|| install_in_pool(pool, || inner.extra_info_into(output_slice)));
         Ok(())
     }
 
@@ -342,7 +345,7 @@ impl RetroVecEnv {
         let output_slice = output_rw
             .as_slice_mut()
             .ok_or_else(|| PyValueError::new_err("RAM output must be C-contiguous"))?;
-        py.allow_threads(|| self.inner.ram_into(output_slice));
+        py.detach(|| self.inner.ram_into(output_slice));
         Ok(())
     }
 
@@ -356,7 +359,7 @@ impl RetroVecEnv {
         let frames_slice = frames_rw
             .as_slice_mut()
             .ok_or_else(|| PyValueError::new_err("frames must be C-contiguous"))?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.rgb_frames_hwc_into(frames_slice);
         });
         Ok(())
@@ -417,7 +420,7 @@ impl RetroVecEnv {
             .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
         let pool = self.thread_pool.as_ref();
         let inner = &mut self.inner;
-        py.allow_threads(|| install_in_pool(pool, || inner.reset_into(obs_slice)))
+        py.detach(|| install_in_pool(pool, || inner.reset_into(obs_slice)))
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
         Ok(())
     }
@@ -473,7 +476,7 @@ impl RetroVecEnv {
             .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
         let pool = self.thread_pool.as_ref();
         let inner = &mut self.inner;
-        py.allow_threads(|| {
+        py.detach(|| {
             install_in_pool(pool, || {
                 inner.reset_masked_into(obs_slice, reset_mask_slice, state_indices_slice, &seeds)
             })
@@ -632,7 +635,7 @@ impl RetroVecEnv {
             .ok_or_else(|| PyValueError::new_err("obs must be C-contiguous"))?;
         let pool = self.thread_pool.as_ref();
         let inner = &mut self.inner;
-        py.allow_threads(|| {
+        py.detach(|| {
             install_in_pool(pool, || {
                 inner.reset_mixed_into(
                     obs_slice,
@@ -711,7 +714,7 @@ impl RetroVecEnv {
         let xscroll_lo_slice = xscroll_lo_rw
             .as_slice_mut()
             .ok_or_else(|| PyValueError::new_err("xscroll_lo must be C-contiguous"))?;
-        py.allow_threads(|| {
+        py.detach(|| {
             self.inner.info_into(
                 x_pos_slice,
                 coins_slice,
@@ -832,7 +835,7 @@ impl RetroVecEnv {
 
         let pool = self.thread_pool.as_ref();
         let inner = &mut self.inner;
-        py.allow_threads(|| {
+        py.detach(|| {
             install_in_pool(pool, || {
                 inner.step_into(
                     actions_slice,
@@ -1014,7 +1017,7 @@ fn extra_info_descriptors() -> Vec<(u8, String, usize, String, Option<String>)> 
 }
 
 #[pymodule]
-fn _supermariobrosnes_turbo(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _env_supermariobrosnes_turbo_emu(_py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<MarioLiveSnapshot>()?;
     m.add_class::<RetroVecEnv>()?;
     m.add_function(wrap_pyfunction!(extra_info_descriptors, m)?)?;

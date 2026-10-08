@@ -24,7 +24,7 @@ also unacceptable.
 ## Reporting and enforcement
 
 Report conduct concerns privately through the repository's
-[private reporting form](https://github.com/tsilva/SuperMarioBros-Nes-turbo/security/advisories/new)
+[private reporting form](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/security/advisories/new)
 and prefix the report title with `CONDUCT:`. Do not open a public issue when a
 report identifies or could expose an individual.
 

@@ -6,8 +6,8 @@ import sys
 
 import pytest
 
-from supermariobrosnes_turbo import cli, state_playback
-from supermariobrosnes_turbo.action_run import (
+from env_supermariobrosnes_turbo_emu import cli, state_playback
+from env_supermariobrosnes_turbo_emu.action_run import (
     policy_path_for_state,
     resolve_state_name,
     run_directory_for_state,
@@ -126,7 +126,7 @@ def test_unified_cli_exposes_only_import_and_play() -> None:
     assert "{import,play}" in help_text
     assert "train" not in help_text
     pyproject = ROOT.joinpath("pyproject.toml").read_text()
-    assert 'smb-turbo = "supermariobrosnes_turbo.cli:main"' in pyproject
+    assert 'smb-turbo = "env_supermariobrosnes_turbo_emu.cli:main"' in pyproject
     assert "smb-turbo-train" not in pyproject
 
 

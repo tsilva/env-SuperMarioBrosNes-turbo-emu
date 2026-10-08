@@ -5,13 +5,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from supermariobrosnes_turbo import (
+from env_supermariobrosnes_turbo_emu import (
     ACTION_BUTTONS,
     ACTION_MEANINGS,
     BUTTON_TO_INDEX,
     NES_BUTTONS,
     Actions,
-    SuperMarioBrosNesTurboVecEnv,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
 )
 from rom_helpers import require_rom
 
@@ -33,8 +33,8 @@ def make_env(
     seed: int = 1,
     noop_reset_max: int = 0,
     sticky_action_prob: float = 0.0,
-) -> SuperMarioBrosNesTurboVecEnv:
-    env = SuperMarioBrosNesTurboVecEnv(
+) -> EnvSuperMarioBrosNesTurboEmuVecEnv:
+    env = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=rom_path,
@@ -64,14 +64,14 @@ def assert_step_equal(
 
 
 def step_arrays(
-    env: SuperMarioBrosNesTurboVecEnv,
+    env: EnvSuperMarioBrosNesTurboEmuVecEnv,
     actions: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     obs, rewards, terminated, truncated, _infos = env.step(actions)
     return obs, rewards, terminated, truncated
 
 
-def reset_obs(env: SuperMarioBrosNesTurboVecEnv) -> np.ndarray:
+def reset_obs(env: EnvSuperMarioBrosNesTurboEmuVecEnv) -> np.ndarray:
     obs, _infos = env.reset()
     return obs
 
@@ -79,11 +79,11 @@ def reset_obs(env: SuperMarioBrosNesTurboVecEnv) -> np.ndarray:
 def test_noop_and_sticky_validation_runs_before_rom_load() -> None:
     missing_rom = "/definitely/missing/SuperMarioBros.nes"
     with pytest.raises(ValueError, match="noop_reset_max"):
-        SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", rom_path=missing_rom, noop_reset_max=-1)
+        EnvSuperMarioBrosNesTurboEmuVecEnv("SuperMarioBros-Nes-v0", rom_path=missing_rom, noop_reset_max=-1)
     with pytest.raises(ValueError, match="sticky_action_prob"):
-        SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", rom_path=missing_rom, sticky_action_prob=-0.01)
+        EnvSuperMarioBrosNesTurboEmuVecEnv("SuperMarioBros-Nes-v0", rom_path=missing_rom, sticky_action_prob=-0.01)
     with pytest.raises(ValueError, match="sticky_action_prob"):
-        SuperMarioBrosNesTurboVecEnv("SuperMarioBros-Nes-v0", rom_path=missing_rom, sticky_action_prob=1.01)
+        EnvSuperMarioBrosNesTurboEmuVecEnv("SuperMarioBros-Nes-v0", rom_path=missing_rom, sticky_action_prob=1.01)
 
 
 def test_noop_and_sticky_properties_are_exposed() -> None:

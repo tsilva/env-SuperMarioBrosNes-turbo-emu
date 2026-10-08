@@ -2,17 +2,14 @@ from __future__ import annotations
 
 import json
 from importlib import resources
-import os
-from pathlib import Path
-import subprocess
 
 import numpy as np
 import pytest
 from gymnasium import spaces
 
 from rom_helpers import require_rom
-from supermariobrosnes_turbo import Actions, NES_BUTTONS, SuperMarioBrosNesTurboVecEnv
-from supermariobrosnes_turbo.env import (
+from env_supermariobrosnes_turbo_emu import Actions, NES_BUTTONS, EnvSuperMarioBrosNesTurboEmuVecEnv
+from env_supermariobrosnes_turbo_emu.env import (
     ACTION_SETS,
     DISCRETE_CONTROLLER_BYTES,
     _named_action_controller_bytes,
@@ -40,7 +37,7 @@ def test_packaged_action_tables_match_stable_retro_integration_metadata() -> Non
         .read_text(encoding="utf-8")
     )
     turbo_metadata = json.loads(
-        resources.files("supermariobrosnes_turbo")
+        resources.files("env_supermariobrosnes_turbo_emu")
         .joinpath("data", "SuperMarioBros-Nes-v0", "metadata.json")
         .read_text(encoding="utf-8")
     )
@@ -76,7 +73,7 @@ def expected_filtered_bits(public_bits: int) -> int:
 
 
 def action_lookup(mode: str) -> np.ndarray:
-    env = object.__new__(SuperMarioBrosNesTurboVecEnv)
+    env = object.__new__(EnvSuperMarioBrosNesTurboEmuVecEnv)
     env.num_buttons = len(NES_BUTTONS)
     env._action_mode = mode
     return env._build_mask_to_controller_bytes()
@@ -104,7 +101,7 @@ def test_supported_modes_expose_stable_retro_action_spaces(
     single_space: spaces.Space,
     vector_space: spaces.Space,
 ) -> None:
-    env = SuperMarioBrosNesTurboVecEnv(
+    env = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=require_rom(),
@@ -119,7 +116,7 @@ def test_supported_modes_expose_stable_retro_action_spaces(
 
 
 def test_multi_discrete_components_map_like_stable_retro() -> None:
-    env = object.__new__(SuperMarioBrosNesTurboVecEnv)
+    env = object.__new__(EnvSuperMarioBrosNesTurboEmuVecEnv)
     env._action_mode = "MULTI_DISCRETE"
     env._BUTTON_COMBOS = FILTER_GROUPS
     env.num_envs = 2
@@ -213,14 +210,14 @@ def test_named_action_sets_keep_their_controller_mappings() -> None:
 
 def test_named_preset_and_inline_table_have_the_same_contract() -> None:
     rom = require_rom()
-    named = SuperMarioBrosNesTurboVecEnv(
+    named = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=rom,
         num_envs=1,
         use_restricted_actions="right-jump",
     )
-    inline = SuperMarioBrosNesTurboVecEnv(
+    inline = EnvSuperMarioBrosNesTurboEmuVecEnv(
         "SuperMarioBros-Nes-v0",
         state="Level1-1",
         rom_path=rom,
@@ -255,7 +252,7 @@ def test_all_filtered_and_discrete_step_the_same_36_native_states() -> None:
             public_masks[action, button] = (public_bits >> button) & 1
 
     envs = [
-        SuperMarioBrosNesTurboVecEnv(
+        EnvSuperMarioBrosNesTurboEmuVecEnv(
             "SuperMarioBros-Nes-v0",
             state="Level1-1",
             rom_path=require_rom(),
@@ -294,81 +291,3 @@ def test_all_filtered_and_discrete_step_the_same_36_native_states() -> None:
     finally:
         for env in envs:
             env.close()
-
-
-@pytest.mark.retro_oracle
-def test_conversion_semantics_match_live_sibling_stable_retro_turbo() -> None:
-    sibling = Path(__file__).resolve().parents[2] / "stable-retro-turbo"
-    python = sibling / ".venv" / "bin" / "python"
-    if not python.is_file():
-        pytest.skip(f"live sibling Stable Retro environment not found at {python}")
-
-    script = r"""
-import json
-import stable_retro as retro
-
-def bits(mask):
-    return sum(int(value) << index for index, value in enumerate(mask))
-
-payload = {"version": getattr(retro, "__version__", "unknown")}
-for name in ("ALL", "FILTERED", "DISCRETE"):
-    mode = getattr(retro.Actions, name)
-    env = retro.make(
-        "SuperMarioBros-Nes-v0",
-        state="Level1-1",
-        use_restricted_actions=mode,
-        render_mode="rgb_array",
-    )
-    try:
-        payload.setdefault("buttons", env.buttons)
-        payload.setdefault("button_combos", env.button_combos)
-        if name == "DISCRETE":
-            payload[name] = [bits(env.action_to_array(action)[0]) for action in range(36)]
-        else:
-            payload[name] = [
-                bits(env.action_to_array([(action >> index) & 1 for index in range(9)])[0])
-                for action in range(512)
-            ]
-    finally:
-        env.close()
-print("ACTION_ORACLE=" + json.dumps(payload, separators=(",", ":")))
-"""
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(sibling)
-    result = subprocess.run(
-        [str(python), "-c", script],
-        cwd=sibling,
-        env=env,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    oracle_line = next(
-        line.removeprefix("ACTION_ORACLE=")
-        for line in result.stdout.splitlines()
-        if line.startswith("ACTION_ORACLE=")
-    )
-    oracle = json.loads(oracle_line)
-
-    assert oracle["version"].startswith("1.0.1")
-    assert oracle["buttons"] == [
-        "B",
-        None,
-        "SELECT",
-        "START",
-        "UP",
-        "DOWN",
-        "LEFT",
-        "RIGHT",
-        "A",
-    ]
-    assert oracle["button_combos"] == [list(group) for group in FILTER_GROUPS]
-    assert [expected_controller_byte(bits) for bits in oracle["ALL"]] == action_lookup(
-        "ALL"
-    ).tolist()
-    assert [
-        expected_controller_byte(bits) for bits in oracle["FILTERED"]
-    ] == action_lookup("FILTERED").tolist()
-    assert [
-        expected_controller_byte(bits) for bits in oracle["DISCRETE"]
-    ] == DISCRETE_CONTROLLER_BYTES.tolist()

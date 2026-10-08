@@ -3,8 +3,8 @@ requires = ["maturin>=1.9.3,<2"]
 build-backend = "maturin"
 
 [project]
-name = "supermariobrosnes-turbo"
-version = "0.6.6"
+name = "env-supermariobrosnes-turbo-emu"
+version = "0.7.4"
 description = "Blazing fast SuperMarioBros-Nes environment for Reinforcement Learning."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -42,66 +42,63 @@ dependencies = [
 ]
 
 [project.scripts]
-smb-turbo = "supermariobrosnes_turbo.cli:main"
+smb-turbo = "env_supermariobrosnes_turbo_emu.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/tsilva/SuperMarioBros-Nes-turbo"
-Documentation = "https://github.com/tsilva/SuperMarioBros-Nes-turbo#readme"
-Repository = "https://github.com/tsilva/SuperMarioBros-Nes-turbo.git"
-Issues = "https://github.com/tsilva/SuperMarioBros-Nes-turbo/issues"
-Changelog = "https://github.com/tsilva/SuperMarioBros-Nes-turbo/blob/main/CHANGES.md"
+Homepage = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu"
+Documentation = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu#readme"
+Repository = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu.git"
+Issues = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/issues"
+Changelog = "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/releases"
 
 [project.optional-dependencies]
 playback = [
-  "huggingface-hub>=1.8.0",
-]
-oracle = [
-  "stable-retro-turbo==1.0.1.post34; python_version == '3.14'",
 ]
 test = [
   "pytest>=8",
 ]
 dev = [
-  "huggingface-hub>=1.8.0",
+  "huggingface-hub>=1.8.0; python_version >= '3.10'",
   "maturin>=1.9.3,<2",
   "pytest>=8",
-  "stable-retro-turbo==1.0.1.post34; python_version == '3.14'",
 ]
 
 [tool.maturin]
-module-name = "supermariobrosnes_turbo._supermariobrosnes_turbo"
+module-name = "env_supermariobrosnes_turbo_emu._env_supermariobrosnes_turbo_emu"
 python-source = "python"
 features = ["pyo3/extension-module"]
 include = [
-  "python/supermariobrosnes_turbo/data/**/*.state",
-  "python/supermariobrosnes_turbo/data/**/metadata.json",
-  "python/supermariobrosnes_turbo/py.typed",
+  "python/env_supermariobrosnes_turbo_emu/data/**/*.state",
+  "python/env_supermariobrosnes_turbo_emu/data/**/metadata.json",
+  "python/env_supermariobrosnes_turbo_emu/py.typed",
 ]
-exclude = ["python/supermariobrosnes_turbo/data/**/rom.nes"]
+exclude = ["python/env_supermariobrosnes_turbo_emu/data/**/rom.nes"]
 
 [tool.uv]
 exclude-newer = "7 days"
-exclude-newer-package = { stable-retro-turbo = false }
 constraint-dependencies = [
   "mistralai!=2.4.6",
   "guardrails-ai!=0.10.1",
+  "cryptography>=50.0.0; python_version >= '3.10'",
+  "filelock>=3.20.3; python_version >= '3.10'",
+  "pytest>=8.4.2,<9; python_version < '3.10'",
+  "pytest>=9.0.3; python_version >= '3.10'",
+  "requests>=2.33.0; python_version >= '3.10'",
+  "urllib3>=2.7.0; python_version >= '3.10'",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "python"]
-addopts = "--basetemp=.pytest-tmp -m 'not retro_oracle'"
-markers = [
-  "retro_oracle: manual acceptance tests that compare against stable-retro-turbo and require the local ROM",
-]
+addopts = "--basetemp=.pytest-tmp"
 
 [dependency-groups]
 dev = [
-    "cibuildwheel>=2.23.4,<4",
-    "huggingface-hub>=1.8.0",
-    "twine>=6.2.0",
+    "cibuildwheel>=2.23.4,<4; python_version >= '3.10'",
+    "huggingface-hub>=1.8.0; python_version >= '3.10'",
+    "twine>=6.2.0; python_version >= '3.10'",
 ]
 release = [
-    "cibuildwheel>=2.23.4,<4",
+    "cibuildwheel>=2.23.4,<4; python_version >= '3.10'",
     "maturin>=1.9.3,<2",
-    "twine>=6.2.0",
+    "twine>=6.2.0; python_version >= '3.10'",
 ]
