@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-RELEASE_HELPER = REPO_ROOT / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
+RELEASE_HELPER = REPO_ROOT / ".codex" / "skills" / "mario-emu_build-release" / "scripts" / "release_build.py"
 PYTHON = Path(sys.executable)
 RELEASE_FILES = (
     REPO_ROOT / "VERSION.txt",

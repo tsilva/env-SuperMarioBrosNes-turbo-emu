@@ -1,6 +1,6 @@
 ---
-name: benchmark-latest-release
-description: Benchmark the newest stable env-supermariobrosnes-turbo-emu PyPI release with the canonical TurboBench Super Mario workload, publish only verified official evidence to the project's Hugging Face dataset, verify the uploaded revision, and update local benchmark documentation. Use when the user says /benchmark-latest-release, asks to benchmark the latest/current/released version, asks to refresh official performance numbers, or asks to publish new env-SuperMarioBrosNes-turbo-emu benchmark evidence to Hugging Face.
+name: mario-emu_benchmark-latest-release
+description: Benchmark the newest stable env-supermariobrosnes-turbo-emu PyPI release with the canonical TurboBench Super Mario workload, publish only verified official evidence to the project's Hugging Face dataset, verify the uploaded revision, and update local benchmark documentation. Use when the user says /mario-emu_benchmark-latest-release, asks to benchmark the latest/current/released version, asks to refresh official performance numbers, or asks to publish new env-SuperMarioBrosNes-turbo-emu benchmark evidence to Hugging Face.
 ---
 
 # Benchmark Latest Release
@@ -44,7 +44,7 @@ upload a diagnostic run.
 From the env-SuperMarioBrosNes-turbo-emu repository root, resolve the public release:
 
 ```bash
-python3 .codex/skills/benchmark-latest-release/scripts/benchmark_release.py \
+python3 .codex/skills/mario-emu_benchmark-latest-release/scripts/benchmark_release.py \
   latest --require-eligible
 ```
 
@@ -154,7 +154,7 @@ Prepare the upload. Pass `--existing-index` only when the downloaded file
 exists:
 
 ```bash
-python3 .codex/skills/benchmark-latest-release/scripts/benchmark_release.py \
+python3 .codex/skills/mario-emu_benchmark-latest-release/scripts/benchmark_release.py \
   stage \
   --bundle <BUNDLE> \
   --version <VERSION> \
@@ -194,7 +194,7 @@ Download the tag into a fresh directory and verify the published bundle:
 ```bash
 hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
   --type dataset --revision v<VERSION> --local-dir <DOWNLOADED>
-python3 .codex/skills/benchmark-latest-release/scripts/benchmark_release.py \
+python3 .codex/skills/mario-emu_benchmark-latest-release/scripts/benchmark_release.py \
   verify-snapshot --root <DOWNLOADED> --version <VERSION>
 ```
 

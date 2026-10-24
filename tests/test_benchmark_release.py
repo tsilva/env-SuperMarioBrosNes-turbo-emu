@@ -17,7 +17,7 @@ def _benchmark_release_module():
         ROOT
         / ".codex"
         / "skills"
-        / "benchmark-latest-release"
+        / "mario-emu_benchmark-latest-release"
         / "scripts"
         / "benchmark_release.py"
     )

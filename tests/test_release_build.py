@@ -11,7 +11,7 @@ except ModuleNotFoundError:  # Python 3.9 and 3.10.
 
 def _release_build_module():
     root = Path(__file__).resolve().parents[1]
-    path = root / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
+    path = root / ".codex" / "skills" / "mario-emu_build-release" / "scripts" / "release_build.py"
     spec = importlib.util.spec_from_file_location("release_build", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -24,7 +24,7 @@ def test_version_file_is_the_single_source_of_truth():
 
     assert (root / "VERSION.txt").read_text(encoding="utf-8").strip()
     assert "VERSION.txt" in (
-        root / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
+        root / ".codex" / "skills" / "mario-emu_build-release" / "scripts" / "release_build.py"
     ).read_text(encoding="utf-8")
     assert "VERSION.txt" in (root / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     release_script = (root / "scripts" / "release.py").read_text(encoding="utf-8")
@@ -238,7 +238,7 @@ def test_latest_non_yanked_pypi_version_accepts_release_with_any_non_yanked_file
 def test_built_distribution_smoke_exercises_snapshot_replay_when_rom_is_available():
     root = Path(__file__).resolve().parents[1]
     source = (
-        root / ".codex" / "skills" / "build-release" / "scripts" / "release_build.py"
+        root / ".codex" / "skills" / "mario-emu_build-release" / "scripts" / "release_build.py"
     ).read_text(encoding="utf-8")
 
     for required in (

@@ -1,6 +1,6 @@
 ---
-name: build-release
-description: Launch and monitor an env-supermariobrosnes-turbo-emu PyPI release. Use when the user says /build-release, asks to cut a release, asks to tag/publish a version, asks whether a release made it to PyPI, or asks for env-supermariobrosnes-turbo-emu release artifacts.
+name: mario-emu_build-release
+description: Launch and monitor an env-supermariobrosnes-turbo-emu PyPI release. Use when the user says /mario-emu_build-release, asks to cut a release, asks to tag/publish a version, asks whether a release made it to PyPI, or asks for env-supermariobrosnes-turbo-emu release artifacts.
 ---
 
 # Build Release
@@ -12,7 +12,7 @@ workflow monitoring, verification, and reporting. The rules below are this
 project's adapter; they retain its invocation default and required gates.
 If the shared skill is unavailable, stop and report the missing dependency.
 
-A bare `$build-release` or `/build-release` invocation requests the full
+A bare `$mario-emu_build-release` or `/mario-emu_build-release` invocation requests the full
 publication flow. Explicitly local, dry-run, or inspection requests must not
 launch `make release` or its publishing script.
 
@@ -133,7 +133,7 @@ Require the macOS arm64 and Linux x86_64 wheels plus one source distribution.
 Allow 30 attempts at 20-second intervals for PyPI visibility, with a
 20-second request timeout; report unresolved visibility before any bounded retry.
 
-Keep `.codex/skills/build-release/scripts/release_build.py` as the workflow's
+Keep `.codex/skills/mario-emu_build-release/scripts/release_build.py` as the workflow's
 release helper and for narrow diagnostics. Use it directly only when inspecting
 versions, PyPI presence, or workflow build failures; do not re-create the
 release locally unless the user asks for manual recovery.

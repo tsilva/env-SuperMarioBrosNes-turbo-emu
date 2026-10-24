@@ -1,4 +1,0 @@
-interface:
-  display_name: "Build Release"
-  short_description: "Build PyPI release wheels"
-  default_prompt: "Use $build-release to tag a version and build validated macOS and Linux wheels."

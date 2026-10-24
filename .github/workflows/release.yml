@@ -114,11 +114,11 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Check version consistency
-        run: uv run python .codex/skills/build-release/scripts/release_build.py check-version --version "${{ steps.version.outputs.version }}"
+        run: uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py check-version --version "${{ steps.version.outputs.version }}"
 
       - name: Check PyPI version is unused
         if: github.event_name == 'push' && github.ref_type == 'tag'
-        run: uv run python .codex/skills/build-release/scripts/release_build.py check-pypi --version "${{ steps.version.outputs.version }}"
+        run: uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py check-pypi --version "${{ steps.version.outputs.version }}"
 
       - name: Run source checks
         run: |
@@ -195,13 +195,13 @@ jobs:
 
       - name: Build wheel
         run: >-
-          uv run python .codex/skills/build-release/scripts/release_build.py build-platform
+          uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py build-platform
           --platform "${{ matrix.platform }}"
           --version "${{ needs.validate.outputs.version }}"
 
       - name: Smoke built wheel
         run: >-
-          uv run python .codex/skills/build-release/scripts/release_build.py smoke-wheel
+          uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py smoke-wheel
           "wheelhouse-v${{ needs.validate.outputs.version }}-${{ matrix.platform }}"
 
       - name: Upload wheel artifact
@@ -313,7 +313,7 @@ jobs:
         run: |
           set -euo pipefail
           uv python install 3.9
-          python .codex/skills/build-release/scripts/release_build.py smoke-feature-wheel \
+          python .codex/skills/mario-emu_build-release/scripts/release_build.py smoke-feature-wheel \
             candidate/*.whl --python "$(uv python find 3.9)" \
             --rom "$TURBOBENCH_ASSET_ROOT/SuperMarioBros-Nes-v0/rom.nes" \
             --evidence feature-smoke/research-info-smoke.json
@@ -417,7 +417,7 @@ jobs:
       - name: Audit complete wheel set
         shell: bash
         run: >-
-          uv run python .codex/skills/build-release/scripts/release_build.py final-check
+          uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py final-check
           --version "${{ needs.validate.outputs.version }}"
           wheelhouse/*.whl
 
@@ -428,7 +428,7 @@ jobs:
           mkdir -p dist/primary
           cp wheelhouse/*.whl dist/primary/
           uv run maturin sdist --out dist/primary
-          uv run python .codex/skills/build-release/scripts/release_build.py audit-sdist \
+          uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py audit-sdist \
             --version "${{ needs.validate.outputs.version }}" \
             dist/primary/*.tar.gz
           uv run python scripts/check_sdist_internal_crates.py dist/primary/*.tar.gz
@@ -441,10 +441,10 @@ jobs:
         run: |
           set -euo pipefail
           uv python install 3.9
-          uv run python .codex/skills/build-release/scripts/release_build.py smoke-wheel \
+          uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py smoke-wheel \
             wheelhouse/*manylinux*x86_64*.whl \
             --python "$(uv python find 3.9)"
-          uv run python .codex/skills/build-release/scripts/release_build.py smoke-sdist \
+          uv run python .codex/skills/mario-emu_build-release/scripts/release_build.py smoke-sdist \
             dist/primary/*.tar.gz \
             --python "$(uv python find 3.9)"
 
@@ -501,7 +501,7 @@ jobs:
       - name: Generate release notes from committed changes
         shell: bash
         run: |
-          python3 .codex/skills/build-release/scripts/release_notes.py \
+          python3 .codex/skills/mario-emu_build-release/scripts/release_notes.py \
             --version "${GITHUB_REF_NAME#v}" --tag-prefix "v" \
             --ref "$GITHUB_SHA" > "$RUNNER_TEMP/release-notes.md"
       - name: Download audited distributions

@@ -10,18 +10,18 @@ Before every task in this repository, use the `$specs-author` skill to read the 
 - Never edit `SPECS.md` from inference. Propose the exact change, explain why it reflects stakeholder intent, and edit the file only after the user explicitly approves that exact change.
 - Keep `SPECS.md` complete, concise, and compacted. It must contain stakeholder intent rather than implementation, architecture, operations, or transient project detail.
 
-- Use `/build-release` for local metadata-only tagging and GitHub Actions builds
+- Use `/mario-emu_build-release` for local metadata-only tagging and GitHub Actions builds
   of the validated cross-platform
   PyPI wheel set plus source distribution. Skill:
-  `.codex/skills/build-release/SKILL.md`.
-- Use `/benchmark-latest-release` to benchmark the newest stable PyPI release
+  `.codex/skills/mario-emu_build-release/SKILL.md`.
+- Use `/mario-emu_benchmark-latest-release` to benchmark the newest stable PyPI release
   with the canonical TurboBench workflow, publish verified official evidence
   to Hugging Face, and refresh the project benchmark documentation. Skill:
-  `.codex/skills/benchmark-latest-release/SKILL.md`.
+  `.codex/skills/mario-emu_benchmark-latest-release/SKILL.md`.
 
 ## Shared release procedure
 
-The project `build-release` skill composes `$release-workflow` from
+The project `mario-emu_build-release` skill composes `$release-workflow` from
 `/Users/tsilva/.codex/skills/release-workflow/SKILL.md`.
 Read both for release work; keep project commands, version policy, artifact
 requirements, and approval gates in the project adapter.
