@@ -1,6 +1,0 @@
-[keyenv]
-version = 1
-
-[secrets.TWINE_PASSWORD]
-account = "env-SuperMarioBrosNes-turbo-emu/TWINE_PASSWORD"
-required = true
