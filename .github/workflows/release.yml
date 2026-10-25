@@ -205,7 +205,7 @@ jobs:
           "wheelhouse-v${{ needs.validate.outputs.version }}-${{ matrix.platform }}"
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-wheel-v${{ needs.validate.outputs.version }}-${{ matrix.platform }}
           path: wheelhouse-v${{ needs.validate.outputs.version }}-${{ matrix.platform }}/*.whl
@@ -319,7 +319,7 @@ jobs:
             --evidence feature-smoke/research-info-smoke.json
 
       - name: Upload feature smoke evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: feature-smoke-v${{ needs.validate.outputs.version }}
           path: feature-smoke/*.json
@@ -345,7 +345,7 @@ jobs:
             --require-provider env-supermariobrosnes-turbo-emu
 
       - name: Upload parity receipt
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: parity-receipt-v${{ needs.validate.outputs.version }}
           path: parity-receipt/**
@@ -452,7 +452,7 @@ jobs:
         run: sha256sum dist/primary/*
 
       - name: Upload audited distribution bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-v${{ needs.validate.outputs.version }}
           path: dist/**
