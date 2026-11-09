@@ -24,7 +24,8 @@ def test_rust_python_boundary_uses_patched_pyo3_family() -> None:
 def test_universal_python_lock_keeps_runtime_families_patched() -> None:
     lockfile = ROOT / "uv.lock"
     assert locked_versions(lockfile, "cryptography") == {"50.0.0"}
-    assert locked_versions(lockfile, "filelock") == {"3.32.2"}
+    assert locked_versions(lockfile, "filelock") == {"4.2.7"}
+    assert locked_versions(lockfile, "certifi") == {"2026.10.18"}
     assert locked_versions(lockfile, "requests") == {"2.34.2"}
     assert locked_versions(lockfile, "urllib3") == {"2.8.0"}
 
