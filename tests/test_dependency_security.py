@@ -17,14 +17,15 @@ def locked_versions(lockfile: Path, package: str) -> set[str]:
 
 
 def test_rust_python_boundary_uses_patched_pyo3_family() -> None:
-    assert locked_versions(ROOT / "Cargo.lock", "pyo3") == {"0.29.2"}
+    assert locked_versions(ROOT / "Cargo.lock", "pyo3") == {"0.29.3"}
     assert locked_versions(ROOT / "Cargo.lock", "numpy") == {"0.29.0"}
 
 
 def test_universal_python_lock_keeps_runtime_families_patched() -> None:
     lockfile = ROOT / "uv.lock"
     assert locked_versions(lockfile, "cryptography") == {"50.0.0"}
-    assert locked_versions(lockfile, "filelock") == {"3.32.2"}
+    assert locked_versions(lockfile, "filelock") == {"4.2.7"}
+    assert locked_versions(lockfile, "certifi") == {"2026.10.18"}
     assert locked_versions(lockfile, "requests") == {"2.34.2"}
     assert locked_versions(lockfile, "urllib3") == {"2.8.0"}
 
