@@ -8,12 +8,14 @@ Participation is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Development setup
 
-Install [uv](https://docs.astral.sh/uv/) and a Rust toolchain, then run:
+Install [uv](https://docs.astral.sh/uv/) and a Rust toolchain. The Hugging Face and wheel-building tools require Python 3.11 or later.
+
+For the full development environment, run:
 
 ```bash
 git clone https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu.git
 cd env-SuperMarioBrosNes-turbo-emu
-uv sync --frozen --extra dev --group dev
+uv sync --frozen --extra dev --group dev --python 3.14
 uv run maturin develop --release
 ```
 
