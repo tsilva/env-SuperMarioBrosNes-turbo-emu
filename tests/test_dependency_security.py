@@ -17,7 +17,7 @@ def locked_versions(lockfile: Path, package: str) -> set[str]:
 
 
 def test_rust_python_boundary_uses_patched_pyo3_family() -> None:
-    assert locked_versions(ROOT / "Cargo.lock", "pyo3") == {"0.29.2"}
+    assert locked_versions(ROOT / "Cargo.lock", "pyo3") == {"0.29.3"}
     assert locked_versions(ROOT / "Cargo.lock", "numpy") == {"0.29.0"}
 
 
