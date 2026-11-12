@@ -2,12 +2,15 @@
 
 This page contains the official, host-specific TurboBench package results for
 env-SuperMarioBrosNes-turbo-emu. The comparison remains bound to its paired evidence
-bundle.
+bundle. The recorded v0.6.4 distribution predates the current package name;
+its original identity and dataset URL are retained below so the immutable
+evidence and reproduction command remain accurate. These measurements are not
+a benchmark of the current release.
 
 ## Official TurboBench package results
 
 On 2026-08-13,
-[`env-supermariobrosnes-turbo-emu==0.6.4`](https://pypi.org/project/env-supermariobrosnes-turbo-emu/0.6.4/)
+[`supermariobrosnes-turbo==0.6.4`](https://pypi.org/project/supermariobrosnes-turbo/0.6.4/)
 was compared using the [documented machine profile](#machine-profile) against
 the original
 [`stable-retro==1.0.1`](https://pypi.org/project/stable-retro/1.0.1/). The
@@ -26,11 +29,11 @@ SPS means environment steps per second.
 
 | Comparison | Immutable evidence | Bundle ID |
 | --- | --- | --- |
-| `env-supermariobrosnes-turbo-emu==0.6.4` versus `stable-retro==1.0.1` | [Hugging Face bundle](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21) | `65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21` |
+| `supermariobrosnes-turbo==0.6.4` versus `stable-retro==1.0.1` | [Hugging Face bundle](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21) | `65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21` |
 
 The 119 hash-bound artifacts are published in the immutable
-[`v0.6.4` dataset tag](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4)
-at [commit `adaeb62c3c4c45aa6fa439d874945b786c97bc3f`](https://huggingface.co/datasets/tsilva/env-supermariobrosnes-turbo-emu-benchmarks/commit/adaeb62c3c4c45aa6fa439d874945b786c97bc3f).
+[`v0.6.4` dataset tag](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/tree/v0.6.4)
+at [commit `adaeb62c3c4c45aa6fa439d874945b786c97bc3f`](https://huggingface.co/datasets/tsilva/supermariobros-nes-turbo-benchmarks/commit/adaeb62c3c4c45aa6fa439d874945b786c97bc3f).
 A fresh download of that tag passed `turbobench verify` without errors using
 [TurboBench 1.0.2](https://pypi.org/project/turbobench-cli/1.0.2/). This is
 first-party, self-verified evidence, not an independent reproduction or author
@@ -51,13 +54,22 @@ for Stable Retro. Their selected Linux wheel SHA-256 digests are respectively
 `a37962b48504fbf509ed8785564229cc1b441e5f2a591b122a2adc1b59744e67`
 and `4451c5f8209dbdbf343d29ab028ec7d40d28b9c7459ac4e632be990bc2f1eac3`.
 
-Download and verify the exact publication with:
+Download and verify the exact publication with `uv` and the separately installed
+[Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli).
+The evidence dataset must be accessible to your session; a 401/404 response is
+an access or availability failure, not a successful verification.
+
+```bash
+uv tool install huggingface-hub
+```
+
+Then run:
 
 ```bash
 uv tool install --refresh --force \
   --exclude-newer-package turbobench-cli=2026-08-13T15:41:56Z \
   turbobench-cli==1.0.2
-hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
+hf download tsilva/supermariobros-nes-turbo-benchmarks \
   --type dataset --revision v0.6.4 --local-dir ./benchmark-evidence
 turbobench verify \
   ./benchmark-evidence/bundles/v0.6.4/vs-stable-retro-1.0.1/65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21
@@ -102,7 +114,7 @@ export TURBOBENCH_ASSET_ROOT=/absolute/path/to/stable-retro/data/stable
 uv run turbobench doctor supermario/canonical-v1
 
 uv run turbobench compare supermario/canonical-v1 \
-  --left env-supermariobrosnes-turbo-emu@0.6.4 \
+  --left supermariobrosnes-turbo@0.6.4 \
   --right stable-retro@1.0.1
 ```
 

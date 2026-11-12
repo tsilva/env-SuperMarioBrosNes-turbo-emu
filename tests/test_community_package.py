@@ -55,12 +55,12 @@ def test_readme_delegates_training_to_pinned_gradlab_recipes():
     readme = (ROOT / "README.md").read_text()
 
     assert (
-        "uvx --python 3.14 gradlab@0.2.2 train "
+        "uvx --python 3.14 gradlab@0.2.4 train "
         "SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom-path "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
     assert (
-        "uvx --python 3.14 gradlab@0.2.2 train "
+        "uvx --python 3.14 gradlab@0.2.4 train "
         "SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom-path "
         "/absolute/path/to/SuperMarioBros.nes"
     ) in readme
@@ -109,7 +109,7 @@ def test_readme_documents_turbo_advantages_beyond_speed():
         "saved states or live snapshots",
         "Reset or restore selected environments without disturbing the others",
         "actions, observations, and game signals",
-        "[API.md](API.md)",
+        "[API.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md)",
     ):
         assert term in why
 
@@ -188,14 +188,14 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     commit = "917c3d70b04b54779a05f94055a748ceda524b20"
     tag_url = (
         "https://huggingface.co/datasets/tsilva/"
-        "env-supermariobrosnes-turbo-emu-benchmarks/tree/v0.6.4"
+        "supermariobros-nes-turbo-benchmarks/tree/v0.6.4"
     )
     bundle_url = (
         f"{tag_url}/bundles/v0.6.4/vs-stable-retro-1.0.1/"
         "65eb59b9c84d0420483a051f09df08b57d334d817671cbac685a5cd1dd11fc21"
     )
 
-    assert re.search(r"\[[^\]]+\]\(BENCHMARKS\.md\)", readme)
+    assert "https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/BENCHMARKS.md" in readme
     assert "v0.6.4 against Stable Retro v1.0.1" in readme
     assert "published `0.3.0` mapper 0/NROM benchmark" not in readme
     assert "media/benchmark-throughput.svg" not in readme
@@ -207,6 +207,9 @@ def test_benchmark_docs_pin_the_recorded_harness_and_current_results():
     assert "turbobench-cli==1.0.2" in benchmarks
     assert tag_url in benchmarks
     assert bundle_url in benchmarks
+    assert "--left supermariobrosnes-turbo@0.6.4" in benchmarks
+    assert "https://pypi.org/project/supermariobrosnes-turbo/0.6.4/" in benchmarks
+    assert "--left env-supermariobrosnes-turbo-emu@0.6.4" not in benchmarks
     assert f"git checkout --detach {commit}" in benchmarks
     assert "uv run turbobench compare supermario/canonical-v1" in benchmarks
     assert "independently verified" not in benchmarks

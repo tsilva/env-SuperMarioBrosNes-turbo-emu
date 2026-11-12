@@ -191,7 +191,7 @@ pickleable. Portable bytes bind decoded handles to a compatible destination.
 The immutable `snapshot_codec_metadata` declaration identifies
 `env-supermariobrosnes-turbo-emu.portable-v2`. One masked reset can mix snapshot starts
 with ordinary `state_indices`; `infos["start_source"]` distinguishes
-`"snapshot"` from `"environment"`.
+snapshot starts (`1`) from environment-state starts (`0`).
 
 ## Research infos
 
@@ -199,7 +199,11 @@ The original `INFO_KEYS` remain the default. Additional semantic game state is
 opt-in, so only explicitly requested extra keys are decoded and returned:
 
 ```python
-from env_supermariobrosnes_turbo_emu import AreaType, PlayerMotion
+from env_supermariobrosnes_turbo_emu import (
+    AreaType,
+    EnvSuperMarioBrosNesTurboEmuVecEnv,
+    PlayerMotion,
+)
 
 env = EnvSuperMarioBrosNesTurboEmuVecEnv(
     "SuperMarioBros-Nes-v0",
@@ -286,6 +290,16 @@ state is required; RAM addresses are not part of the semantic info contract.
 
 ## Playback
 
+Install a system SDL2 runtime before opening the player. On Apple silicon with
+Homebrew, `brew install sdl2-compat` provides the SDL2-compatible library. On
+Debian/Ubuntu, use `sudo apt-get install libsdl2-2.0-0`; other distributions
+provide their own packages. See [SDL2 installation](https://wiki.libsdl.org/SDL2/Installation).
+A graphical desktop session is required; Python API rollouts do not need SDL2.
+
+If `smb-turbo` is not found after `uv tool install`, run `uv tool update-shell`
+and open a new terminal, or launch it with `uv tool run --from
+env-supermariobrosnes-turbo-emu smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes`.
+
 `smb-turbo play` without a state starts from `Level1-1`; pass an exact state
 identifier to start elsewhere. Packaged identifiers include canonical names
 such as `Level1-1` and variants such as `Level2-1-clouds-easy`. Shorthand and
@@ -304,6 +318,33 @@ checkout-compatible entry point is `uv run python play.py`.
 
 GradLab models use GradLab's interactive player. Each documented GradLab train
 command prints the matching version-pinned playback command for its model.
+
+## GradLab training
+
+The README pins the published `gradlab==0.2.4` tool, which requires Python 3.14
+and installs its own `env-supermariobrosnes-turbo-emu==0.7.4`. Installing this
+package separately does not change that training environment.
+
+The README commands use `--no-wandb` to keep metrics and checkpoints local;
+these recipes disable checkpoint evaluation. The PPO command uses
+`--set train.backend.config.device=auto` to select CUDA, MPS, or CPU as available.
+The output root is `~/.config/gradlab/runs`, or `$XDG_CONFIG_HOME/gradlab/runs` when set;
+pass `--runs-dir /absolute/output/directory` to choose another location. Each
+run contains `final_model.zip`, model and recipe sidecars, and a local training
+receipt. Keep these files together for playback. The version-pinned `play it:`
+command printed after training starts GradLab's local web player.
+
+GradLab 0.2.4 supports playback from its installed wheel without a source
+checkout. This package's `smb-turbo play` uses a different action-run format;
+use the printed GradLab command for PPO and Go-Explore models.
+
+The PPO demo requests up to 98,304 transitions; Go-Explore requests up to
+20 million. Both honor their configured stopping conditions.
+Runtime depends on hardware, and neither recipe guarantees a level clear.
+For a finite integration check, append `--set train.timesteps=4096 --no-tui`
+to a README training command. This changes the recipe and verifies only a
+short training/export path, not the full recipe's result. Local training cannot
+establish GradLab Acceptance or Promotion.
 
 ## Profiling
 

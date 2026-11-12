@@ -79,3 +79,13 @@ The patch auto-merge workflow requires both the PR author and event sender to be
 Dependabot. Maintainer-prepared updates retain the normal CI checks and require
 a manual merge. Dependency versions remain subject to the seven-day release-age
 policy.
+
+Keep the security constraints in `pyproject.toml` and `uv-tool.toml` aligned.
+Constraints retain the unaffected `filelock==3.20.3` fallback for Python 3.10
+and require patched `filelock>=4.2.1` on Python 3.11 or newer. The full development
+tools require Python 3.11 or later; package runtime support still starts at Python 3.9. Certifi must be at least `2026.10.19` on Python 3.10 or newer.
+Regenerate the targeted lock entries only after every required distribution
+has aged seven full days from its actual upload time. Keep the universal
+dependency audit enabled and do not add advisory ignores or cooldown exemptions
+to make an update pass. Run `tests/test_dependency_security.py` against the
+resulting lock before considering the update ready.

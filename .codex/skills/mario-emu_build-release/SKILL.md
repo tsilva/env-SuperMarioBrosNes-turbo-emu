@@ -5,9 +5,9 @@ description: Launch and monitor an env-supermariobrosnes-turbo-emu PyPI release.
 
 # Build Release
 
-Read and apply the shared `$release-workflow` skill at
-`/Users/tsilva/.codex/skills/release-workflow/SKILL.md` before execution.
-It owns common preflight, publication safeguards, `$push` integration,
+Read and apply the shared `$private-skills_release-workflow` skill at
+`/Users/tsilva/.codex/skills/private-skills/private-skills_release-workflow/SKILL.md` before execution.
+It owns common preflight, publication safeguards, `$private-skills_push` integration,
 workflow monitoring, verification, and reporting. The rules below are this
 project's adapter; they retain its invocation default and required gates.
 If the shared skill is unavailable, stop and report the missing dependency.

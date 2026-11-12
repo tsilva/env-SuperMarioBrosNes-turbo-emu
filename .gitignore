@@ -22,3 +22,5 @@ __pycache__/
 python/env_supermariobrosnes_turbo_emu/data/**/rom.nes
 /INBOX.md
 /.local/repo-inbox/
+
+/.internal/

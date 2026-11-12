@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/tsilva/env-SuperMarioBrosNes-turbo-emu/main/image-assets/logo/logo-1024.png" alt="SuperMarioBrosNes-turbo logo" width="240" />
+  <img src="https://raw.githubusercontent.com/tsilva/env-SuperMarioBrosNes-turbo-emu/main/logo.png" alt="SuperMarioBrosNes-turbo logo" width="240" />
   <br />
   <!-- repo-tagline:start -->
   <strong>🍄 More Mario rollouts. Less waiting ⚡</strong>
@@ -19,15 +19,16 @@ a deterministic Gymnasium vector API, with independent environments and reusable
 state snapshots.
 
 **15.4–17.3× the environment-step throughput of Stable Retro** in matched
-benchmarks of v0.6.4 against Stable Retro v1.0.1 on a Ryzen 5 7600X.
-See [workloads, methodology, and results](BENCHMARKS.md).
+benchmarks of historical v0.6.4 against Stable Retro v1.0.1 on a Ryzen 5 7600X.
+See [workloads, methodology, and results](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/BENCHMARKS.md).
 
 Bring your own supported ROM. Start playing in two commands, or use the
 [Python API](#use-from-python) below.
 
 ## Quick start
 
-Prebuilt wheels support Python `>=3.9` on Apple-silicon macOS and x86-64 Linux.
+Prebuilt wheels support Python `>=3.9` on Apple-silicon macOS 14 or newer
+and x86-64 Linux with glibc 2.28 or newer.
 Install the CLI with [uv](https://docs.astral.sh/uv/) and launch Level 1-1 with
 your local ROM:
 
@@ -36,8 +37,10 @@ uv tool install env-supermariobrosnes-turbo-emu
 smb-turbo play --rom /absolute/path/to/SuperMarioBros.nes
 ```
 
-Playback requires a discoverable SDL2 runtime. Use the arrow keys or `A`/`D` to
-move, `X`/`J`/Space to jump, `Z`/`K`/Shift to run, and Escape to quit.
+Playback opens a window and requires a discoverable SDL2 runtime; see
+[playback setup](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md#playback) if SDL2 or `smb-turbo` is unavailable.
+Use the arrow keys or `A`/`D` to move, `X`/`J`/Space to jump,
+`Z`/`K`/Shift to run, and Escape to quit.
 
 ## Use from Python
 
@@ -87,7 +90,7 @@ The native `EnvSuperMarioBrosNesTurboEmuVecEnv` constructor is also public.
 - Reset or restore selected environments without disturbing the others.
 - Choose actions, observations, and game signals to suit your experiment.
 
-See [API.md](API.md) for action tables, preprocessing options, state and snapshot
+See [API.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md) for action tables, preprocessing options, state and snapshot
 controls, playback, and research-info contracts.
 
 ## Compared with Stable Retro
@@ -107,14 +110,18 @@ published, version-pinned recipe from any directory with your local ROM.
 
 ```bash
 # Short PPO demonstration
-uvx --python 3.14 gradlab@0.2.2 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom-path /absolute/path/to/SuperMarioBros.nes
+uvx --python 3.14 gradlab@0.2.4 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom-path /absolute/path/to/SuperMarioBros.nes --no-wandb --set train.backend.config.device=auto
 
 # Go-Explore trajectory discovery capped at 20 million transitions
-uvx --python 3.14 gradlab@0.2.2 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom-path /absolute/path/to/SuperMarioBros.nes
+uvx --python 3.14 gradlab@0.2.4 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom-path /absolute/path/to/SuperMarioBros.nes --no-wandb
 ```
 
-GradLab verifies the ROM, shows live progress, writes a playable
-`final_model.zip` below `./runs`, and prints a version-pinned playback command.
+GradLab verifies the ROM, shows live progress, and exports
+`final_model.zip` below `~/.config/gradlab/runs` by default, and prints a
+version-pinned playback command. These commands keep training outputs local;
+the PPO demo automatically selects an available Torch device. GradLab 0.2.4
+installs Mario environment 0.7.4 in an isolated environment and includes its
+local web player. See [training outputs and bounded runs](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md#gradlab-training).
 
 ## Register your ROM
 
@@ -136,20 +143,22 @@ ROM files are never included in this repository or its distributions.
 - The canonical ROM SHA-256 is
   `f61548fdf1670cffefcc4f0b7bdcdd9eaba0c226e3b74f8666071496988248de`.
 - Source builds, tests, parity checks, and contribution instructions are in
-  [CONTRIBUTING.md](CONTRIBUTING.md).
+  [CONTRIBUTING.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/CONTRIBUTING.md).
 - Dependabot patch updates are queued for auto-merge only on bot-created events;
   updates prepared by a maintainer are reviewed and merged manually.
+- Dependency updates retain the seven-day cooldown and universal audit; see
+  [the dependency update policy](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/CONTRIBUTING.md#dependency-updates).
 - This unofficial research project is not affiliated with or endorsed by
-  Nintendo. See [NOTICE.md](NOTICE.md).
+  Nintendo. See [NOTICE.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/NOTICE.md).
 
 ## Architecture
 
 ![SuperMarioBrosNes-turbo architecture diagram](https://raw.githubusercontent.com/tsilva/env-SuperMarioBrosNes-turbo-emu/main/architecture.png)
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the native component boundaries and
+See [ARCHITECTURE.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/ARCHITECTURE.md) for the native component boundaries and
 verification hooks.
 
 ## License
 
-Code is licensed under the [MIT License](LICENSE). Third-party names, marks, and
-user-supplied content are excluded; see [NOTICE.md](NOTICE.md).
+Code is licensed under the [MIT License](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/LICENSE). Third-party names, marks, and
+user-supplied content are excluded; see [NOTICE.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/NOTICE.md).
