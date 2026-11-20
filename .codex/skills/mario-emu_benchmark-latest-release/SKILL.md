@@ -128,74 +128,76 @@ turbobench --version
 Require `turbobench 1.0.2`. This must not change the recorded harness version
 inside the already completed result bundle.
 
-Authenticate without exposing tokens:
+Read the repository's local Runbox configuration. Require the approved
+`mario-benchmark-parent` profile to be ready before querying Hugging Face. If it
+is unavailable or a check fails, keep the verified bundle and report the failed
+gate.
+
+Use a new owner-only directory under the repository's ignored
+`.internal/benchmark-publication/`. Set `WORK` to that relative directory,
+`VERSION` to the verified package version, and `BUNDLE` to the absolute path of
+the verified local bundle. Keep the commit receipt and plan in `WORK`.
 
 ```bash
-hf auth whoami --format json
+runbox --profile mario-benchmark-parent check
+runbox --profile mario-benchmark-parent run -- mario-benchmark-parent \
+  > "$WORK/parent.json"
 ```
 
-If authentication is absent or the active identity cannot write to `tsilva`,
-stop and ask the user to run `hf auth login`. Never print `hf auth token`.
-
-Create a temporary staging directory with `mktemp -d`. First query the dataset.
-If it exists, download its current index into the staging parent:
-
-```bash
-hf datasets info tsilva/env-supermariobrosnes-turbo-emu-benchmarks --format json
-hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
-  benchmark-index.json --type dataset --local-dir <CURRENT>
-```
-
-Treat absence as a first publication only when the dataset-info command
-explicitly reports that the repository was not found. Stop on authentication,
-permission, network, download, or malformed-index failures.
-
-Prepare the upload. Pass `--existing-index` only when the downloaded file
-exists:
+Require `repository` in the receipt to match the fixed dataset. Use the returned
+commit as `PARENT`. A verified `null` parent becomes `absent` for initial
+publication. Use the shared helper from the release pinned by the parent
+approval. Set `BENCHMARK_HELPER`, `BENCHMARK_PYTHON`, and `BENCHMARK_SDK` to
+the reviewed helper, interpreter and locked SDK paths. Run its local and
+anonymous commands outside a service session.
 
 ```bash
+benchmark_helper=(
+  "$BENCHMARK_PYTHON" -I -S -B -c
+  'import runpy, sys; sys.path.insert(0, sys.argv[1]); sys.argv = sys.argv[2:]; runpy.run_path(sys.argv[0], run_name="__main__")'
+  "$BENCHMARK_SDK" "$BENCHMARK_HELPER"
+)
+DATASET=tsilva/env-supermariobrosnes-turbo-emu-benchmarks
+PROJECT=env-supermariobrosnes-turbo-emu
+index_args=()
+if [ "$PARENT" != absent ]; then
+  "${benchmark_helper[@]}" fetch-index --parent-receipt "$PWD/$WORK/parent.json" \
+    --repository "$DATASET" --project "$PROJECT" > "$WORK/current-index.json"
+  index_args=(--existing-index "$PWD/$WORK/current-index.json")
+fi
 python3 .codex/skills/mario-emu_benchmark-latest-release/scripts/benchmark_release.py \
-  stage \
-  --bundle <BUNDLE> \
-  --version <VERSION> \
-  --output <UPLOAD_STAGE> \
-  --existing-index <CURRENT>/benchmark-index.json
+  stage --bundle "$BUNDLE" --version "$VERSION" --output "$PWD/$WORK/stage" \
+  "${index_args[@]}"
+"${benchmark_helper[@]}" prepare --stage "$PWD/$WORK/stage" --repository "$DATASET" \
+  --project "$PROJECT" --version "$VERSION" --parent "$PARENT" > "$WORK/plan.json"
 ```
 
-The helper re-verifies the bundle, enforces the provider/host/media contract,
-copies it into the stable HF layout, and generates `README.md` plus
-`benchmark-index.json`. Do not edit the staged bundle after this succeeds.
+Stop if the parent, index, or staging command fails. The staging helper
+re-verifies the bundle and produces the benchmark index and README. Record the
+plan's SHA-256 as `PLAN_SHA256` and preserve the staged bytes.
 
 ## 4. Upload, tag, and verify remotely
 
-Create the public dataset if necessary, then upload the complete staging
-directory as one commit. Do not use `--delete`:
+Obtain approval of the exact publication plan and confirm the
+`mario-benchmark-publish` profile is ready for this stage, plan and digest. Its
+gateway admits one commit against the verified parent and one immutable
+version tag for the acknowledged commit. A stale parent or conflicting tag
+requires review before any further attempt.
 
 ```bash
-hf repos create tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
-  --type dataset --public --exist-ok
-hf upload tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
-  <UPLOAD_STAGE> . --type dataset \
-  --commit-message "Add TurboBench evidence for v<VERSION>" \
-  --format json
+runbox --profile mario-benchmark-publish check
+runbox --profile mario-benchmark-publish run -- mario-benchmark-publish \
+  "$WORK/stage" "$WORK/plan.json" "$PLAN_SHA256" > "$WORK/receipt.json"
 ```
 
-Capture the returned commit SHA. Create the immutable version tag at that exact
-SHA; if the tag already exists, require it to resolve to the same commit:
+Select a new empty absolute `DOWNLOADED` directory. Verify the same tag and
+exact published bytes anonymously, then run the benchmark's own verifier.
 
 ```bash
-hf repos tag create tsilva/env-supermariobrosnes-turbo-emu-benchmarks v<VERSION> \
-  --type dataset --revision <HF_COMMIT_SHA> \
-  --message "Official TurboBench evidence for env-supermariobrosnes-turbo-emu <VERSION>"
-```
-
-Download the tag into a fresh directory and verify the published bundle:
-
-```bash
-hf download tsilva/env-supermariobrosnes-turbo-emu-benchmarks \
-  --type dataset --revision v<VERSION> --local-dir <DOWNLOADED>
+"${benchmark_helper[@]}" download-back --plan "$PWD/$WORK/plan.json" \
+  --receipt "$PWD/$WORK/receipt.json" --repository "$DATASET" --destination "$DOWNLOADED"
 python3 .codex/skills/mario-emu_benchmark-latest-release/scripts/benchmark_release.py \
-  verify-snapshot --root <DOWNLOADED> --version <VERSION>
+  verify-snapshot --root "$DOWNLOADED" --version "$VERSION"
 ```
 
 Publication is complete only after this download-back verification passes.
