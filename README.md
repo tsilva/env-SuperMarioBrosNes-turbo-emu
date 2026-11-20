@@ -40,12 +40,84 @@ Use the arrow keys or `A`/`D` to move, `X`/`J`/Space to jump,
 
 ## Use from Python
 
-Install `env-supermariobrosnes-turbo-emu` in your project, then follow the
-[vector API guide](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md#turbo-vector-api-v2)
-for actions, reset behavior, and snapshots. The
-[GradLab examples](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md#gradlab-training)
-cover local training. Bring a compatible ROM. ROM files are excluded from this
-repository and package.
+Add the package to a uv-managed project:
+
+```bash
+uv add env-supermariobrosnes-turbo-emu
+```
+
+```python
+import gymnasium as gym
+
+from env_supermariobrosnes_turbo_emu import Actions, action_batch
+
+env = gym.make_vec(
+    "env_supermariobrosnes_turbo_emu:EnvSuperMarioBrosNesTurboEmu-v0",
+    game="SuperMarioBros-Nes-v0",
+    state="Level1-1",
+    rom_path="/absolute/path/to/SuperMarioBros.nes",
+    num_envs=16,
+    use_restricted_actions=Actions.ALL,
+)
+
+try:
+    observations, infos = env.reset(seed=123)
+    observations, rewards, terminated, truncated, infos = env.step(
+        action_batch("right", env.num_envs)
+    )
+
+    done = terminated | truncated
+    if done.any():
+        observations, reset_infos = env.reset(
+            options={"reset_mask": done.copy()},
+        )
+finally:
+    env.close()
+```
+
+The module-qualified ID registers the vector-only factory; `game` is required.
+The native `EnvSuperMarioBrosNesTurboEmuVecEnv` constructor is also public.
+
+## What it provides
+
+- Collect experience across independent, seeded environments with native batched
+  emulation and observation processing.
+- Repeat exact starts using saved states or live snapshots.
+- Reset or restore selected environments without disturbing the others.
+- Choose actions, observations, and game signals to suit your experiment.
+
+See [API.md](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md) for action tables, preprocessing options, state and snapshot
+controls, playback, and research-info contracts.
+
+## Compared with Stable Retro
+
+[Stable Retro](https://stable-retro.farama.org/python/) is the broader choice
+for multiple games and emulators, multiplayer, RAM observations, and BK2 movie
+recording. Turbo specializes in one-player Super Mario Bros NES on mapper
+0/NROM, with native vector execution, selective resets, image observations,
+state catalogs, snapshots, and separately available batched RAM. It is not a
+drop-in Stable Retro replacement.
+
+## Train with GradLab
+
+Training implementations and recipes live in
+[GradLab](https://github.com/tsilva/gradlab), outside this repository. Run either
+published, version-pinned recipe from any directory with your local ROM.
+
+```bash
+# Short PPO demonstration
+uvx --python 3.14 gradlab@0.2.4 train SuperMarioBros-Nes-v0/Level1-1/turbo-demo --rom-path /absolute/path/to/SuperMarioBros.nes --no-wandb --set train.backend.config.device=auto
+
+# Go-Explore trajectory discovery capped at 20 million transitions
+uvx --python 3.14 gradlab@0.2.4 train SuperMarioBros-Nes-v0/Level1-1/go-explore-20m --rom-path /absolute/path/to/SuperMarioBros.nes --no-wandb
+```
+
+GradLab verifies the ROM, shows live progress, and exports
+`final_model.zip` below `~/.config/gradlab/runs` by default, and prints a
+version-pinned playback command. These commands keep training outputs local;
+the PPO demo automatically selects an available Torch device. GradLab 0.2.4
+installs Mario environment 0.7.4 in an isolated environment and includes its
+local web player. See [training outputs and bounded runs](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md#gradlab-training).
 
 - [Register your ROM](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/API.md#playback)
 - [Native architecture](https://github.com/tsilva/env-SuperMarioBrosNes-turbo-emu/blob/main/ARCHITECTURE.md)
